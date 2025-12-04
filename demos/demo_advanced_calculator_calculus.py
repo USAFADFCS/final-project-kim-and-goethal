@@ -25,7 +25,7 @@ from fairlib import (
     SimpleReActPlanner
 )
 
-# --- Step 2: Import the additiojnal tools we want this agent to use ---
+# --- Step 2: Import the additional tools we want this agent to use ---
 # NOTE: SafeCalculatorTool is a built-in tool while AdvancedCalculusTool 
 # is a tool we built to extend beyond our basic built-in tools.
 

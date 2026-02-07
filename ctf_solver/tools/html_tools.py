@@ -1,0 +1,346 @@
+"""
+HTML and JavaScript inspection tools for CTF solving.
+
+Provides HTML structure analysis and JavaScript source extraction.
+"""
+
+import json
+from typing import List, Optional
+from urllib.parse import urljoin
+
+import requests
+from bs4 import BeautifulSoup, Comment
+
+# Optional JS beautifier (if installed)
+try:
+    import jsbeautifier  # type: ignore
+    HAS_JSBEAUTIFIER = True
+except Exception:
+    HAS_JSBEAUTIFIER = False
+
+
+class HtmlInspectorTool:
+    """
+    HtmlInspectorTool: inspect and summarize the structure of an HTML page.
+
+    Inputs (JSON via `.use`):
+
+        {
+          "url": "https://example.com/path",  # optional
+          "html": "<html>...</html>",        # optional
+          "max_items": 50                    # optional, maximum items per section
+        }
+
+    Behavior:
+      - If 'html' is provided, parse that directly.
+      - Else if 'url' is provided, fetch the page using the shared session.
+      - Extract:
+          * <a href=...> links (href + text)
+          * <script src=...> external script URLs
+          * <link rel="stylesheet" href=...> CSS URLs
+          * HTML comments
+      - Return a readable text summary grouping LINKS / SCRIPTS / STYLESHEETS / COMMENTS.
+    """
+
+    name: str = "html_inspector"
+    description: str = (
+        "Inspect and summarize the structure of HTML. Input JSON keys: "
+        "'url' (optional) or 'html' (optional), and 'max_items' (optional int). "
+        "If 'url' is given, fetches that page; otherwise uses the provided 'html'. "
+        "Extracts links, external scripts, stylesheets, and comments and returns "
+        "a readable summary. Use this tool to understand page structure and find "
+        "hidden elements like comments or interesting links."
+    )
+
+    def __init__(self, session: Optional[requests.Session] = None) -> None:
+        self.session = session or requests.Session()
+
+    def _fetch_html(self, url: str) -> str:
+        try:
+            resp = self.session.get(url, timeout=10)
+        except Exception as exc:
+            return f"[HtmlInspectorTool] Error fetching URL {url!r}: {exc!r}"
+        return resp.text or ""
+
+    def use(self, tool_input: str) -> str:
+        try:
+            data = json.loads(tool_input) if tool_input else {}
+        except json.JSONDecodeError as exc:
+            return (
+                f"[HtmlInspectorTool] Error: tool_input must be JSON. "
+                f"Decoding failed with: {exc}"
+            )
+
+        url = data.get("url")
+        html = data.get("html")
+        max_items = data.get("max_items", 50)
+
+        if html and not isinstance(html, str):
+            return "[HtmlInspectorTool] Error: 'html' must be a string if provided."
+        if url and not isinstance(url, str):
+            return "[HtmlInspectorTool] Error: 'url' must be a string if provided."
+
+        if not html and not url:
+            return (
+                "[HtmlInspectorTool] Error: You must provide either 'url' or 'html' "
+                "in the JSON input."
+            )
+
+        if not html and url:
+            html = self._fetch_html(url)
+
+        if html.startswith("[HtmlInspectorTool] Error"):
+            # Propagate error from _fetch_html
+            return html
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Extract links
+        links: List[str] = []
+        for a in soup.find_all("a", href=True):
+            text = (a.get_text() or "").strip()
+            href = a["href"]
+            if text:
+                links.append(f"- text={text!r}, href={href!r}")
+            else:
+                links.append(f"- href={href!r}")
+
+        # Extract external scripts
+        scripts: List[str] = []
+        for script in soup.find_all("script", src=True):
+            src = script["src"]
+            scripts.append(f"- src={src!r}")
+
+        # Extract stylesheets
+        stylesheets: List[str] = []
+        for link in soup.find_all("link", rel=True, href=True):
+            rel = " ".join(link.get("rel", []))
+            if "stylesheet" in rel.lower():
+                href = link["href"]
+                stylesheets.append(f"- rel={rel!r}, href={href!r}")
+
+        # Extract comments
+        comments: List[str] = []
+        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+            c_text = str(comment).strip()
+            if len(c_text) > 200:
+                c_text = c_text[:200] + " ...[truncated]..."
+            comments.append(f"- {c_text!r}")
+
+        def truncate_list(items: List[str], max_n: int) -> List[str]:
+            if len(items) <= max_n:
+                return items
+            return items[:max_n] + [
+                f"...[truncated, {len(items) - max_n} more items]..."
+            ]
+
+        try:
+            max_items_int = int(max_items)
+        except Exception:
+            max_items_int = 50
+
+        links = truncate_list(links, max_items_int)
+        scripts = truncate_list(scripts, max_items_int)
+        stylesheets = truncate_list(stylesheets, max_items_int)
+        comments = truncate_list(comments, max_items_int)
+
+        summary_parts = [
+            "[HtmlInspectorTool] HTML structure summary:",
+            "",
+        ]
+        if url:
+            summary_parts.append(f"Source URL: {url}")
+            summary_parts.append("")
+
+        summary_parts.append("[LINKS]")
+        summary_parts.extend(links or ["- (none found)"])
+        summary_parts.append("")
+
+        summary_parts.append("[SCRIPTS - external src]")
+        summary_parts.extend(scripts or ["- (none found)"])
+        summary_parts.append("")
+
+        summary_parts.append("[STYLESHEETS]")
+        summary_parts.extend(stylesheets or ["- (none found)"])
+        summary_parts.append("")
+
+        summary_parts.append("[COMMENTS]")
+        summary_parts.extend(comments or ["- (none found)"])
+        summary_parts.append("")
+
+        return "\n".join(summary_parts)
+
+
+class JavaScriptSourceTool:
+    """
+    JavaScriptSourceTool: extract and (optionally) pretty-print JS from a page.
+
+    Inputs (JSON via `.use`):
+
+        {
+          "url": "https://example.com/page",   # optional
+          "html": "<html>...</html>",          # optional
+          "base_url": "https://example.com",   # optional, for resolving relative src
+          "max_scripts": 20,                   # optional
+          "max_chars_per_script": 4000         # optional
+        }
+
+    Behavior:
+      - If 'html' is provided, parse that directly.
+      - Else if 'url' is provided, fetch the HTML using the shared session.
+      - Parse HTML, locate <script> tags.
+      - For each script:
+          * If it has a 'src', resolve it against base_url or page URL and fetch JS.
+          * If inline, capture its text content.
+      - If jsbeautifier is available, pretty-print each script.
+      - Return a readable text summary with sections like:
+          [INLINE SCRIPT #1]
+          ...
+          [EXTERNAL SCRIPT: https://example.com/static/app.js]
+          ...
+    """
+
+    name: str = "javascript_source"
+    description: str = (
+        "Extract JavaScript code from an HTML page. Input JSON keys: 'url' "
+        "(optional), 'html' (optional), 'base_url' (optional), 'max_scripts' "
+        "(optional int), and 'max_chars_per_script' (optional int). If 'url' is "
+        "provided, fetches the page. Then parses <script> tags: for each tag, "
+        "either fetches external JS from 'src' or captures inline JS. Returns a "
+        "readable summary labeling each script block. Use this tool to analyze "
+        "client-side validation, password checks, or hidden logic in JavaScript."
+    )
+
+    def __init__(self, session: Optional[requests.Session] = None) -> None:
+        self.session = session or requests.Session()
+
+    def _fetch_html(self, url: str) -> str:
+        try:
+            resp = self.session.get(url, timeout=10)
+        except Exception as exc:
+            return f"[JavaScriptSourceTool] Error fetching URL {url!r}: {exc!r}"
+        return resp.text or ""
+
+    def _beautify_js(self, code: str) -> str:
+        if HAS_JSBEAUTIFIER:
+            try:
+                return jsbeautifier.beautify(code)  # type: ignore
+            except Exception:
+                return code
+        return code
+
+    def use(self, tool_input: str) -> str:
+        try:
+            data = json.loads(tool_input) if tool_input else {}
+        except json.JSONDecodeError as exc:
+            return (
+                f"[JavaScriptSourceTool] Error: tool_input must be JSON. "
+                f"Decoding failed with: {exc}"
+            )
+
+        url = data.get("url")
+        html = data.get("html")
+        base_url = data.get("base_url")
+        max_scripts = data.get("max_scripts", 20)
+        max_chars_per_script = data.get("max_chars_per_script", 4000)
+
+        if url and not isinstance(url, str):
+            return "[JavaScriptSourceTool] Error: 'url' must be a string if provided."
+        if html and not isinstance(html, str):
+            return "[JavaScriptSourceTool] Error: 'html' must be a string if provided."
+        if base_url and not isinstance(base_url, str):
+            return "[JavaScriptSourceTool] Error: 'base_url' must be a string if provided."
+
+        if not html and not url:
+            return (
+                "[JavaScriptSourceTool] Error: You must provide either 'url' or "
+                "'html' in the JSON input."
+            )
+
+        if not html and url:
+            html = self._fetch_html(url)
+        page_url = url
+
+        if html.startswith("[JavaScriptSourceTool] Error"):
+            return html
+
+        try:
+            max_scripts_int = int(max_scripts)
+        except Exception:
+            max_scripts_int = 20
+
+        try:
+            max_chars_int = int(max_chars_per_script)
+        except Exception:
+            max_chars_int = 4000
+
+        soup = BeautifulSoup(html, "html.parser")
+        script_tags = soup.find_all("script")
+
+        blocks: List[str] = ["[JavaScriptSourceTool] Extracted JavaScript code:"]
+        if url:
+            blocks.append(f"Source page URL: {url}")
+        if base_url:
+            blocks.append(f"Base URL for resolving src: {base_url}")
+        blocks.append("")
+
+        count = 0
+        for idx, script in enumerate(script_tags, start=1):
+            if count >= max_scripts_int:
+                blocks.append(
+                    f"...[truncated: more than {max_scripts_int} <script> tags found]"
+                )
+                break
+
+            src = script.get("src")
+            if src:
+                # External script
+                if base_url:
+                    full_src = urljoin(base_url, src)
+                elif page_url:
+                    full_src = urljoin(page_url, src)
+                else:
+                    full_src = src
+
+                blocks.append(f"[EXTERNAL SCRIPT #{idx}: {full_src}]")
+
+                try:
+                    resp = self.session.get(full_src, timeout=10)
+                    js_code = resp.text or ""
+                except Exception as exc:
+                    blocks.append(
+                        f"Error fetching external script {full_src!r}: {exc!r}\n"
+                    )
+                    count += 1
+                    continue
+
+                js_code = self._beautify_js(js_code)
+
+                if max_chars_int > 0 and len(js_code) > max_chars_int:
+                    js_code = js_code[:max_chars_int] + "\n...[truncated]..."
+
+                blocks.append(js_code)
+                blocks.append("")  # blank line
+            else:
+                # Inline script
+                js_code = script.string or script.get_text() or ""
+                js_code = js_code.strip()
+                if not js_code:
+                    continue
+
+                blocks.append(f"[INLINE SCRIPT #{idx}]")
+
+                js_code = self._beautify_js(js_code)
+
+                if max_chars_int > 0 and len(js_code) > max_chars_int:
+                    js_code = js_code[:max_chars_int] + "\n...[truncated]..."
+
+                blocks.append(js_code)
+                blocks.append("")
+
+            count += 1
+
+        if count == 0:
+            blocks.append("- (no <script> tags with content or src found)")
+
+        return "\n".join(blocks)

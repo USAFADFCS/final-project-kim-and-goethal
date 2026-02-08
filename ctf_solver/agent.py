@@ -38,6 +38,26 @@ from ctf_solver.tools import (
     CookieInspectorTool,
     CookieSetTool,
     LoggingToolWrapper,
+    EncodingTool,
+    HashIdentifierTool,
+    ResponseDiffTool,
+    TimingCompareTool,
+    ResponseFingerprinter,
+    PathEnumeratorTool,
+    BackupFileFinder,
+    SqliProbeTool,
+    SqliColumnCounter,
+    BlindSqliBooleanTool,
+    BlindSqliTimeTool,
+    SqliDataDumper,
+    JwtTool,
+    SstiProbeTool,
+    SstiExploitSuggester,
+    FileUploadTool,
+    UploadLocationFinder,
+    XxeProbeTool,
+    XxePayloadGenerator,
+    XxeDocTypeBuilder,
 )
 from ctf_solver.rag import initialize_knowledge_base, build_knowledge_tool
 from ctf_solver.prompts import (
@@ -45,8 +65,88 @@ from ctf_solver.prompts import (
     ROBOTS_EXAMPLE,
     JS_ANALYSIS_EXAMPLE,
 )
+from ctf_solver.classifier import (
+    ChallengeClassifier,
+    ClassificationResult,
+    ChallengeCategory,
+    create_classifier,
+)
+from ctf_solver.llm import (
+    LLMProvider,
+    create_adapter,
+    create_adapter_from_config,
+    check_provider_available,
+)
+from ctf_solver.config import LLMProviderType
 
 logger = logging.getLogger(__name__)
+
+
+def classify_challenge(
+    config: SolverConfig,
+    response_content: Optional[str] = None,
+    log_callback: Optional[Callable[[str], None]] = None,
+) -> ClassificationResult:
+    """
+    Classify a challenge based on configuration and optional response content.
+
+    Args:
+        config: Solver configuration with challenge_url, description, hints
+        response_content: Optional initial response content for analysis
+        log_callback: Optional callback for logging
+
+    Returns:
+        ClassificationResult with category, confidence, and suggestions
+    """
+    log_fn = log_callback or print
+    classifier = create_classifier()
+
+    result = classifier.classify_from_config(config, response_content)
+
+    log_fn(f"[Classifier] Challenge classified as: {result.primary_category.value}")
+    log_fn(f"[Classifier] Confidence: {result.confidence:.2f}")
+
+    if result.secondary_categories:
+        secondary = ", ".join(
+            f"{cat.value}({conf:.2f})"
+            for cat, conf in result.secondary_categories[:3]
+        )
+        log_fn(f"[Classifier] Also possible: {secondary}")
+
+    if result.suggested_tools:
+        tools = ", ".join(result.suggested_tools[:5])
+        log_fn(f"[Classifier] Recommended tools: {tools}")
+
+    return result
+
+
+def get_classification_context(result: ClassificationResult) -> str:
+    """
+    Generate context text for the agent based on classification result.
+
+    Args:
+        result: ClassificationResult from classify_challenge
+
+    Returns:
+        Context string to include in agent prompt
+    """
+    lines = [
+        f"Challenge Classification: {result.primary_category.value.upper()}",
+        f"Confidence: {result.confidence:.0%}",
+    ]
+
+    if result.secondary_categories:
+        secondary = [cat.value for cat, _ in result.secondary_categories[:2]]
+        lines.append(f"Also consider: {', '.join(secondary)}")
+
+    lines.append("")
+    lines.append("Suggested Approach:")
+    lines.append(result.suggested_approach)
+
+    lines.append("")
+    lines.append(f"Priority Tools: {', '.join(result.suggested_tools[:5])}")
+
+    return "\n".join(lines)
 
 
 def build_agent(
@@ -56,7 +156,7 @@ def build_agent(
     """
     Construct and return a SimpleAgent wired up with:
 
-      - OpenAI LLM (OpenAIAdapter)
+      - LLM adapter (OpenAI, Anthropic, Ollama, or Hybrid)
       - ReActPlanner + custom PromptBuilder role + examples
       - ToolRegistry with HTTP / HTML / regex / cookies / robots / form / JS / search / SQL / RAG tools
       - LoggingToolWrapper around all tools (for tool-call + flag logging)
@@ -72,14 +172,49 @@ def build_agent(
     """
     log_fn = log_callback or print
 
-    # Validate API key
-    if not config.openai_api_key:
-        raise RuntimeError(
-            "OPENAI_API_KEY is not set. Set it in your environment, .env file, or config."
-        )
-    settings.api_keys.openai_api_key = config.openai_api_key
+    # Get the LLM provider from config
+    provider = getattr(config, "llm_provider", LLMProviderType.OPENAI)
 
-    llm = OpenAIAdapter(api_key=settings.api_keys.openai_api_key)
+    # Check if provider is available
+    if isinstance(provider, str):
+        try:
+            provider = LLMProviderType(provider.lower())
+        except ValueError:
+            pass  # Keep as string, will be handled by adapter factory
+
+    # Create the LLM adapter based on provider
+    if provider == LLMProviderType.OPENAI or provider == "openai":
+        # OpenAI path (original behavior for backward compatibility)
+        if not config.openai_api_key:
+            raise RuntimeError(
+                "OPENAI_API_KEY is not set. Set it in your environment, .env file, or config."
+            )
+        settings.api_keys.openai_api_key = config.openai_api_key
+        llm = OpenAIAdapter(
+            api_key=settings.api_keys.openai_api_key,
+            model_name=config.model_name,
+        )
+        log_fn(f"[Agent] Using OpenAI adapter with model: {config.model_name}")
+    else:
+        # Use the adapter factory for other providers
+        try:
+            llm = create_adapter_from_config(config)
+            caps = llm.get_model_capabilities()
+            log_fn(f"[Agent] Using {caps.get('provider', 'unknown')} adapter with model: {caps.get('model', 'unknown')}")
+        except ImportError as e:
+            # Fall back to OpenAI if the requested provider is not available
+            log_fn(f"[Agent] Warning: {e}. Falling back to OpenAI.")
+            if not config.openai_api_key:
+                raise RuntimeError(
+                    "OPENAI_API_KEY is not set and fallback is required. "
+                    "Set it in your environment, .env file, or config."
+                )
+            settings.api_keys.openai_api_key = config.openai_api_key
+            llm = OpenAIAdapter(
+                api_key=settings.api_keys.openai_api_key,
+                model_name=config.model_name,
+            )
+            log_fn(f"[Agent] Using OpenAI adapter with model: {config.model_name}")
 
     # Single shared HTTP session for ALL HTTP-related tools
     shared_session = requests.Session()
@@ -98,6 +233,44 @@ def build_agent(
     response_search_tool = ResponseSearchTool()
     sql_pattern_hint_tool = SqlPatternHintTool()
 
+    # Encoding/utility tools (no session needed)
+    encoding_tool = EncodingTool()
+    hash_identifier_tool = HashIdentifierTool()
+
+    # Diff/comparison tools
+    response_diff_tool = ResponseDiffTool()
+    timing_compare_tool = TimingCompareTool(session=shared_session)
+    response_fingerprint_tool = ResponseFingerprinter()
+
+    # Enumeration tools
+    path_enumerator_tool = PathEnumeratorTool(session=shared_session)
+    backup_finder_tool = BackupFileFinder(session=shared_session)
+
+    # SQL Injection tools
+    sqli_probe_tool = SqliProbeTool(session=shared_session)
+    sqli_column_counter_tool = SqliColumnCounter(session=shared_session)
+
+    # Blind SQL Injection tools
+    blind_sqli_boolean_tool = BlindSqliBooleanTool(session=shared_session)
+    blind_sqli_time_tool = BlindSqliTimeTool(session=shared_session)
+    sqli_data_dumper_tool = SqliDataDumper(session=shared_session)
+
+    # JWT tools (no session needed)
+    jwt_tool = JwtTool()
+
+    # SSTI tools
+    ssti_probe_tool = SstiProbeTool(session=shared_session)
+    ssti_exploit_suggester = SstiExploitSuggester()
+
+    # File upload tools
+    file_upload_tool = FileUploadTool(session=shared_session)
+    upload_location_finder = UploadLocationFinder(session=shared_session)
+
+    # XXE tools
+    xxe_probe_tool = XxeProbeTool(session=shared_session)
+    xxe_payload_generator = XxePayloadGenerator()
+    xxe_doctype_builder = XxeDocTypeBuilder()
+
     # All tools to register
     tools = [
         http_tool,
@@ -110,6 +283,26 @@ def build_agent(
         js_source_tool,
         response_search_tool,
         sql_pattern_hint_tool,
+        encoding_tool,
+        hash_identifier_tool,
+        response_diff_tool,
+        timing_compare_tool,
+        response_fingerprint_tool,
+        path_enumerator_tool,
+        backup_finder_tool,
+        sqli_probe_tool,
+        sqli_column_counter_tool,
+        blind_sqli_boolean_tool,
+        blind_sqli_time_tool,
+        sqli_data_dumper_tool,
+        jwt_tool,
+        ssti_probe_tool,
+        ssti_exploit_suggester,
+        file_upload_tool,
+        upload_location_finder,
+        xxe_probe_tool,
+        xxe_payload_generator,
+        xxe_doctype_builder,
     ]
 
     # Wrap them with LoggingToolWrapper and register

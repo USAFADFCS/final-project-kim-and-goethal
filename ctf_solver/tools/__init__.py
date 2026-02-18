@@ -22,6 +22,7 @@ from ctf_solver.tools.jwt_tools import JwtTool
 from ctf_solver.tools.ssti_tools import SstiProbeTool, SstiExploitSuggester
 from ctf_solver.tools.upload_tools import FileUploadTool, UploadLocationFinder
 from ctf_solver.tools.xxe_tools import XxeProbeTool, XxePayloadGenerator, XxeDocTypeBuilder
+from ctf_solver.tools.shell_tools import ShellExecuteTool
 
 __all__ = [
     "HttpFetchTool",
@@ -64,4 +65,6 @@ __all__ = [
     "XxeProbeTool",
     "XxePayloadGenerator",
     "XxeDocTypeBuilder",
+    # Shell execution tools
+    "ShellExecuteTool",
 ]

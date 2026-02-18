@@ -58,6 +58,7 @@ from ctf_solver.tools import (
     XxeProbeTool,
     XxePayloadGenerator,
     XxeDocTypeBuilder,
+    ShellExecuteTool,
 )
 from ctf_solver.rag import initialize_knowledge_base, build_knowledge_tool
 from ctf_solver.prompts import (
@@ -271,6 +272,9 @@ def build_agent(
     xxe_payload_generator = XxePayloadGenerator()
     xxe_doctype_builder = XxeDocTypeBuilder()
 
+    # Shell execution tool (general-purpose command runner)
+    shell_tool = ShellExecuteTool()
+
     # All tools to register
     tools = [
         http_tool,
@@ -303,6 +307,7 @@ def build_agent(
         xxe_probe_tool,
         xxe_payload_generator,
         xxe_doctype_builder,
+        shell_tool,
     ]
 
     # Wrap them with LoggingToolWrapper and register

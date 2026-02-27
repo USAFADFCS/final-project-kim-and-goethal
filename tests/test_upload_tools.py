@@ -17,7 +17,7 @@ class TestFileUploadToolBasics:
         tool = FileUploadTool()
         assert hasattr(tool, "name")
         assert hasattr(tool, "description")
-        assert tool.name == "file_upload_tool"
+        assert tool.name == "file_upload"
         assert "upload" in tool.description.lower()
 
     def test_invalid_json_input(self):
@@ -871,6 +871,142 @@ class TestExtractUploadPath:
         assert result is None
 
 
+class TestExtensionPathDiscovery:
+    """Test that test_extensions now extracts and displays upload paths and response bodies."""
+
+    def test_test_extensions_shows_first_success_response(self):
+        """test_extensions should show the first successful response body."""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = '{"status":"ok","path":"/uploads/shell.php"}'
+        mock_response.content = mock_response.text.encode()
+        mock_session.post.return_value = mock_response
+
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "operation": "test_extensions",
+            "url": "http://test.com/upload",
+            "file_param": "file",
+        }))
+
+        assert "First Successful Response" in result
+        assert "/uploads/shell.php" in result
+
+    def test_test_extensions_extracts_paths_from_json_response(self):
+        """test_extensions should extract paths from JSON responses."""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = '{"path": "/files/shell.php", "message": "uploaded"}'
+        mock_response.content = mock_response.text.encode()
+        mock_session.post.return_value = mock_response
+
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "operation": "test_extensions",
+            "url": "http://test.com/upload",
+            "file_param": "file",
+        }))
+
+        assert "Discovered Upload Paths" in result
+        assert "/files/shell.php" in result
+
+    def test_test_extensions_extracts_paths_from_baseline(self):
+        """test_extensions should also extract paths from baseline (.txt) response."""
+        call_count = [0]
+        mock_session = Mock()
+
+        def make_response(*args, **kwargs):
+            resp = Mock()
+            resp.status_code = 200
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # Baseline response
+                resp.text = 'File saved to /data/uploads/test.txt'
+            else:
+                resp.text = 'Upload complete'
+            resp.content = resp.text.encode()
+            return resp
+
+        mock_session.post.side_effect = make_response
+
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "operation": "test_extensions",
+            "url": "http://test.com/upload",
+            "file_param": "file",
+        }))
+
+        assert "Discovered Upload Paths" in result
+        assert "baseline" in result
+
+    def test_test_extensions_no_paths_when_response_empty(self):
+        """test_extensions should not show paths section when no paths found."""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = "OK"
+        mock_response.content = b"OK"
+        mock_session.post.return_value = mock_response
+
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "operation": "test_extensions",
+            "url": "http://test.com/upload",
+            "file_param": "file",
+        }))
+
+        assert "Discovered Upload Paths" not in result
+        # But should still show first success response
+        assert "First Successful Response" in result
+        assert "OK" in result
+
+    def test_test_extensions_deduplicates_paths(self):
+        """test_extensions should not show duplicate paths in the Discovered section."""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = '{"path": "/uploads/shell.php"}'
+        mock_response.content = mock_response.text.encode()
+        mock_session.post.return_value = mock_response
+
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "operation": "test_extensions",
+            "url": "http://test.com/upload",
+            "file_param": "file",
+        }))
+
+        # Discovered Upload Paths section should have the path only once
+        # (even though many extensions all return the same path)
+        disc_start = result.find("Discovered Upload Paths")
+        disc_end = result.find("First Successful Response")
+        discovered_section = result[disc_start:disc_end]
+        count = discovered_section.count("/uploads/shell.php")
+        assert count == 1
+
+    def test_test_extensions_shows_response_body_for_path_discovery(self):
+        """test_extensions response body snippet helps agent find upload location."""
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = '<p>Your CV has been uploaded to <a href="/cv_uploads/shell.php">here</a></p>'
+        mock_response.content = mock_response.text.encode()
+        mock_session.post.return_value = mock_response
+
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "operation": "test_extensions",
+            "url": "http://test.com/upload",
+            "file_param": "cv",
+        }))
+
+        # Agent should see the response body that reveals the path
+        assert "cv_uploads" in result
+        assert "First Successful Response" in result
+
+
 class TestFileUploadToolIntegration:
     """Test integration with CTF solver."""
 
@@ -879,7 +1015,7 @@ class TestFileUploadToolIntegration:
         from ctf_solver.tools import FileUploadTool, UploadLocationFinder
         upload = FileUploadTool()
         finder = UploadLocationFinder()
-        assert upload.name == "file_upload_tool"
+        assert upload.name == "file_upload"
         assert finder.name == "upload_location_finder"
 
     def test_tools_follow_fair_pattern(self):

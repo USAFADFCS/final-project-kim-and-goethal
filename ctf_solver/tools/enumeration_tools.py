@@ -339,7 +339,7 @@ class BackupFileFinder:
     Given a known file path, tests common backup naming patterns.
     """
 
-    name: str = "backup_finder"
+    name: str = "backup_file_finder"
     description: str = (
         "Find backup versions of a known file. Input must be JSON with keys: "
         "'url' (full URL to the known file, e.g. 'http://example.com/config.php'), "

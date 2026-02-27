@@ -39,12 +39,15 @@ class EncodingTool:
       - reverse_string
     """
 
-    name: str = "encoding_tool"
+    name: str = "encoding"
     description: str = (
         "Encode or decode text using various schemes. Input must be JSON with keys: "
-        "'text' (string to process) and 'operation' (one of: base64_encode, base64_decode, "
-        "url_encode, url_decode, hex_encode, hex_decode, html_entity_encode, html_entity_decode, "
-        "rot13, binary_to_ascii, ascii_to_binary, jwt_decode, unicode_normalize, reverse_string). "
+        "'text' (string to process), 'operation' (one of: base64_encode, base64_decode, "
+        "base32_encode, base32_decode, url_encode, url_decode, double_url_encode, "
+        "hex_encode, hex_decode, html_entity_encode, html_entity_decode, rot13, "
+        "binary_to_ascii, ascii_to_binary, jwt_decode, unicode_normalize, unicode_escape, "
+        "unicode_unescape, reverse_string, xor, octal_encode, octal_decode), and "
+        "optionally 'key' (for xor operation, hex string like 'deadbeef'). "
         "Use this tool to decode cookies, parameters, obfuscated strings, or encode payloads."
     )
 
@@ -52,8 +55,11 @@ class EncodingTool:
     OPERATIONS = {
         "base64_encode",
         "base64_decode",
+        "base32_encode",
+        "base32_decode",
         "url_encode",
         "url_decode",
+        "double_url_encode",
         "hex_encode",
         "hex_decode",
         "html_entity_encode",
@@ -63,7 +69,12 @@ class EncodingTool:
         "ascii_to_binary",
         "jwt_decode",
         "unicode_normalize",
+        "unicode_escape",
+        "unicode_unescape",
         "reverse_string",
+        "xor",
+        "octal_encode",
+        "octal_decode",
     }
 
     def use(self, tool_input: str) -> str:
@@ -78,6 +89,7 @@ class EncodingTool:
 
         text = data.get("text")
         operation = data.get("operation")
+        key = data.get("key")
 
         if not isinstance(text, str):
             return "[EncodingTool] Error: 'text' must be a string."
@@ -92,12 +104,12 @@ class EncodingTool:
             )
 
         try:
-            result = self._perform_operation(text, operation)
+            result = self._perform_operation(text, operation, key=key)
             return f"[EncodingTool] Operation: {operation}\nInput: {text[:100]}{'...' if len(text) > 100 else ''}\nResult: {result}"
         except Exception as exc:
             return f"[EncodingTool] Error performing '{operation}': {exc}"
 
-    def _perform_operation(self, text: str, operation: str) -> str:
+    def _perform_operation(self, text: str, operation: str, *, key: Optional[str] = None) -> str:
         """Perform the specified encoding/decoding operation."""
 
         if operation == "base64_encode":
@@ -113,11 +125,27 @@ class EncodingTool:
                 decoded_bytes = base64.b64decode(padded)
                 return f"[Binary data, hex representation]: {decoded_bytes.hex()}"
 
+        elif operation == "base32_encode":
+            return base64.b32encode(text.encode("utf-8")).decode("ascii")
+
+        elif operation == "base32_decode":
+            # Handle missing padding
+            padded = text + "=" * ((8 - len(text) % 8) % 8)
+            try:
+                return base64.b32decode(padded.upper()).decode("utf-8")
+            except UnicodeDecodeError:
+                decoded_bytes = base64.b32decode(padded.upper())
+                return f"[Binary data, hex representation]: {decoded_bytes.hex()}"
+
         elif operation == "url_encode":
             return urllib.parse.quote(text, safe="")
 
         elif operation == "url_decode":
             return urllib.parse.unquote(text)
+
+        elif operation == "double_url_encode":
+            first = urllib.parse.quote(text, safe="")
+            return urllib.parse.quote(first, safe="")
 
         elif operation == "hex_encode":
             return text.encode("utf-8").hex()
@@ -163,8 +191,66 @@ class EncodingTool:
             import unicodedata
             return unicodedata.normalize("NFKC", text)
 
+        elif operation == "unicode_escape":
+            # Convert each non-ASCII char (and optionally ASCII) to \uXXXX form
+            return "".join(
+                f"\\u{ord(c):04x}" if ord(c) > 127 or not c.isalnum() else c
+                for c in text
+            )
+
+        elif operation == "unicode_unescape":
+            # Decode \uXXXX escape sequences
+            try:
+                return text.encode("utf-8").decode("unicode_escape")
+            except Exception:
+                # Fallback: use raw_unicode_escape for broader compat
+                try:
+                    return text.encode("utf-8").decode("raw_unicode_escape")
+                except Exception:
+                    return text
+
         elif operation == "reverse_string":
             return text[::-1]
+
+        elif operation == "xor":
+            if not key:
+                return "[XOR requires 'key' parameter (hex string, e.g. 'deadbeef')]"
+            try:
+                key_bytes = bytes.fromhex(key)
+            except ValueError:
+                # Treat key as raw string
+                key_bytes = key.encode("utf-8")
+            text_bytes = text.encode("utf-8")
+            result_bytes = bytes(
+                b ^ key_bytes[i % len(key_bytes)]
+                for i, b in enumerate(text_bytes)
+            )
+            try:
+                return result_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                return f"[Binary result, hex]: {result_bytes.hex()}"
+
+        elif operation == "octal_encode":
+            return " ".join(f"\\{ord(c):03o}" for c in text)
+
+        elif operation == "octal_decode":
+            # Parse octal sequences like \101\102\103 or space-separated 101 102 103
+            import re
+            # Try \NNN format first
+            octal_matches = re.findall(r"\\(\d{1,3})", text)
+            if octal_matches:
+                return "".join(chr(int(o, 8)) for o in octal_matches)
+            # Try space-separated
+            parts = text.split()
+            chars = []
+            for p in parts:
+                p = p.strip().lstrip("\\")
+                if p:
+                    try:
+                        chars.append(chr(int(p, 8)))
+                    except ValueError:
+                        chars.append(f"[invalid:{p}]")
+            return "".join(chars)
 
         else:
             return f"[Operation '{operation}' not implemented]"

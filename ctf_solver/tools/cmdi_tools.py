@@ -154,14 +154,24 @@ class CommandInjectionProbeTool:
         payload: str,
         extra_data: dict,
         timeout: int,
+        headers: dict = None,
     ) -> requests.Response:
         """Make request with payload injected into parameter."""
+        request_data = {param: payload, **extra_data}
+        headers = headers or {}
         if method == "GET":
-            params = {param: payload, **extra_data}
-            return self.session.get(url, params=params, timeout=timeout)
+            return self.session.get(url, params=request_data, headers=headers, timeout=timeout)
         else:
-            form_data = {param: payload, **extra_data}
-            return self.session.post(url, data=form_data, timeout=timeout)
+            # Detect JSON content type
+            content_type = ""
+            for k, v in headers.items():
+                if k.lower() == "content-type":
+                    content_type = v.lower()
+                    break
+            if "application/json" in content_type:
+                return self.session.post(url, json=request_data, headers=headers, timeout=timeout)
+            else:
+                return self.session.post(url, data=request_data, headers=headers, timeout=timeout)
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
@@ -174,6 +184,7 @@ class CommandInjectionProbeTool:
         param = data.get("param", "").strip() if isinstance(data.get("param"), str) else ""
         method = data.get("method", "GET").upper()
         extra_data = data.get("data", {})
+        headers = data.get("headers", {})
         os_target = data.get("os_target", "linux").lower()
         timeout = data.get("timeout", 10)
 
@@ -187,7 +198,7 @@ class CommandInjectionProbeTool:
             return f"[CommandInjectionProbeTool] Error: 'os_target' must be linux, windows, or both, got '{os_target}'."
 
         try:
-            return self._probe_cmdi(url, method, param, extra_data, os_target, timeout)
+            return self._probe_cmdi(url, method, param, extra_data, headers, os_target, timeout)
         except requests.RequestException as e:
             return f"[CommandInjectionProbeTool] Request error: {e}"
         except Exception as e:
@@ -199,6 +210,7 @@ class CommandInjectionProbeTool:
         method: str,
         param: str,
         extra_data: dict,
+        headers: dict,
         os_target: str,
         timeout: int,
     ) -> str:
@@ -222,7 +234,7 @@ class CommandInjectionProbeTool:
         try:
             baseline_start = time.time()
             baseline = self._make_request(
-                url, method, param, "BASELINE_TEST_VALUE", extra_data, timeout
+                url, method, param, "BASELINE_TEST_VALUE", extra_data, timeout, headers
             )
             baseline_time = time.time() - baseline_start
             baseline_text = baseline.text
@@ -240,7 +252,7 @@ class CommandInjectionProbeTool:
         for payload, desc, expected_pattern in output_payloads:
             try:
                 resp = self._make_request(
-                    url, method, param, payload, extra_data, timeout
+                    url, method, param, payload, extra_data, timeout, headers
                 )
                 resp_text = resp.text
 
@@ -293,7 +305,7 @@ class CommandInjectionProbeTool:
             try:
                 start = time.time()
                 self._make_request(
-                    url, method, param, payload, extra_data, timeout
+                    url, method, param, payload, extra_data, timeout, headers
                 )
                 elapsed = time.time() - start
                 time_diff = elapsed - baseline_time

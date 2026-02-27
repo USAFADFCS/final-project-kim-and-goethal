@@ -87,7 +87,16 @@ class XPathProbeTool:
             if method == "GET":
                 resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
             else:
-                resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                # Detect JSON content type
+                content_type = ""
+                for k, v in headers.items():
+                    if k.lower() == "content-type":
+                        content_type = v.lower()
+                        break
+                if "application/json" in content_type:
+                    resp = self.session.post(url, json=test_data, headers=headers, timeout=timeout)
+                else:
+                    resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
             return resp, None
         except Exception as exc:
             return None, str(exc)
@@ -430,7 +439,16 @@ class XPathBlindBooleanTool:
             if method == "GET":
                 resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
             else:
-                resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                # Detect JSON content type
+                content_type = ""
+                for k, v in headers.items():
+                    if k.lower() == "content-type":
+                        content_type = v.lower()
+                        break
+                if "application/json" in content_type:
+                    resp = self.session.post(url, json=test_data, headers=headers, timeout=timeout)
+                else:
+                    resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
             return resp, None
         except Exception as exc:
             return None, str(exc)

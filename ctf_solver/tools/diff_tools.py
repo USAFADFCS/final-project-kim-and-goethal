@@ -189,6 +189,7 @@ class TimingCompareTool:
           "method": "GET",
           "params1": {"q": "test"},
           "params2": {"q": "test' AND SLEEP(5)--"},
+          "headers": {"Content-Type": "application/json"},
           "threshold": 3.0,
           "timeout": 15
         }
@@ -199,8 +200,9 @@ class TimingCompareTool:
         "Compare response times for two requests to detect time-based vulnerabilities. "
         "Input must be JSON with keys: 'url' (target URL), 'method' ('GET' or 'POST'), "
         "'params1' (first request parameters), 'params2' (second request parameters), "
-        "optional 'threshold' (time difference in seconds to flag, default 3.0), "
-        "optional 'timeout' (request timeout, default 15). "
+        "optional 'headers' (dict of headers — set Content-Type: application/json to "
+        "send JSON body instead of form-encoded), optional 'threshold' (time difference "
+        "in seconds to flag, default 3.0), optional 'timeout' (request timeout, default 15). "
         "Use this tool to detect time-based blind SQL injection."
     )
 
@@ -217,6 +219,7 @@ class TimingCompareTool:
         method = data.get("method", "GET").upper()
         params1 = data.get("params1", {})
         params2 = data.get("params2", {})
+        headers = data.get("headers", {})
         threshold = data.get("threshold", 3.0)
         timeout = data.get("timeout", 15)
 
@@ -234,10 +237,10 @@ class TimingCompareTool:
             timeout = 15
 
         # Time first request
-        time1, status1, error1 = self._timed_request(url, method, params1, timeout)
+        time1, status1, error1 = self._timed_request(url, method, params1, headers, timeout)
 
         # Time second request
-        time2, status2, error2 = self._timed_request(url, method, params2, timeout)
+        time2, status2, error2 = self._timed_request(url, method, params2, headers, timeout)
 
         # Analyze results
         output_lines = ["[TimingCompareTool] Timing Comparison Results", ""]
@@ -283,7 +286,7 @@ class TimingCompareTool:
         return "\n".join(output_lines)
 
     def _timed_request(
-        self, url: str, method: str, params: dict, timeout: int
+        self, url: str, method: str, params: dict, headers: dict, timeout: int
     ) -> Tuple[float, Optional[int], Optional[str]]:
         """
         Make a timed request.
@@ -292,9 +295,18 @@ class TimingCompareTool:
         try:
             start = time.time()
             if method == "GET":
-                resp = self.session.get(url, params=params, timeout=timeout)
+                resp = self.session.get(url, params=params, headers=headers, timeout=timeout)
             else:
-                resp = self.session.post(url, data=params, timeout=timeout)
+                # Detect JSON content type
+                content_type = ""
+                for k, v in headers.items():
+                    if k.lower() == "content-type":
+                        content_type = v.lower()
+                        break
+                if "application/json" in content_type:
+                    resp = self.session.post(url, json=params, headers=headers, timeout=timeout)
+                else:
+                    resp = self.session.post(url, data=params, headers=headers, timeout=timeout)
             elapsed = time.time() - start
             return elapsed, resp.status_code, None
         except requests.exceptions.Timeout:

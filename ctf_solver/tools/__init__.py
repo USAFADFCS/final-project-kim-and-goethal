@@ -32,6 +32,20 @@ from ctf_solver.tools.nosql_tools import NosqlProbeTool, NosqlPayloadGenerator
 from ctf_solver.tools.cmdi_tools import CommandInjectionProbeTool, CommandInjectionPayloadGenerator
 from ctf_solver.tools.crypto_tools import CryptoProbeTool, CryptoAnalyzerTool, CryptoPayloadGenerator
 from ctf_solver.tools.deserialization_tools import DeserializationProbeTool, DeserializationPayloadGenerator
+from ctf_solver.tools.xss_tools import XssProbeTool, XssPayloadGenerator, CspAnalyzerTool
+from ctf_solver.tools.graphql_tools import GraphqlIntrospectionTool, GraphqlQueryTool
+from ctf_solver.tools.race_tools import RaceConditionTool
+from ctf_solver.tools.fuzzer_tools import RequestRepeaterTool
+from ctf_solver.tools.misc_probe_tools import (
+    CrlfProbeTool,
+    PhpTypeJugglingTool,
+    PrototypePollutionTool,
+    IdorEnumeratorTool,
+    OpenRedirectProbeTool,
+)
+from ctf_solver.tools.css_tools import CssInjectionPayloadGenerator, CssExfiltrationBuilder
+from ctf_solver.tools.smuggling_tools import HttpSmugglingProbeTool
+from ctf_solver.tools.session_forgery_tools import FlaskSessionForgeryTool, DomClobberingPayloadGenerator
 
 __all__ = [
     "HttpFetchTool",
@@ -104,4 +118,29 @@ __all__ = [
     # Deserialization tools
     "DeserializationProbeTool",
     "DeserializationPayloadGenerator",
+    # XSS tools
+    "XssProbeTool",
+    "XssPayloadGenerator",
+    "CspAnalyzerTool",
+    # GraphQL tools
+    "GraphqlIntrospectionTool",
+    "GraphqlQueryTool",
+    # Race condition tools
+    "RaceConditionTool",
+    # Fuzzer tools
+    "RequestRepeaterTool",
+    # Misc probe tools
+    "CrlfProbeTool",
+    "PhpTypeJugglingTool",
+    "PrototypePollutionTool",
+    "IdorEnumeratorTool",
+    "OpenRedirectProbeTool",
+    # CSS injection tools
+    "CssInjectionPayloadGenerator",
+    "CssExfiltrationBuilder",
+    # HTTP smuggling tools
+    "HttpSmugglingProbeTool",
+    # Session forgery tools
+    "FlaskSessionForgeryTool",
+    "DomClobberingPayloadGenerator",
 ]

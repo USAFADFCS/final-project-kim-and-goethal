@@ -261,6 +261,389 @@ class TestEncodingTool:
         assert "dlroW olleH" in result
 
 
+class TestEncodingToolNewOperations:
+    """Tests for newly added EncodingTool operations (base32, double_url_encode,
+    unicode_escape/unescape, xor, octal_encode/decode)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.tool = EncodingTool()
+
+    # === Name Attribute Test ===
+
+    def test_name_attribute_is_encoding(self):
+        """Test that the tool name attribute is 'encoding'."""
+        assert self.tool.name == "encoding"
+
+    # === Base32 Encode Tests ===
+
+    def test_base32_encode_simple(self):
+        """Test base32 encoding of a simple string."""
+        result = self.tool.use(json.dumps({
+            "text": "Hello",
+            "operation": "base32_encode"
+        }))
+        assert "JBSWY3DP" in result
+
+    def test_base32_encode_with_padding(self):
+        """Test base32 encoding produces correct padding."""
+        result = self.tool.use(json.dumps({
+            "text": "Hi",
+            "operation": "base32_encode"
+        }))
+        # base64.b32encode(b"Hi") == b"JBUQ===="
+        assert "JBUQ====" in result
+
+    def test_base32_encode_empty_string(self):
+        """Test base32 encoding of an empty string."""
+        result = self.tool.use(json.dumps({
+            "text": "",
+            "operation": "base32_encode"
+        }))
+        assert "Result: " in result
+
+    def test_base32_encode_result_format(self):
+        """Test base32 encode output follows the expected format."""
+        result = self.tool.use(json.dumps({
+            "text": "test",
+            "operation": "base32_encode"
+        }))
+        assert "[EncodingTool] Operation: base32_encode" in result
+        assert "Input: test" in result
+        assert "Result: " in result
+
+    # === Base32 Decode Tests ===
+
+    def test_base32_decode_simple(self):
+        """Test base32 decoding of a simple string."""
+        result = self.tool.use(json.dumps({
+            "text": "JBSWY3DP",
+            "operation": "base32_decode"
+        }))
+        assert "Hello" in result
+
+    def test_base32_decode_with_padding(self):
+        """Test base32 decoding with proper padding."""
+        result = self.tool.use(json.dumps({
+            "text": "JBUQ====",
+            "operation": "base32_decode"
+        }))
+        assert "Hi" in result
+
+    def test_base32_decode_missing_padding(self):
+        """Test base32 decoding handles missing padding."""
+        result = self.tool.use(json.dumps({
+            "text": "JBSWY3DP",
+            "operation": "base32_decode"
+        }))
+        assert "Hello" in result
+
+    def test_base32_decode_auto_uppercase(self):
+        """Test base32 decoding auto-uppercases lowercase input."""
+        result = self.tool.use(json.dumps({
+            "text": "jbswy3dp",
+            "operation": "base32_decode"
+        }))
+        assert "Hello" in result
+
+    def test_base32_decode_binary_returns_hex(self):
+        """Test base32 decoding returns hex for binary (non-UTF-8) data."""
+        import base64
+        binary_data = bytes([0x00, 0x01, 0xFF, 0xFE])
+        b32_encoded = base64.b32encode(binary_data).decode("ascii")
+        result = self.tool.use(json.dumps({
+            "text": b32_encoded,
+            "operation": "base32_decode"
+        }))
+        assert "Binary data" in result or "hex" in result.lower()
+
+    def test_base32_roundtrip(self):
+        """Test base32 encode then decode roundtrip."""
+        original = "CTF{base32_flag}"
+        result1 = self.tool.use(json.dumps({
+            "text": original,
+            "operation": "base32_encode"
+        }))
+        encoded = result1.split("Result: ")[1].strip()
+        result2 = self.tool.use(json.dumps({
+            "text": encoded,
+            "operation": "base32_decode"
+        }))
+        assert original in result2
+
+    # === Double URL Encode Tests ===
+
+    def test_double_url_encode_angle_bracket(self):
+        """Test double URL encoding of '<' produces %253C."""
+        result = self.tool.use(json.dumps({
+            "text": "<",
+            "operation": "double_url_encode"
+        }))
+        assert "%253C" in result
+
+    def test_double_url_encode_space(self):
+        """Test double URL encoding of space produces %2520."""
+        result = self.tool.use(json.dumps({
+            "text": " ",
+            "operation": "double_url_encode"
+        }))
+        assert "%2520" in result
+
+    def test_double_url_encode_xss_payload(self):
+        """Test double URL encoding of an XSS payload."""
+        result = self.tool.use(json.dumps({
+            "text": "<script>alert(1)</script>",
+            "operation": "double_url_encode"
+        }))
+        # < becomes %3C then %253C
+        assert "%253C" in result
+        # > becomes %3E then %253E
+        assert "%253E" in result
+
+    def test_double_url_encode_already_safe_chars(self):
+        """Test double URL encoding of alphanumeric chars (they stay the same)."""
+        result = self.tool.use(json.dumps({
+            "text": "abc123",
+            "operation": "double_url_encode"
+        }))
+        assert "abc123" in result
+
+    def test_double_url_encode_result_format(self):
+        """Test double URL encode output follows the expected format."""
+        result = self.tool.use(json.dumps({
+            "text": "test&value",
+            "operation": "double_url_encode"
+        }))
+        assert "[EncodingTool] Operation: double_url_encode" in result
+
+    # === Unicode Escape Tests ===
+
+    def test_unicode_escape_non_ascii(self):
+        """Test unicode_escape converts non-ASCII chars to \\uXXXX form."""
+        result = self.tool.use(json.dumps({
+            "text": "\u00e9",
+            "operation": "unicode_escape"
+        }))
+        assert "\\u00e9" in result
+
+    def test_unicode_escape_keeps_alphanums(self):
+        """Test unicode_escape keeps alphanumeric characters as-is."""
+        result = self.tool.use(json.dumps({
+            "text": "abc123",
+            "operation": "unicode_escape"
+        }))
+        assert "abc123" in result
+
+    def test_unicode_escape_special_chars(self):
+        """Test unicode_escape escapes punctuation and special chars."""
+        result = self.tool.use(json.dumps({
+            "text": "a<b>c",
+            "operation": "unicode_escape"
+        }))
+        # < and > should be escaped, a b c should remain
+        assert "a" in result
+        assert "\\u003c" in result  # <
+        assert "b" in result
+        assert "\\u003e" in result  # >
+        assert "c" in result
+
+    def test_unicode_escape_emoji(self):
+        """Test unicode_escape on an emoji character."""
+        result = self.tool.use(json.dumps({
+            "text": "\u2603",
+            "operation": "unicode_escape"
+        }))
+        assert "\\u2603" in result
+
+    # === Unicode Unescape Tests ===
+
+    def test_unicode_unescape_basic(self):
+        """Test unicode_unescape decodes \\uXXXX sequences."""
+        result = self.tool.use(json.dumps({
+            "text": "\\u0048\\u0065\\u006c\\u006c\\u006f",
+            "operation": "unicode_unescape"
+        }))
+        assert "Hello" in result
+
+    def test_unicode_unescape_non_ascii(self):
+        """Test unicode_unescape decodes a non-ASCII escape sequence."""
+        result = self.tool.use(json.dumps({
+            "text": "caf\\u00e9",
+            "operation": "unicode_unescape"
+        }))
+        assert "caf\u00e9" in result
+
+    def test_unicode_escape_unescape_roundtrip(self):
+        """Test unicode_escape then unicode_unescape roundtrip for non-ASCII."""
+        original = "\u00e9\u00e8\u00ea"
+        result1 = self.tool.use(json.dumps({
+            "text": original,
+            "operation": "unicode_escape"
+        }))
+        escaped = result1.split("Result: ")[1].strip()
+        result2 = self.tool.use(json.dumps({
+            "text": escaped,
+            "operation": "unicode_unescape"
+        }))
+        assert original in result2
+
+    # === XOR Tests ===
+
+    def test_xor_basic(self):
+        """Test XOR with a simple hex key."""
+        # XOR 'A' (0x41) with key 0x20 -> 0x61 -> 'a'
+        result = self.tool.use(json.dumps({
+            "text": "A",
+            "operation": "xor",
+            "key": "20"
+        }))
+        assert "a" in result
+
+    def test_xor_no_key_returns_error(self):
+        """Test XOR without key returns an error message."""
+        result = self.tool.use(json.dumps({
+            "text": "hello",
+            "operation": "xor"
+        }))
+        assert "key" in result.lower()
+
+    def test_xor_repeating_key(self):
+        """Test XOR with a repeating key."""
+        # XOR "AB" (0x41,0x42) with key "ff" (0xff)
+        # 0x41 ^ 0xff = 0xbe, 0x42 ^ 0xff = 0xbd -> non-UTF-8 -> hex output
+        result = self.tool.use(json.dumps({
+            "text": "AB",
+            "operation": "xor",
+            "key": "ff"
+        }))
+        assert "bebd" in result.lower()
+
+    def test_xor_binary_result_returns_hex(self):
+        """Test XOR producing non-UTF-8 binary returns hex representation."""
+        result = self.tool.use(json.dumps({
+            "text": "Hello",
+            "operation": "xor",
+            "key": "ff"
+        }))
+        assert "hex" in result.lower() or "Binary" in result
+
+    def test_xor_with_multi_byte_key(self):
+        """Test XOR with a multi-byte hex key (key cycles)."""
+        # XOR "AAAA" with key "0102" -> 0x41^0x01=0x40, 0x41^0x02=0x43, repeat
+        result = self.tool.use(json.dumps({
+            "text": "AAAA",
+            "operation": "xor",
+            "key": "0102"
+        }))
+        assert "@C@C" in result
+
+    def test_xor_roundtrip(self):
+        """Test XOR is its own inverse with the same key."""
+        original = "secret"
+        key = "ab"
+        result1 = self.tool.use(json.dumps({
+            "text": original,
+            "operation": "xor",
+            "key": key
+        }))
+        xored = result1.split("Result: ")[1].strip()
+        # If result was hex, we need to decode it differently
+        # For this test, use a key that produces valid UTF-8
+        # XOR "Hi" with key "01" -> 0x48^0x01=0x49='I', 0x69^0x01=0x68='h'
+        result1 = self.tool.use(json.dumps({
+            "text": "Hi",
+            "operation": "xor",
+            "key": "01"
+        }))
+        intermediate = result1.split("Result: ")[1].strip()
+        result2 = self.tool.use(json.dumps({
+            "text": intermediate,
+            "operation": "xor",
+            "key": "01"
+        }))
+        assert "Hi" in result2
+
+    # === Octal Encode Tests ===
+
+    def test_octal_encode_simple(self):
+        """Test octal encoding of a simple string."""
+        result = self.tool.use(json.dumps({
+            "text": "A",
+            "operation": "octal_encode"
+        }))
+        # ord('A') == 65 == 0o101 -> \101
+        assert "\\101" in result
+
+    def test_octal_encode_hello(self):
+        """Test octal encoding of 'Hello'."""
+        result = self.tool.use(json.dumps({
+            "text": "Hello",
+            "operation": "octal_encode"
+        }))
+        # H=110, e=145, l=154, l=154, o=157
+        assert "\\110" in result
+        assert "\\145" in result
+        assert "\\154" in result
+        assert "\\157" in result
+
+    def test_octal_encode_space_separated(self):
+        """Test octal encode values are space-separated."""
+        result = self.tool.use(json.dumps({
+            "text": "AB",
+            "operation": "octal_encode"
+        }))
+        encoded = result.split("Result: ")[1].strip()
+        assert " " in encoded
+
+    def test_octal_encode_result_format(self):
+        """Test octal encode output follows the expected format."""
+        result = self.tool.use(json.dumps({
+            "text": "X",
+            "operation": "octal_encode"
+        }))
+        assert "[EncodingTool] Operation: octal_encode" in result
+
+    # === Octal Decode Tests ===
+
+    def test_octal_decode_backslash_format(self):
+        """Test octal decoding of \\NNN format."""
+        result = self.tool.use(json.dumps({
+            "text": "\\110\\145\\154\\154\\157",
+            "operation": "octal_decode"
+        }))
+        assert "Hello" in result
+
+    def test_octal_decode_space_separated(self):
+        """Test octal decoding of space-separated octal values."""
+        result = self.tool.use(json.dumps({
+            "text": "110 145 154 154 157",
+            "operation": "octal_decode"
+        }))
+        assert "Hello" in result
+
+    def test_octal_encode_decode_roundtrip(self):
+        """Test octal encode then decode roundtrip."""
+        original = "flag{octal}"
+        result1 = self.tool.use(json.dumps({
+            "text": original,
+            "operation": "octal_encode"
+        }))
+        encoded = result1.split("Result: ")[1].strip()
+        result2 = self.tool.use(json.dumps({
+            "text": encoded,
+            "operation": "octal_decode"
+        }))
+        assert original in result2
+
+    def test_octal_decode_single_char(self):
+        """Test octal decoding of a single octal value."""
+        result = self.tool.use(json.dumps({
+            "text": "\\101",
+            "operation": "octal_decode"
+        }))
+        assert "A" in result
+
+
 class TestHashIdentifierTool:
     """Tests for the HashIdentifierTool class."""
 

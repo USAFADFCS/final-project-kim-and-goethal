@@ -10,6 +10,7 @@ from ctf_solver.agent import (
     build_agent,
     classify_challenge,
     get_classification_context,
+    CTFAgent,
 )
 from ctf_solver.classifier import (
     ChallengeClassifier,

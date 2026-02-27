@@ -46,7 +46,7 @@ class FileUploadTool:
       - generate_htaccess: Generate .htaccess payloads without uploading
     """
 
-    name: str = "file_upload_tool"
+    name: str = "file_upload"
     description: str = (
         "Test file upload vulnerabilities. Input must be JSON with 'url' (upload endpoint), "
         "'file_param' (form field name), and 'operation'. Operations: test_extensions, test_mime, "
@@ -338,6 +338,8 @@ class FileUploadTool:
 
         successful = []
         failed = []
+        first_success_response = None  # Capture first successful response body
+        discovered_paths = []  # Paths extracted from responses
 
         results.append(f"\nTesting {len(extensions)} extension variants for {language}...")
         results.append("")
@@ -349,6 +351,10 @@ class FileUploadTool:
                 "text/plain", extra_data, headers, timeout
             )
             results.append(f"Baseline (.txt): Status {baseline_status}")
+            # Check baseline response for path info
+            baseline_path = self._extract_upload_path(baseline_text)
+            if baseline_path:
+                discovered_paths.append(("baseline (test.txt)", baseline_path))
         except Exception as e:
             results.append(f"Baseline failed: {e}")
             baseline_status = 0
@@ -367,6 +373,15 @@ class FileUploadTool:
                 if is_success:
                     successful.append((filename, status))
                     results.append(f"[+] SUCCESS: {filename} (Status: {status})")
+
+                    # Capture first successful response for display
+                    if first_success_response is None:
+                        first_success_response = (filename, text)
+
+                    # Extract upload path from response
+                    extracted_path = self._extract_upload_path(text)
+                    if extracted_path and extracted_path not in [p for _, p in discovered_paths]:
+                        discovered_paths.append((filename, extracted_path))
                 else:
                     failed.append((filename, status))
             except Exception as e:
@@ -382,6 +397,21 @@ class FileUploadTool:
             results.append("=== Successful Extensions ===")
             for fname, status in successful:
                 results.append(f"  {fname} (Status: {status})")
+
+        # Show discovered upload paths
+        if discovered_paths:
+            results.append("")
+            results.append("=== Discovered Upload Paths ===")
+            for fname, path in discovered_paths:
+                results.append(f"  [+] {fname} -> {path}")
+
+        # Show first successful response body (critical for path discovery)
+        if first_success_response:
+            fname, resp_text = first_success_response
+            results.append("")
+            results.append(f"=== First Successful Response ({fname}) ===")
+            snippet = resp_text[:500] if resp_text else "(empty)"
+            results.append(snippet)
 
         return "\n".join(results)
 

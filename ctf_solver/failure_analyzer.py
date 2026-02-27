@@ -47,8 +47,9 @@ _TOOL_TO_CATEGORY = {
     "path_enumerator": "recon",
     "backup_file_finder": "recon",
     "html_inspector": "client_side",
-    "js_source": "client_side",
-    "shell_execute": "command_injection",
+    "javascript_source": "client_side",
+    "timing_compare": "recon",
+    "response_diff": "recon",
     "xpath_probe": "xpath_injection",
     "xpath_blind_boolean": "xpath_injection",
     "xpath_payload_generator": "xpath_injection",
@@ -68,6 +69,23 @@ _TOOL_TO_CATEGORY = {
     "crypto_payload_generator": "crypto",
     "deserialization_probe": "deserialization",
     "deserialization_payload_generator": "deserialization",
+    "xss_probe": "xss",
+    "xss_payload_generator": "xss",
+    "csp_analyzer": "xss",
+    "graphql_introspection": "graphql",
+    "graphql_query": "graphql",
+    "race_condition": "race_condition",
+    "request_repeater": "recon",
+    "crlf_probe": "crlf_injection",
+    "php_type_juggling": "php_type_juggling",
+    "prototype_pollution_probe": "prototype_pollution",
+    "idor_enumerator": "idor",
+    "open_redirect_probe": "open_redirect",
+    "css_injection_payload_generator": "css_injection",
+    "css_exfiltration_builder": "css_injection",
+    "http_smuggling_probe": "http_smuggling",
+    "flask_session_forge": "flask_session",
+    "dom_clobbering_payload_generator": "dom_clobbering",
 }
 
 _CATEGORY_LABELS = {
@@ -87,6 +105,18 @@ _CATEGORY_LABELS = {
     "ssrf": "Server-Side Request Forgery",
     "crypto": "Cryptographic Attacks",
     "deserialization": "Insecure Deserialization",
+    "xss": "Cross-Site Scripting (XSS)",
+    "graphql": "GraphQL Exploitation",
+    "race_condition": "Race Condition",
+    "crlf_injection": "CRLF / Header Injection",
+    "php_type_juggling": "PHP Type Juggling",
+    "prototype_pollution": "Prototype / Class Pollution",
+    "idor": "Insecure Direct Object Reference (IDOR)",
+    "open_redirect": "Open Redirect",
+    "css_injection": "CSS Injection / Exfiltration",
+    "http_smuggling": "HTTP Request Smuggling",
+    "flask_session": "Flask Session Cookie Forgery",
+    "dom_clobbering": "DOM Clobbering",
     "unknown": "General Web Exploitation",
 }
 
@@ -354,7 +384,7 @@ def _generate_suggestions(
             "or backup file discovery first"
         )
 
-    if not any(t in analysis.tools_used for t in ("js_source", "html_inspector")):
+    if not any(t in analysis.tools_used for t in ("javascript_source", "html_inspector")):
         suggestions.append(
             "No client-side analysis done — check HTML source and JavaScript "
             "for hints, hidden fields, or client-side validation"

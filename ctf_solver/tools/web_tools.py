@@ -218,10 +218,11 @@ class CookieSetTool:
 
     name: str = "cookie_set"
     description: str = (
-        "Set or update a cookie in the shared HTTP session. Input JSON keys: "
+        "Set, update, or delete a cookie in the shared HTTP session. Input JSON keys: "
         "'domain' (string, required), 'name' (string, required), 'value' "
-        "(string, required), and 'path' (optional, default '/'). Use this tool "
-        "to manipulate session state, bypass authentication checks, or test "
+        "(string, required for set; ignored for delete), 'path' (optional, default '/'), "
+        "and 'delete' (optional bool, if true removes the cookie instead of setting it). "
+        "Use this tool to manipulate session state, bypass authentication checks, or test "
         "cookie-based vulnerabilities."
     )
 
@@ -241,15 +242,35 @@ class CookieSetTool:
         name = data.get("name")
         value = data.get("value")
         path = data.get("path", "/")
+        delete = data.get("delete", False)
 
-        if not all(isinstance(x, str) and x for x in (domain, name, value)):
-            return (
-                "[CookieSetTool] Error: 'domain', 'name', and 'value' must all be "
-                "non-empty strings."
-            )
+        if not isinstance(domain, str) or not domain:
+            return "[CookieSetTool] Error: 'domain' must be a non-empty string."
+        if not isinstance(name, str) or not name:
+            return "[CookieSetTool] Error: 'name' must be a non-empty string."
 
         if not isinstance(path, str):
             return "[CookieSetTool] Error: 'path' must be a string."
+
+        # Delete operation
+        if delete:
+            try:
+                self.session.cookies.clear(domain=domain, path=path, name=name)
+            except KeyError:
+                return (
+                    f"[CookieSetTool] Cookie not found: name={name!r}, "
+                    f"domain={domain!r}, path={path!r}"
+                )
+            except Exception as exc:
+                return f"[CookieSetTool] Error deleting cookie: {exc!r}"
+            return (
+                f"[CookieSetTool] Deleted cookie: name={name!r}, "
+                f"domain={domain!r}, path={path!r}"
+            )
+
+        # Set operation
+        if not isinstance(value, str) or not value:
+            return "[CookieSetTool] Error: 'value' must be a non-empty string (for set)."
 
         try:
             self.session.cookies.set(name=name, value=value, domain=domain, path=path)

@@ -4,9 +4,11 @@ Agent construction for CTF Solver.
 Builds a FAIR SimpleAgent with all necessary tools, RAG, and configuration.
 """
 
+import json
 import logging
 import os
-from typing import Callable, Optional
+import re
+from typing import Callable, List, Optional
 
 # Prevent multiprocessing crashes on Apple Silicon
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -24,6 +26,8 @@ from fairlib import (
     WorkingMemory,
     RoleDefinition,
 )
+from fairlib.core.message import FinalAnswer, Message
+from fairlib.modules.planning.react_planner import SimpleReActPlanner
 
 from ctf_solver.config import SolverConfig, RAGMode
 from ctf_solver.tools import (
@@ -78,6 +82,23 @@ from ctf_solver.tools import (
     CryptoPayloadGenerator,
     DeserializationProbeTool,
     DeserializationPayloadGenerator,
+    XssProbeTool,
+    XssPayloadGenerator,
+    CspAnalyzerTool,
+    GraphqlIntrospectionTool,
+    GraphqlQueryTool,
+    RaceConditionTool,
+    RequestRepeaterTool,
+    CrlfProbeTool,
+    PhpTypeJugglingTool,
+    PrototypePollutionTool,
+    IdorEnumeratorTool,
+    OpenRedirectProbeTool,
+    CssInjectionPayloadGenerator,
+    CssExfiltrationBuilder,
+    HttpSmugglingProbeTool,
+    FlaskSessionForgeryTool,
+    DomClobberingPayloadGenerator,
 )
 from ctf_solver.rag import initialize_knowledge_base, build_knowledge_tool, clear_cache
 from ctf_solver.prompts import (
@@ -103,6 +124,196 @@ from ctf_solver.config import LLMProviderType
 from ctf_solver.run_tracker import RunTracker, TokenTrackingAdapter
 
 logger = logging.getLogger(__name__)
+
+# ── Markdown code-block stripping regex (compiled once) ──
+_MD_FENCE_OPEN = re.compile(r"^```(?:json|JSON)?\s*\n?")
+_MD_FENCE_CLOSE = re.compile(r"\n?```\s*$")
+
+
+class CTFAgent(SimpleAgent):
+    """
+    CTF-specific agent that extends SimpleAgent with two guards:
+
+    1. **Markdown stripping** — If the LLM wraps its JSON response in a
+       markdown code block (```json ... ```), the parser would fail and
+       treat the entire response as a FinalAnswer.  We monkey-patch the
+       planner's ``_parse_json_response`` to strip these fences first.
+
+    2. **Premature FinalAnswer prevention** — If the planner returns a
+       FinalAnswer but no flag matching ``flag_regex`` has been seen
+       (neither in the answer text nor in the tracker's candidate list),
+       we inject a continuation system message and keep the loop running
+       instead of stopping.
+    """
+
+    MAX_PREMATURE_RETRIES = 3
+
+    def __init__(
+        self,
+        *args,
+        tracker=None,
+        flag_regex: str = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}",
+        log_callback: Optional[Callable[[str], None]] = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._tracker = tracker
+        self._flag_regex = flag_regex
+        self._log_fn = log_callback or print
+        self._premature_fa_count = 0
+        self._patch_planner_parsing()
+
+    # ── Planner monkey-patch ────────────────────────────────────────
+    def _patch_planner_parsing(self):
+        """Strip markdown code-block fences before JSON parsing."""
+        if not hasattr(self.planner, "_parse_json_response"):
+            return
+        original_parse = self.planner._parse_json_response
+
+        def _strip_and_parse(response_text: str):
+            text = response_text.strip()
+            if text.startswith("```"):
+                text = _MD_FENCE_OPEN.sub("", text)
+                text = _MD_FENCE_CLOSE.sub("", text)
+                text = text.strip()
+            return original_parse(text)
+
+        self.planner._parse_json_response = _strip_and_parse
+
+    # ── Flag detection ──────────────────────────────────────────────
+    def _has_flag(self, text: str = "") -> bool:
+        """Return True if a flag has been found anywhere."""
+        if self._tracker and self._tracker.candidate_flags_found:
+            return True
+        if text and re.search(self._flag_regex, text):
+            return True
+        return False
+
+    # ── Overridden run loop ─────────────────────────────────────────
+    async def arun(self, user_input: str) -> str:  # noqa: C901
+        """ReAct loop with premature-FinalAnswer guard."""
+        if self.stateless:
+            self.memory.clear()
+
+        turn_messages: List[Message] = [Message(role="user", content=user_input)]
+        current_request = user_input
+
+        for step in range(self.max_steps):
+            print(f"--- Step {step + 1}/{self.max_steps} ---")
+
+            history = self.memory.get_history()
+            plan_result = await self.planner.aplan(history, current_request)
+
+            # ── FinalAnswer handling with guard ──
+            if isinstance(plan_result, FinalAnswer):
+                final_answer_text = plan_result.text
+
+                if (
+                    not self._has_flag(final_answer_text)
+                    and self._premature_fa_count < self.MAX_PREMATURE_RETRIES
+                ):
+                    self._premature_fa_count += 1
+                    self._log_fn(
+                        f"[Guard] Blocked premature Final Answer "
+                        f"(attempt {self._premature_fa_count}/{self.MAX_PREMATURE_RETRIES}). "
+                        "No flag found yet — injecting continuation."
+                    )
+                    continuation = Message(
+                        role="system",
+                        content=(
+                            "Observation: [GUARD] You attempted to give a final answer, "
+                            "but NO FLAG has been found yet. "
+                            f"The flag must match the pattern: {self._flag_regex}\n"
+                            "You MUST continue investigating. Try a different approach:\n"
+                            "- Check cookies, robots.txt, hidden fields, JavaScript source\n"
+                            "- Try attack tools: sqli_probe, ssti_probe, lfi_probe, xpath_probe, nosql_probe, cmdi_probe\n"
+                            "- Use 'attack_planner' for a structured plan\n"
+                            "- Use 'ctf_knowledge_query' for technique suggestions\n"
+                            "Do NOT repeat what you already tried."
+                        ),
+                    )
+                    turn_messages.append(continuation)
+                    for msg in turn_messages:
+                        self.memory.add_message(msg)
+                    turn_messages = []
+                    current_request = ""
+                    continue
+
+                # Genuine final answer (flag found or retries exhausted)
+                print(f"Thought: {final_answer_text}")
+                print("Action: Final Answer")
+                turn_messages.append(
+                    Message(role="assistant", content=final_answer_text)
+                )
+                for msg in turn_messages:
+                    self.memory.add_message(msg)
+                return final_answer_text
+
+            # ── Normal thought + action ──
+            try:
+                thought, action = plan_result
+                print(f"Thought: {thought.text}")
+                print(
+                    f"Action: Using tool '{action.tool_name}' with input '{action.tool_input}'"
+                )
+            except (ValueError, TypeError):
+                error_message = (
+                    "Error: The planner returned a malformed response. Ending task."
+                )
+                print(error_message)
+                return error_message
+
+            # Build history message in the format expected by the planner
+            if isinstance(self.planner, SimpleReActPlanner):
+                assistant_content = (
+                    f"Thought: {thought.text}\n"
+                    f"Action:\n"
+                    f"tool_name: {action.tool_name}\n"
+                    f"tool_input: {action.tool_input}"
+                )
+            else:
+                assistant_content = json.dumps(
+                    {
+                        "thought": thought.text,
+                        "action": {
+                            "tool_name": action.tool_name,
+                            "tool_input": action.tool_input,
+                        },
+                    },
+                    indent=4,
+                )
+
+            turn_messages.append(
+                Message(role="assistant", content=assistant_content)
+            )
+
+            try:
+                observation_output = self.tool_executor.execute(
+                    action.tool_name, action.tool_input
+                )
+                print(f"Observation: {observation_output}")
+            except Exception as e:
+                observation_output = f"Error: {e}"
+                print(observation_output)
+
+            turn_messages.append(
+                Message(
+                    role="system",
+                    content=f"Observation: {str(observation_output)}",
+                )
+            )
+
+            for msg in turn_messages:
+                self.memory.add_message(msg)
+
+            turn_messages = []
+            current_request = ""
+
+        final_response = "Agent stopped after reaching max steps."
+        self.memory.add_message(
+            Message(role="assistant", content=final_response)
+        )
+        return final_response
 
 
 def classify_challenge(
@@ -364,6 +575,39 @@ def build_agent(
     deserialization_probe_tool = DeserializationProbeTool(session=shared_session)
     deserialization_payload_generator = DeserializationPayloadGenerator()
 
+    # XSS tools
+    xss_probe_tool = XssProbeTool(session=shared_session)
+    xss_payload_generator = XssPayloadGenerator()
+    csp_analyzer_tool = CspAnalyzerTool(session=shared_session)
+
+    # GraphQL tools
+    graphql_introspection_tool = GraphqlIntrospectionTool(session=shared_session)
+    graphql_query_tool = GraphqlQueryTool(session=shared_session)
+
+    # Race condition tools
+    race_condition_tool = RaceConditionTool(session=shared_session)
+
+    # Fuzzer tools
+    request_repeater_tool = RequestRepeaterTool(session=shared_session)
+
+    # Misc probe tools
+    crlf_probe_tool = CrlfProbeTool(session=shared_session)
+    php_type_juggling_tool = PhpTypeJugglingTool()
+    prototype_pollution_tool = PrototypePollutionTool(session=shared_session)
+    idor_enumerator_tool = IdorEnumeratorTool(session=shared_session)
+    open_redirect_probe_tool = OpenRedirectProbeTool(session=shared_session)
+
+    # CSS injection tools (pure logic, no session)
+    css_injection_payload_generator = CssInjectionPayloadGenerator()
+    css_exfiltration_builder = CssExfiltrationBuilder()
+
+    # HTTP smuggling tools
+    http_smuggling_probe_tool = HttpSmugglingProbeTool(session=shared_session)
+
+    # Session forgery tools
+    flask_session_forgery_tool = FlaskSessionForgeryTool()
+    dom_clobbering_payload_generator = DomClobberingPayloadGenerator()
+
     # All tools to register
     tools = [
         http_tool,
@@ -416,6 +660,23 @@ def build_agent(
         crypto_payload_generator,
         deserialization_probe_tool,
         deserialization_payload_generator,
+        xss_probe_tool,
+        xss_payload_generator,
+        csp_analyzer_tool,
+        graphql_introspection_tool,
+        graphql_query_tool,
+        race_condition_tool,
+        request_repeater_tool,
+        crlf_probe_tool,
+        php_type_juggling_tool,
+        prototype_pollution_tool,
+        idor_enumerator_tool,
+        open_redirect_probe_tool,
+        css_injection_payload_generator,
+        css_exfiltration_builder,
+        http_smuggling_probe_tool,
+        flask_session_forgery_tool,
+        dom_clobbering_payload_generator,
     ]
 
     # Wrap them with LoggingToolWrapper and register
@@ -488,12 +749,15 @@ def build_agent(
     executor = ToolExecutor(tool_registry)
     memory = WorkingMemory()
 
-    agent = SimpleAgent(
+    agent = CTFAgent(
         llm=llm,
         planner=planner,
         tool_executor=executor,
         memory=memory,
         max_steps=config.max_steps,
+        tracker=tracker,
+        flag_regex=config.flag_regex,
+        log_callback=log_fn,
     )
 
     # Short, high-level role description

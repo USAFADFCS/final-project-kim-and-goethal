@@ -30,6 +30,8 @@ class ChallengeCategory(Enum):
     RACE_CONDITION = "race_condition"
     CRYPTO = "crypto"
     NOSQL_INJECTION = "nosql_injection"
+    CSS_INJECTION = "css_injection"
+    HTTP_SMUGGLING = "http_smuggling"
     RECONNAISSANCE = "reconnaissance"
     UNKNOWN = "unknown"
 
@@ -168,6 +170,20 @@ CATEGORY_KEYWORDS: Dict[ChallengeCategory, List[str]] = {
         r"\bhash\b", r"\bmd5\b", r"\bsha\b", r"\baes\b", r"\brsa\b",
         r"\bbase64\b", r"\bxor\b", r"\brot13\b", r"\bpkcs\b",
     ],
+    ChallengeCategory.CSS_INJECTION: [
+        r"\bcss\s*injection\b",  # Strong indicator
+        r"\bcss\s*exfiltration\b",  # Strong indicator
+        r"\badmin\s*bot\b", r"\bstyle\s*injection\b",
+        r"\bcss\b.*\bleak\b", r"\battr.*selector\b",
+        r"\bfont.?face\b", r"\b@import\b.*\bexfil\b",
+    ],
+    ChallengeCategory.HTTP_SMUGGLING: [
+        r"\bhttp\s*smuggling\b",  # Strong indicator
+        r"\brequest\s*smuggling\b",  # Strong indicator
+        r"\bcl\.te\b", r"\bte\.cl\b", r"\bte\.te\b",
+        r"\btransfer.?encoding\b.*\bchunked\b",
+        r"\bh2c\b.*\bsmuggl\b", r"\bdesync\b",
+    ],
     ChallengeCategory.RECONNAISSANCE: [
         r"\brecon\b", r"\benumerate\b", r"\bdiscover\b", r"\bfind\b",
         r"\bhidden\b", r"\bsecret\b", r"\brobots\.txt\b",
@@ -210,6 +226,7 @@ TOOL_PRIORITIES: Dict[ChallengeCategory, List[str]] = {
         "http_fetch", "form_submit",
     ],
     ChallengeCategory.XSS: [
+        "xss_probe", "xss_payload_generator", "csp_analyzer",
         "http_fetch", "html_inspector", "javascript_source",
         "response_search", "cookie_inspector", "form_submit",
     ],
@@ -231,7 +248,8 @@ TOOL_PRIORITIES: Dict[ChallengeCategory, List[str]] = {
     ],
     ChallengeCategory.AUTHENTICATION: [
         "http_fetch", "form_submit", "cookie_inspector", "cookie_set",
-        "jwt", "response_diff", "timing_compare",
+        "jwt", "response_diff", "timing_compare", "request_repeater",
+        "php_type_juggling", "idor_enumerator",
     ],
     ChallengeCategory.JWT: [
         "jwt", "http_fetch", "cookie_inspector", "encoding",
@@ -250,7 +268,7 @@ TOOL_PRIORITIES: Dict[ChallengeCategory, List[str]] = {
         "http_fetch", "encoding", "form_submit", "response_search",
     ],
     ChallengeCategory.RACE_CONDITION: [
-        "http_fetch", "form_submit", "timing_compare",
+        "race_condition", "http_fetch", "form_submit", "timing_compare",
         "response_diff", "cookie_inspector",
     ],
     ChallengeCategory.CRYPTO: [
@@ -260,6 +278,14 @@ TOOL_PRIORITIES: Dict[ChallengeCategory, List[str]] = {
     ChallengeCategory.NOSQL_INJECTION: [
         "nosql_probe", "nosql_payload_generator", "http_fetch",
         "form_submit", "response_search", "response_diff",
+    ],
+    ChallengeCategory.CSS_INJECTION: [
+        "css_injection_payload_generator", "css_exfiltration_builder",
+        "csp_analyzer", "http_fetch", "html_inspector", "javascript_source",
+    ],
+    ChallengeCategory.HTTP_SMUGGLING: [
+        "http_smuggling_probe", "http_fetch", "response_diff",
+        "timing_compare", "response_search",
     ],
     ChallengeCategory.RECONNAISSANCE: [
         "robots_txt", "path_enumerator", "backup_file_finder",
@@ -364,6 +390,20 @@ APPROACH_SUGGESTIONS: Dict[ChallengeCategory, str] = {
         "4. Crack weak keys or find key leakage\n"
         "5. Decrypt or forge authenticated data"
     ),
+    ChallengeCategory.CSS_INJECTION: (
+        "1. Identify CSS injection point (style tag, style attribute, @import)\n"
+        "2. Use attribute selectors to exfiltrate data char-by-char\n"
+        "3. Try @font-face unicode-range for text node leaking\n"
+        "4. Build @import chain for recursive multi-char exfiltration\n"
+        "5. Host exfiltration page and submit to admin bot"
+    ),
+    ChallengeCategory.HTTP_SMUGGLING: (
+        "1. Detect smuggling type (CL.TE, TE.CL, TE.TE) via timing\n"
+        "2. Confirm with response queue poisoning\n"
+        "3. Try obfuscated Transfer-Encoding headers for TE.TE\n"
+        "4. Smuggle requests to /admin or internal endpoints\n"
+        "5. Try H2C upgrade smuggling if HTTP/2 is available"
+    ),
     ChallengeCategory.RECONNAISSANCE: (
         "1. Check robots.txt and sitemap\n"
         "2. Enumerate directories and files\n"
@@ -408,6 +448,8 @@ class PatternMatcher:
         r"\bcommand\s*injection\b", r"\bos\s*command\b",
         r"\bssrf\b", r"\bserver.?side\s*request\s*forgery\b",
         r"\bnosql\b", r"\bnosql\s*injection\b", r"\bmongodb\b",
+        r"\bcss\s*injection\b", r"\bcss\s*exfiltration\b",
+        r"\bhttp\s*smuggling\b", r"\brequest\s*smuggling\b",
     }
 
     def __init__(self):

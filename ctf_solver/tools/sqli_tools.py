@@ -357,13 +357,27 @@ class SqliProbeTool:
         if not payloads:
             return "[SqliProbeTool] Error: No payloads available for the specified payload_set."
 
+        # Detect JSON content type to determine request format
+        content_type = ""
+        for k, v in headers.items():
+            if k.lower() == "content-type":
+                content_type = v.lower()
+                break
+        use_json = "application/json" in content_type
+
+        def _send_request(request_data):
+            """Send request with appropriate format (form-encoded or JSON)."""
+            if method == "GET":
+                return self.session.get(url, params=request_data, headers=headers, timeout=timeout)
+            elif use_json:
+                return self.session.post(url, json=request_data, headers=headers, timeout=timeout)
+            else:
+                return self.session.post(url, data=request_data, headers=headers, timeout=timeout)
+
         # First, get a baseline response (without injection)
         baseline_data = {**form_data, param: "test_baseline_value"}
         try:
-            if method == "GET":
-                baseline_resp = self.session.get(url, params=baseline_data, headers=headers, timeout=timeout)
-            else:
-                baseline_resp = self.session.post(url, data=baseline_data, headers=headers, timeout=timeout)
+            baseline_resp = _send_request(baseline_data)
             baseline_length = len(baseline_resp.text)
             baseline_status = baseline_resp.status_code
         except Exception as exc:
@@ -379,10 +393,7 @@ class SqliProbeTool:
         for payload in payloads:
             test_data = {**form_data, param: payload}
             try:
-                if method == "GET":
-                    resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
-                else:
-                    resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                resp = _send_request(test_data)
 
                 resp_text = resp.text
                 resp_length = len(resp_text)
@@ -573,13 +584,26 @@ class SqliColumnCounter:
         headers = data.get("headers") or {}
         timeout = data.get("timeout", 10)
 
+        # Detect JSON content type
+        content_type = ""
+        for k, v in headers.items():
+            if k.lower() == "content-type":
+                content_type = v.lower()
+                break
+        use_json = "application/json" in content_type
+
+        def _send_request(request_data):
+            if method == "GET":
+                return self.session.get(url, params=request_data, headers=headers, timeout=timeout)
+            elif use_json:
+                return self.session.post(url, json=request_data, headers=headers, timeout=timeout)
+            else:
+                return self.session.post(url, data=request_data, headers=headers, timeout=timeout)
+
         # Get baseline response for comparison
         baseline_data = {**form_data, param: "1"}
         try:
-            if method == "GET":
-                baseline_resp = self.session.get(url, params=baseline_data, headers=headers, timeout=timeout)
-            else:
-                baseline_resp = self.session.post(url, data=baseline_data, headers=headers, timeout=timeout)
+            baseline_resp = _send_request(baseline_data)
             baseline_length = len(baseline_resp.text)
             baseline_status = baseline_resp.status_code
         except Exception as exc:
@@ -611,10 +635,7 @@ class SqliColumnCounter:
                 test_data = {**form_data, param: payload}
 
                 try:
-                    if method == "GET":
-                        resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
-                    else:
-                        resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                    resp = _send_request(test_data)
 
                     # Check for error indicators
                     resp_text = resp.text.lower()
@@ -657,10 +678,7 @@ class SqliColumnCounter:
                 test_data = {**form_data, param: payload}
 
                 try:
-                    if method == "GET":
-                        resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
-                    else:
-                        resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                    resp = _send_request(test_data)
 
                     # Check for successful UNION (no error, similar or larger response)
                     resp_text = resp.text.lower()

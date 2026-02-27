@@ -168,6 +168,75 @@ class HtmlInspectorTool:
         summary_parts.extend(comments or ["- (none found)"])
         summary_parts.append("")
 
+        # Extract forms
+        forms: List[str] = []
+        for form in soup.find_all("form"):
+            action = form.get("action", "(none)")
+            method = form.get("method", "GET").upper()
+            enctype = form.get("enctype", "")
+            form_id = form.get("id", "")
+            form_desc = f"- action={action!r}, method={method!r}"
+            if enctype:
+                form_desc += f", enctype={enctype!r}"
+            if form_id:
+                form_desc += f", id={form_id!r}"
+
+            # Extract inputs within this form
+            inputs = []
+            for inp in form.find_all(["input", "select", "textarea"]):
+                inp_type = inp.get("type", "text")
+                inp_name = inp.get("name", "(unnamed)")
+                inp_value = inp.get("value", "")
+                inp_id = inp.get("id", "")
+                inp_desc = f"    * {inp.name}: name={inp_name!r}, type={inp_type!r}"
+                if inp_value:
+                    inp_desc += f", value={inp_value!r}"
+                if inp_id:
+                    inp_desc += f", id={inp_id!r}"
+                if inp_type == "hidden":
+                    inp_desc += " [HIDDEN]"
+                inputs.append(inp_desc)
+
+            forms.append(form_desc)
+            forms.extend(inputs)
+
+        forms = truncate_list(forms, max_items_int * 2)  # More items for forms
+
+        summary_parts.append("[FORMS]")
+        summary_parts.extend(forms or ["- (none found)"])
+        summary_parts.append("")
+
+        # Extract meta tags
+        meta_tags: List[str] = []
+        for meta in soup.find_all("meta"):
+            attrs = dict(meta.attrs)
+            parts_list = []
+            for k, v in attrs.items():
+                if isinstance(v, list):
+                    v = " ".join(v)
+                parts_list.append(f"{k}={v!r}")
+            if parts_list:
+                meta_tags.append(f"- {', '.join(parts_list)}")
+
+        meta_tags = truncate_list(meta_tags, max_items_int)
+
+        summary_parts.append("[META TAGS]")
+        summary_parts.extend(meta_tags or ["- (none found)"])
+        summary_parts.append("")
+
+        # Extract all hidden inputs (including those outside forms)
+        hidden_inputs: List[str] = []
+        for inp in soup.find_all("input", attrs={"type": "hidden"}):
+            name = inp.get("name", "(unnamed)")
+            value = inp.get("value", "")
+            hidden_inputs.append(f"- name={name!r}, value={value!r}")
+
+        hidden_inputs = truncate_list(hidden_inputs, max_items_int)
+
+        summary_parts.append("[HIDDEN INPUTS]")
+        summary_parts.extend(hidden_inputs or ["- (none found)"])
+        summary_parts.append("")
+
         return "\n".join(summary_parts)
 
 

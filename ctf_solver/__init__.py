@@ -17,6 +17,7 @@ from ctf_solver.classifier import (
     ClassificationResult,
     create_classifier,
 )
+from ctf_solver.run_tracker import RunTracker
 from ctf_solver.llm import (
     LLMProvider,
     AnthropicAdapter,
@@ -41,6 +42,8 @@ __all__ = [
     "ChallengeCategory",
     "ClassificationResult",
     "create_classifier",
+    # Run tracker
+    "RunTracker",
     # LLM adapters
     "LLMProvider",
     "AnthropicAdapter",

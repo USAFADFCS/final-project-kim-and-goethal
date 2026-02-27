@@ -79,6 +79,7 @@ from ctf_solver.llm import (
     check_provider_available,
 )
 from ctf_solver.config import LLMProviderType
+from ctf_solver.run_tracker import RunTracker, TokenTrackingAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,7 @@ def get_classification_context(result: ClassificationResult) -> str:
 def build_agent(
     config: SolverConfig,
     log_callback: Optional[Callable[[str], None]] = None,
+    tracker: Optional[RunTracker] = None,
 ) -> SimpleAgent:
     """
     Construct and return a SimpleAgent wired up with:
@@ -216,6 +218,10 @@ def build_agent(
                 model_name=config.model_name,
             )
             log_fn(f"[Agent] Using OpenAI adapter with model: {config.model_name}")
+
+    # Wrap the LLM adapter for token tracking when a tracker is provided
+    if tracker is not None:
+        llm = TokenTrackingAdapter(llm, tracker)
 
     # Single shared HTTP session for ALL HTTP-related tools
     shared_session = requests.Session()
@@ -316,6 +322,7 @@ def build_agent(
             tool,
             flag_regex=config.flag_regex,
             log_callback=log_fn,
+            tracker=tracker,
         )
         tool_registry.register_tool(wrapped)
 
@@ -328,6 +335,7 @@ def build_agent(
             ctf_knowledge_tool,
             flag_regex=config.flag_regex,
             log_callback=log_fn,
+            tracker=tracker,
         )
         tool_registry.register_tool(wrapped_rag)
         log_fn("[Agent] Registered 'ctf_knowledge_query' RAG tool")

@@ -49,6 +49,7 @@ from ctf_solver.config import (
 _find_and_load_dotenv()
 from ctf_solver.agent import build_agent
 from ctf_solver.prompts import get_initial_message, DEFAULT_SYSTEM_PROMPT
+from ctf_solver.run_tracker import RunTracker
 
 
 # Page configuration
@@ -93,6 +94,7 @@ def init_session_state():
         "execution_trace": [],
         "run_history": [],
         "error_message": None,
+        "run_stats": None,
     }
 
     for key, value in defaults.items():
@@ -127,8 +129,9 @@ def validate_url(url: str) -> tuple[bool, str]:
 
 
 async def run_agent_async(config: SolverConfig) -> str:
-    """Run the agent asynchronously."""
-    agent = build_agent(config, log_callback=log_callback)
+    """Run the agent asynchronously with run statistics tracking."""
+    tracker = RunTracker()
+    agent = build_agent(config, log_callback=log_callback, tracker=tracker)
 
     initial_message = get_initial_message(
         platform_name=config.platform_name,
@@ -144,7 +147,11 @@ async def run_agent_async(config: SolverConfig) -> str:
         "timestamp": datetime.now().isoformat(),
     })
 
+    tracker.start()
     response = await agent.arun(initial_message)
+    tracker.stop()
+
+    st.session_state.run_stats = tracker.to_dict()
 
     st.session_state.execution_trace.append({
         "type": "output",
@@ -163,6 +170,7 @@ def run_agent():
     st.session_state.candidate_flags = []
     st.session_state.execution_trace = []
     st.session_state.error_message = None
+    st.session_state.run_stats = None
 
     # Get project root for resolving relative paths
     project_root = Path(st.session_state.get("project_root", get_project_root()))
@@ -222,6 +230,7 @@ def run_agent():
             "description": config.challenge_description,
             "answer": response,
             "flags": flags if response else [],
+            "stats": st.session_state.run_stats,
         })
 
     except Exception as e:
@@ -319,6 +328,50 @@ def render_sidebar():
         st.sidebar.info("Set OPENAI_API_KEY in your environment or .env file")
 
 
+def _render_run_statistics():
+    """Render the Run Statistics tab content."""
+    stats = st.session_state.run_stats
+    if not stats:
+        st.info("No statistics yet. Run the agent to see performance data.")
+        return
+
+    st.markdown("### Run Statistics")
+
+    # Top-level metrics in columns
+    c1, c2, c3, c4 = st.columns(4)
+    duration = stats["duration_seconds"]
+    if duration >= 60:
+        time_display = f"{int(duration // 60)}m {duration % 60:.1f}s"
+    else:
+        time_display = f"{duration:.1f}s"
+
+    c1.metric("Solve Time", time_display)
+    c2.metric("Steps (tool calls)", stats["steps"])
+    c3.metric("LLM Calls", stats["llm_calls"])
+    c4.metric("Tokens (est.)", f"~{stats['total_tokens_est']:,}")
+
+    # Token breakdown
+    st.markdown("---")
+    st.markdown("#### Token Breakdown (estimated)")
+    tc1, tc2 = st.columns(2)
+    tc1.metric("Prompt Tokens", f"~{stats['prompt_tokens_est']:,}")
+    tc2.metric("Completion Tokens", f"~{stats['completion_tokens_est']:,}")
+
+    # Tool usage breakdown
+    st.markdown("---")
+    st.markdown("#### Tools Used")
+    tool_calls = stats.get("tool_calls", {})
+    if tool_calls:
+        # Sort by usage count descending
+        sorted_tools = sorted(tool_calls.items(), key=lambda x: x[1], reverse=True)
+        for tool_name, count in sorted_tools:
+            st.markdown(f"- **{tool_name}**: {count} call{'s' if count != 1 else ''}")
+    else:
+        st.info("No tools were called during this run.")
+
+    st.caption("Token counts are rough estimates (~4 characters per token).")
+
+
 def render_main_panel():
     """Render the main panel."""
     st.title("🚩 CTF Solver")
@@ -407,6 +460,7 @@ def render_main_panel():
             st.session_state.candidate_flags = []
             st.session_state.execution_trace = []
             st.session_state.error_message = None
+            st.session_state.run_stats = None
             st.rerun()
 
     # Results section
@@ -417,9 +471,10 @@ def render_main_panel():
 
     # Display results in tabs
     if st.session_state.final_answer or st.session_state.logs:
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "📋 Final Answer",
             "🚩 Candidate Flags",
+            "📈 Run Statistics",
             "📜 Execution Log",
             "📊 History",
         ])
@@ -440,6 +495,9 @@ def render_main_panel():
                 st.info("No candidate flags detected yet.")
 
         with tab3:
+            _render_run_statistics()
+
+        with tab4:
             st.markdown("### Execution Log")
             if st.session_state.logs:
                 log_text = "\n".join(st.session_state.logs)
@@ -453,7 +511,7 @@ def render_main_panel():
             else:
                 st.info("No logs yet. Run the agent to see execution details.")
 
-        with tab4:
+        with tab5:
             st.markdown("### Run History")
             if st.session_state.run_history:
                 for i, run in enumerate(reversed(st.session_state.run_history), 1):
@@ -464,6 +522,13 @@ def render_main_panel():
                             st.markdown(f"**Description:** {run['description'][:100]}...")
                         if run["flags"]:
                             st.markdown(f"**Flags Found:** {', '.join(run['flags'])}")
+                        if run.get("stats"):
+                            stats = run["stats"]
+                            st.markdown(
+                                f"**Stats:** {stats['duration_seconds']}s | "
+                                f"{stats['steps']} steps | "
+                                f"~{stats['total_tokens_est']} tokens"
+                            )
                         st.markdown("**Answer:**")
                         st.markdown(run["answer"][:500] + "..." if len(run["answer"]) > 500 else run["answer"])
             else:

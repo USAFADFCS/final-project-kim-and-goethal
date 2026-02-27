@@ -27,6 +27,7 @@ class LoggingToolWrapper:
         inner,
         flag_regex: str = DEFAULT_FLAG_REGEX,
         log_callback: Optional[Callable[[str], None]] = None,
+        tracker=None,
     ) -> None:
         """
         Initialize the logging wrapper.
@@ -35,10 +36,12 @@ class LoggingToolWrapper:
             inner: The wrapped tool instance
             flag_regex: Regex pattern for detecting flags in output
             log_callback: Optional callback for log messages (defaults to print)
+            tracker: Optional RunTracker instance for recording tool usage
         """
         self.inner = inner
         self.flag_regex = flag_regex
         self.log_callback = log_callback or print
+        self.tracker = tracker
 
         # Mirror the wrapped tool's public identity
         self.name = getattr(inner, "name", inner.__class__.__name__)
@@ -62,6 +65,10 @@ class LoggingToolWrapper:
             preview = preview[:200] + "...[truncated]..."
 
         self._log(f"[LOG] Tool call -> {self.name}: {preview}")
+
+        # Record in tracker if available
+        if self.tracker is not None:
+            self.tracker.record_tool_call(self.name)
 
         result = self.inner.use(tool_input)
 

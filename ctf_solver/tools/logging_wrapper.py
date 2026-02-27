@@ -6,6 +6,7 @@ Wraps any FAIR-compatible tool to provide:
 - Scanning for candidate flags in tool output
 """
 
+import json
 import re
 from typing import Callable, Optional
 
@@ -49,9 +50,14 @@ class LoggingToolWrapper:
 
     def use(self, tool_input: str) -> str:
         """Execute the wrapped tool and log the call and any flag matches."""
+        # Normalize: if the framework passed a dict/list instead of a JSON
+        # string, convert it so downstream tools always receive a str.
+        if isinstance(tool_input, (dict, list)):
+            tool_input = json.dumps(tool_input)
+        elif tool_input is None:
+            tool_input = ""
+
         preview = tool_input
-        if preview is None:
-            preview = ""
         if len(preview) > 200:
             preview = preview[:200] + "...[truncated]..."
 

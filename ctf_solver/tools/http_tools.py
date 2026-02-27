@@ -12,7 +12,7 @@ import requests
 
 class HttpFetchTool:
     """
-    HttpFetchTool: perform HTTP GET/HEAD requests against a URL.
+    HttpFetchTool: perform HTTP requests against a URL.
 
     Tool interface (FAIR-style):
       - `name` and `description` class attributes.
@@ -22,31 +22,33 @@ class HttpFetchTool:
 
         {
           "url": "https://example.com/path",
-          "method": "GET",                  # optional, "GET" (default) or "HEAD"
-          "params": {"key": "value"},       # optional
+          "method": "GET",                  # optional, "GET" (default), "HEAD", "POST", "PUT", "PATCH", "DELETE"
+          "params": {"key": "value"},       # optional query parameters
           "headers": {"User-Agent": "..."}, # optional
+          "body": {"key": "value"},         # optional, JSON body for POST/PUT/PATCH
           "max_body": 4000                  # optional, int
         }
 
     Behavior:
       - Uses a shared requests.Session to perform the HTTP request.
-      - Supports "GET" and "HEAD".
+      - Supports "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE".
+      - For POST/PUT/PATCH, sends `body` as JSON (application/json).
       - Returns a human-readable summary including:
           * Method + final URL
           * Status code
           * Headers
-          * Truncated body (for GET; HEAD has no body)
+          * Truncated body (for non-HEAD; HEAD has no body)
     """
 
     name: str = "http_fetch"
     description: str = (
-        "Perform an HTTP GET or HEAD request to a URL with optional query "
-        "parameters and headers. Input must be JSON with keys: 'url' "
-        "(required), 'method' (optional: 'GET' or 'HEAD', default 'GET'), "
-        "'params' (optional dict), 'headers' (optional dict), and 'max_body' "
-        "(optional int, default 4000). Returns status, headers, and a "
-        "truncated response body (for GET). Use this tool to fetch web pages, "
-        "API endpoints, or any HTTP resource."
+        "Perform an HTTP request to a URL. Input must be JSON with keys: 'url' "
+        "(required), 'method' (optional: 'GET', 'HEAD', 'POST', 'PUT', 'PATCH', "
+        "'DELETE'; default 'GET'), 'params' (optional dict of query params), "
+        "'headers' (optional dict), 'body' (optional dict, sent as JSON for "
+        "POST/PUT/PATCH), and 'max_body' (optional int, default 4000). Returns "
+        "status, headers, and a truncated response body. Use this tool to fetch "
+        "web pages, call API endpoints, or send JSON payloads."
     )
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
@@ -69,6 +71,7 @@ class HttpFetchTool:
         method = (data.get("method") or "GET").upper()
         params = data.get("params") or {}
         headers = data.get("headers") or {}
+        body = data.get("body")
         max_body = data.get("max_body", 4000)
 
         if not isinstance(params, dict):
@@ -76,17 +79,33 @@ class HttpFetchTool:
         if not isinstance(headers, dict):
             return "[HttpFetchTool] Error: 'headers' must be a JSON object (dict)."
 
+        allowed_methods = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
+        if method not in allowed_methods:
+            return f"[HttpFetchTool] Error: 'method' must be one of {allowed_methods}."
+
         try:
             if method == "HEAD":
                 response = self.session.head(
                     url, params=params, headers=headers, timeout=10
                 )
+            elif method in ("POST", "PUT", "PATCH"):
+                request_fn = getattr(self.session, method.lower())
+                if body is not None:
+                    response = request_fn(
+                        url, params=params, json=body, headers=headers, timeout=10
+                    )
+                else:
+                    response = request_fn(
+                        url, params=params, headers=headers, timeout=10
+                    )
+            elif method == "DELETE":
+                response = self.session.delete(
+                    url, params=params, headers=headers, timeout=10
+                )
             else:
-                # default / fallback to GET
                 response = self.session.get(
                     url, params=params, headers=headers, timeout=10
                 )
-                method = "GET"
         except Exception as exc:
             return f"[HttpFetchTool] Error during {method!r} request to {url!r}: {exc!r}"
 
@@ -138,7 +157,8 @@ class FormSubmitTool:
     Behavior:
       - Uses the shared session to submit the request.
       - For GET, `data` is used as query params.
-      - For POST, `data` is used as form data.
+      - For POST, `data` is used as form data (or JSON body if Content-Type
+        is application/json).
       - Returns status code, headers, and a truncated body similar to HttpFetchTool.
     """
 
@@ -146,10 +166,12 @@ class FormSubmitTool:
     description: str = (
         "Submit an HTTP form using GET or POST with the shared session. "
         "Input JSON keys: 'url' (string, required), 'method' (string, 'GET' or "
-        "'POST', required), 'data' (optional dict of form fields), "
+        "'POST', required), 'data' (optional dict of form fields or JSON body), "
         "'headers' (optional dict), and 'max_body' (optional int, default 4000). "
-        "Returns status, headers, and a truncated body. Use this tool to submit "
-        "login forms, search queries, or any form-based interaction."
+        "When Content-Type is 'application/json', the data dict is sent as a JSON "
+        "request body instead of form-encoded data. Returns status, headers, and "
+        "a truncated body. Use this tool to submit login forms, API requests, or "
+        "any form-based interaction."
     )
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
@@ -188,7 +210,16 @@ class FormSubmitTool:
             if method == "GET":
                 resp = self.session.get(url, params=form_data, headers=headers, timeout=10)
             else:  # POST
-                resp = self.session.post(url, data=form_data, headers=headers, timeout=10)
+                # Detect JSON content type and send as JSON body instead of form data
+                content_type = ""
+                for k, v in headers.items():
+                    if k.lower() == "content-type":
+                        content_type = v.lower()
+                        break
+                if "application/json" in content_type:
+                    resp = self.session.post(url, json=form_data, headers=headers, timeout=10)
+                else:
+                    resp = self.session.post(url, data=form_data, headers=headers, timeout=10)
         except Exception as exc:
             return f"[FormSubmitTool] Error during {method!r} request to {url!r}: {exc!r}"
 

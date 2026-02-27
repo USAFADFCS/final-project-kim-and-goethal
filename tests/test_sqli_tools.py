@@ -722,3 +722,64 @@ class TestSqliToolsEdgeCases:
 
         # Should stop at max_columns, not test beyond
         assert mock_session.get.call_count <= 7  # baseline + up to 5 ORDER BY tests + potential extra
+
+
+class TestSqliteBypassPayloadSet:
+    """Tests for the sqlite_bypass payload set in SqliProbeTool."""
+
+    def setup_method(self):
+        self.tool = SqliProbeTool()
+
+    def test_sqlite_bypass_payload_set_exists(self):
+        """Test that SQLITE_BYPASS_PAYLOADS attribute exists and has payloads."""
+        assert hasattr(self.tool, "SQLITE_BYPASS_PAYLOADS")
+        assert len(self.tool.SQLITE_BYPASS_PAYLOADS) > 0
+
+    def test_sqlite_bypass_in_get_payloads(self):
+        """Test that _get_payloads returns sqlite_bypass payloads."""
+        payloads = self.tool._get_payloads("sqlite_bypass")
+        assert len(payloads) > 0
+        assert payloads is self.tool.SQLITE_BYPASS_PAYLOADS
+
+    def test_sqlite_bypass_validation_accepted(self):
+        """Test that 'sqlite_bypass' is accepted as a valid payload_set."""
+        mock_session = MagicMock()
+        baseline = MagicMock()
+        baseline.status_code = 200
+        baseline.text = "Login failed"
+
+        normal_resp = MagicMock()
+        normal_resp.status_code = 200
+        normal_resp.text = "Login failed"
+
+        # baseline + one response per payload
+        num_payloads = len(SqliProbeTool.SQLITE_BYPASS_PAYLOADS)
+        mock_session.post.side_effect = [baseline] + [normal_resp] * num_payloads
+
+        tool = SqliProbeTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "url": "http://test.com/login",
+            "method": "POST",
+            "param": "username",
+            "payload_set": "sqlite_bypass",
+        }))
+
+        assert "Error" not in result or "Probe Results" in result
+
+    def test_sqlite_bypass_contains_concatenation_payloads(self):
+        """Test that bypass payloads include admin concatenation techniques."""
+        payloads = self.tool.SQLITE_BYPASS_PAYLOADS
+        concat_payloads = [p for p in payloads if "||" in p and "min" in p]
+        assert len(concat_payloads) > 0, "Should have admin concatenation bypass payloads"
+
+    def test_sqlite_bypass_contains_is_operator(self):
+        """Test that bypass payloads include IS operator alternatives."""
+        payloads = self.tool.SQLITE_BYPASS_PAYLOADS
+        is_payloads = [p for p in payloads if " IS " in p]
+        assert len(is_payloads) > 0, "Should have IS operator bypass payloads"
+
+    def test_sqlite_bypass_contains_glob_operator(self):
+        """Test that bypass payloads include GLOB operator alternatives."""
+        payloads = self.tool.SQLITE_BYPASS_PAYLOADS
+        glob_payloads = [p for p in payloads if "GLOB" in p]
+        assert len(glob_payloads) > 0, "Should have GLOB operator bypass payloads"

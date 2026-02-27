@@ -189,9 +189,14 @@ def _detect_chunk_tags(text: str) -> List[str]:
 
 
 def _compute_sources_hash(config: SolverConfig) -> str:
-    """Compute a hash of the knowledge base sources for cache invalidation."""
+    """Compute a hash of the knowledge base sources for cache invalidation.
+
+    Includes the vector_store_dir so that switching RAG modes (which use
+    different vector store directories) properly invalidates the cache.
+    """
     sources = sorted(str(p) for p in config.get_all_kb_paths())
-    return "|".join(sources)
+    # Include vector_store_dir to differentiate original vs augmented caches
+    return config.vector_store_dir + "::" + "|".join(sources)
 
 
 def initialize_knowledge_base(

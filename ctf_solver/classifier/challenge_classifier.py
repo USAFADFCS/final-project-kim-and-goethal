@@ -29,6 +29,7 @@ class ChallengeCategory(Enum):
     DESERIALIZATION = "deserialization"
     RACE_CONDITION = "race_condition"
     CRYPTO = "crypto"
+    NOSQL_INJECTION = "nosql_injection"
     RECONNAISSANCE = "reconnaissance"
     UNKNOWN = "unknown"
 
@@ -148,6 +149,15 @@ CATEGORY_KEYWORDS: Dict[ChallengeCategory, List[str]] = {
         r"\bobject\s*injection\b", r"\bphp\s*object\b",
         r"\byaml\b.*\binjection\b", r"\bjava\b.*\bobject\b",
     ],
+    ChallengeCategory.NOSQL_INJECTION: [
+        r"\bnosql\b",  # Strong indicator
+        r"\bnosql\s*injection\b",  # Strong indicator
+        r"\bmongodb\b",  # Strong indicator
+        r"\bmongo\b", r"\bdocument\s*database\b",
+        r"\bmean\s*stack\b", r"\bnode\.?js\b.*\binjection\b",
+        r"\b\$ne\b", r"\b\$gt\b", r"\b\$regex\b", r"\b\$where\b",
+        r"\boperator\s*injection\b",
+    ],
     ChallengeCategory.RACE_CONDITION: [
         r"\brace\s*condition\b", r"\btoctou\b", r"\btime.?of.?check\b",
         r"\bconcurrent\b", r"\bparallel\b.*\brequest\b",
@@ -187,6 +197,9 @@ URL_PATTERNS: Dict[ChallengeCategory, List[str]] = {
         r"/login", r"/signin", r"/auth", r"/admin", r"/dashboard",
         r"/panel", r"/account", r"/user",
     ],
+    ChallengeCategory.NOSQL_INJECTION: [
+        r"/login", r"/api/", r"\?.*username=", r"\?.*user=",
+    ],
 }
 
 # Tool priority mapping for each category
@@ -213,8 +226,8 @@ TOOL_PRIORITIES: Dict[ChallengeCategory, List[str]] = {
         "http_fetch", "html_inspector",
     ],
     ChallengeCategory.FILE_INCLUSION: [
-        "http_fetch", "path_enumerator", "backup_file_finder",
-        "response_search", "encoding",
+        "lfi_probe", "lfi_payload_generator", "http_fetch",
+        "path_enumerator", "response_search", "encoding",
     ],
     ChallengeCategory.AUTHENTICATION: [
         "http_fetch", "form_submit", "cookie_inspector", "cookie_set",
@@ -225,14 +238,15 @@ TOOL_PRIORITIES: Dict[ChallengeCategory, List[str]] = {
         "response_search",
     ],
     ChallengeCategory.COMMAND_INJECTION: [
-        "http_fetch", "form_submit", "response_search",
-        "timing_compare", "response_diff",
+        "cmdi_probe", "cmdi_payload_generator", "http_fetch",
+        "form_submit", "response_search", "timing_compare",
     ],
     ChallengeCategory.SSRF: [
-        "http_fetch", "form_submit", "response_search",
-        "response_diff",
+        "ssrf_probe", "ssrf_payload_generator", "http_fetch",
+        "form_submit", "response_search", "response_diff",
     ],
     ChallengeCategory.DESERIALIZATION: [
+        "deserialization_probe", "deserialization_payload_generator",
         "http_fetch", "encoding", "form_submit", "response_search",
     ],
     ChallengeCategory.RACE_CONDITION: [
@@ -240,8 +254,12 @@ TOOL_PRIORITIES: Dict[ChallengeCategory, List[str]] = {
         "response_diff", "cookie_inspector",
     ],
     ChallengeCategory.CRYPTO: [
-        "encoding", "hash_identifier", "http_fetch",
-        "response_search", "jwt",
+        "crypto_probe", "crypto_analyzer", "crypto_payload_generator",
+        "encoding", "hash_identifier", "http_fetch", "response_search",
+    ],
+    ChallengeCategory.NOSQL_INJECTION: [
+        "nosql_probe", "nosql_payload_generator", "http_fetch",
+        "form_submit", "response_search", "response_diff",
     ],
     ChallengeCategory.RECONNAISSANCE: [
         "robots_txt", "path_enumerator", "backup_file_finder",
@@ -353,6 +371,13 @@ APPROACH_SUGGESTIONS: Dict[ChallengeCategory, str] = {
         "4. Look for backup files and git leaks\n"
         "5. Find hidden functionality or secrets"
     ),
+    ChallengeCategory.NOSQL_INJECTION: (
+        "1. Identify injection points (login forms, API endpoints)\n"
+        "2. Test with MongoDB operators ($ne, $gt, $regex)\n"
+        "3. Try both query parameter and JSON body injection\n"
+        "4. Use regex-based blind extraction for data\n"
+        "5. Extract flag from database fields"
+    ),
     ChallengeCategory.UNKNOWN: (
         "1. Perform basic reconnaissance\n"
         "2. Analyze the application structure\n"
@@ -382,6 +407,7 @@ class PatternMatcher:
         r"\bjwt\b", r"\bjson\s*web\s*token\b",
         r"\bcommand\s*injection\b", r"\bos\s*command\b",
         r"\bssrf\b", r"\bserver.?side\s*request\s*forgery\b",
+        r"\bnosql\b", r"\bnosql\s*injection\b", r"\bmongodb\b",
     }
 
     def __init__(self):

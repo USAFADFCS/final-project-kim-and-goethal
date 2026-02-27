@@ -13,6 +13,8 @@ from ctf_solver.prompts.templates import (
     get_initial_message,
     ROBOTS_EXAMPLE,
     JS_ANALYSIS_EXAMPLE,
+    SELF_REFLECTION_EXAMPLE,
+    JSON_API_EXAMPLE,
 )
 
 __all__ = [
@@ -23,4 +25,6 @@ __all__ = [
     "get_initial_message",
     "ROBOTS_EXAMPLE",
     "JS_ANALYSIS_EXAMPLE",
+    "SELF_REFLECTION_EXAMPLE",
+    "JSON_API_EXAMPLE",
 ]

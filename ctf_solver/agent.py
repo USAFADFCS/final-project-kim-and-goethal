@@ -25,7 +25,7 @@ from fairlib import (
     RoleDefinition,
 )
 
-from ctf_solver.config import SolverConfig
+from ctf_solver.config import SolverConfig, RAGMode
 from ctf_solver.tools import (
     HttpFetchTool,
     FormSubmitTool,
@@ -59,12 +59,33 @@ from ctf_solver.tools import (
     XxePayloadGenerator,
     XxeDocTypeBuilder,
     ShellExecuteTool,
+    XPathProbeTool,
+    XPathBlindBooleanTool,
+    XPathPayloadGenerator,
+    FilterEnumeratorTool,
+    PayloadMutatorTool,
+    SsrfProbeTool,
+    SsrfPayloadGenerator,
+    AttackPlannerTool,
+    LfiProbeTool,
+    LfiPayloadGenerator,
+    NosqlProbeTool,
+    NosqlPayloadGenerator,
+    CommandInjectionProbeTool,
+    CommandInjectionPayloadGenerator,
+    CryptoProbeTool,
+    CryptoAnalyzerTool,
+    CryptoPayloadGenerator,
+    DeserializationProbeTool,
+    DeserializationPayloadGenerator,
 )
-from ctf_solver.rag import initialize_knowledge_base, build_knowledge_tool
+from ctf_solver.rag import initialize_knowledge_base, build_knowledge_tool, clear_cache
 from ctf_solver.prompts import (
     get_role_definition,
     ROBOTS_EXAMPLE,
     JS_ANALYSIS_EXAMPLE,
+    SELF_REFLECTION_EXAMPLE,
+    JSON_API_EXAMPLE,
 )
 from ctf_solver.classifier import (
     ChallengeClassifier,
@@ -149,6 +170,31 @@ def get_classification_context(result: ClassificationResult) -> str:
     lines.append(f"Priority Tools: {', '.join(result.suggested_tools[:5])}")
 
     return "\n".join(lines)
+
+
+def _build_rag_config(config: SolverConfig, mode: RAGMode) -> SolverConfig:
+    """
+    Create a modified config for RAG initialization based on the selected mode.
+
+    - ORIGINAL: uses config.docs_dirs and config.vector_store_dir (default behavior)
+    - AUGMENTED: adds failure_docs_dir to docs_dirs and uses a separate vector store
+    """
+    if mode == RAGMode.ORIGINAL:
+        return config
+
+    # AUGMENTED mode: include failure knowledge docs
+    augmented_docs_dirs = list(config.docs_dirs)
+    failure_dir = config.failure_docs_dir
+    if failure_dir not in augmented_docs_dirs:
+        augmented_docs_dirs.append(failure_dir)
+
+    # Use a separate vector store to avoid cross-contamination
+    augmented_vector_store = config.vector_store_dir + "_augmented"
+
+    return config.merge_with_args(
+        docs_dirs=augmented_docs_dirs,
+        vector_store_dir=augmented_vector_store,
+    )
 
 
 def build_agent(
@@ -281,6 +327,43 @@ def build_agent(
     # Shell execution tool (general-purpose command runner)
     shell_tool = ShellExecuteTool()
 
+    # XPath injection tools
+    xpath_probe_tool = XPathProbeTool(session=shared_session)
+    xpath_blind_boolean_tool = XPathBlindBooleanTool(session=shared_session)
+    xpath_payload_generator = XPathPayloadGenerator()
+
+    # Filter bypass tools
+    filter_enumerator_tool = FilterEnumeratorTool(session=shared_session)
+    payload_mutator_tool = PayloadMutatorTool()
+
+    # SSRF tools
+    ssrf_probe_tool = SsrfProbeTool(session=shared_session)
+    ssrf_payload_generator = SsrfPayloadGenerator()
+
+    # Attack planner (pure logic, no session)
+    attack_planner_tool = AttackPlannerTool()
+
+    # LFI/RFI tools
+    lfi_probe_tool = LfiProbeTool(session=shared_session)
+    lfi_payload_generator = LfiPayloadGenerator()
+
+    # NoSQL injection tools
+    nosql_probe_tool = NosqlProbeTool(session=shared_session)
+    nosql_payload_generator = NosqlPayloadGenerator()
+
+    # Command injection tools
+    cmdi_probe_tool = CommandInjectionProbeTool(session=shared_session)
+    cmdi_payload_generator = CommandInjectionPayloadGenerator()
+
+    # Crypto tools
+    crypto_probe_tool = CryptoProbeTool(session=shared_session)
+    crypto_analyzer_tool = CryptoAnalyzerTool()
+    crypto_payload_generator = CryptoPayloadGenerator()
+
+    # Deserialization tools
+    deserialization_probe_tool = DeserializationProbeTool(session=shared_session)
+    deserialization_payload_generator = DeserializationPayloadGenerator()
+
     # All tools to register
     tools = [
         http_tool,
@@ -314,6 +397,25 @@ def build_agent(
         xxe_payload_generator,
         xxe_doctype_builder,
         shell_tool,
+        xpath_probe_tool,
+        xpath_blind_boolean_tool,
+        xpath_payload_generator,
+        filter_enumerator_tool,
+        payload_mutator_tool,
+        ssrf_probe_tool,
+        ssrf_payload_generator,
+        attack_planner_tool,
+        lfi_probe_tool,
+        lfi_payload_generator,
+        nosql_probe_tool,
+        nosql_payload_generator,
+        cmdi_probe_tool,
+        cmdi_payload_generator,
+        crypto_probe_tool,
+        crypto_analyzer_tool,
+        crypto_payload_generator,
+        deserialization_probe_tool,
+        deserialization_payload_generator,
     ]
 
     # Wrap them with LoggingToolWrapper and register
@@ -326,21 +428,41 @@ def build_agent(
         )
         tool_registry.register_tool(wrapped)
 
-    # ---- RAG: CTF knowledge base ----
-    rag_retriever = initialize_knowledge_base(config, log_callback=log_fn)
-    ctf_knowledge_tool = build_knowledge_tool(rag_retriever, config.platform_name)
+    # ---- RAG: Mode-aware knowledge base ----
+    rag_mode = config.rag_mode
+    if isinstance(rag_mode, str):
+        try:
+            rag_mode = RAGMode(rag_mode.lower())
+        except ValueError:
+            rag_mode = RAGMode.ORIGINAL
 
-    if ctf_knowledge_tool is not None:
-        wrapped_rag = LoggingToolWrapper(
-            ctf_knowledge_tool,
-            flag_regex=config.flag_regex,
-            log_callback=log_fn,
-            tracker=tracker,
-        )
-        tool_registry.register_tool(wrapped_rag)
-        log_fn("[Agent] Registered 'ctf_knowledge_query' RAG tool")
+    # Record RAG mode in tracker
+    if tracker is not None:
+        tracker.rag_mode = rag_mode.value
+
+    ctf_knowledge_tool = None
+
+    if rag_mode == RAGMode.NONE:
+        log_fn("[Agent] RAG mode: NONE — knowledge base disabled")
     else:
-        log_fn("[Agent] WARNING: RAG knowledge base not available; 'ctf_knowledge_query' tool disabled")
+        # Build a mode-specific config for RAG initialization
+        rag_config = _build_rag_config(config, rag_mode)
+        # Clear cache to ensure mode switch takes effect
+        clear_cache()
+        rag_retriever = initialize_knowledge_base(rag_config, log_callback=log_fn)
+        ctf_knowledge_tool = build_knowledge_tool(rag_retriever, config.platform_name)
+
+        if ctf_knowledge_tool is not None:
+            wrapped_rag = LoggingToolWrapper(
+                ctf_knowledge_tool,
+                flag_regex=config.flag_regex,
+                log_callback=log_fn,
+                tracker=tracker,
+            )
+            tool_registry.register_tool(wrapped_rag)
+            log_fn(f"[Agent] Registered 'ctf_knowledge_query' RAG tool (mode: {rag_mode.value})")
+        else:
+            log_fn("[Agent] WARNING: RAG knowledge base not available; 'ctf_knowledge_query' tool disabled")
 
     # Planner (ReAct) with PromptBuilder customization
     planner = ReActPlanner(llm, tool_registry)
@@ -359,6 +481,8 @@ def build_agent(
     pb.examples.clear()
     pb.examples.append(ROBOTS_EXAMPLE)
     pb.examples.append(JS_ANALYSIS_EXAMPLE)
+    pb.examples.append(SELF_REFLECTION_EXAMPLE)
+    pb.examples.append(JSON_API_EXAMPLE)
 
     # === Tool executor, memory, and agent ===
     executor = ToolExecutor(tool_registry)

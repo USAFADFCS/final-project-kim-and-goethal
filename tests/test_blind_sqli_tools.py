@@ -854,3 +854,90 @@ class TestBlindSqliIntegration:
         assert boolean_tool.session is shared_session
         assert time_tool.session is shared_session
         assert dumper.session is shared_session
+
+
+class TestBlindSqliOracleInversion:
+    """Tests for oracle inversion detection in BlindSqliBooleanTool."""
+
+    def setup_method(self):
+        self.tool = BlindSqliBooleanTool()
+
+    def _mock_response(self, status_code=200, text=""):
+        resp = MagicMock()
+        resp.status_code = status_code
+        resp.text = text
+        return resp
+
+    def test_oracle_inversion_detected(self):
+        """Test that inverted oracle is detected and baselines are swapped."""
+        mock_session = MagicMock()
+
+        # Responses: true_cond, false_cond, known_true (AND 1=1), known_false (AND 1=2)
+        true_resp = self._mock_response(200, "A" * 100)   # true condition baseline
+        false_resp = self._mock_response(200, "B" * 200)  # false condition baseline
+        # Known-true matches FALSE baseline (inverted!)
+        kt_resp = self._mock_response(200, "B" * 200)
+        kf_resp = self._mock_response(200, "A" * 100)
+
+        mock_session.get.side_effect = [true_resp, false_resp, kt_resp, kf_resp]
+
+        tool = BlindSqliBooleanTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "url": "http://test.com",
+            "method": "GET",
+            "param": "id",
+            "operation": "test_condition",
+            "true_condition": "' AND 1=1 --",
+            "false_condition": "' AND 1=2 --",
+            "detect_oracle_inversion": True,
+        }))
+
+        assert "INVERTED ORACLE DETECTED" in result
+
+    def test_oracle_normal_not_inverted(self):
+        """Test that normal oracle is correctly identified as non-inverted."""
+        mock_session = MagicMock()
+
+        true_resp = self._mock_response(200, "A" * 100)
+        false_resp = self._mock_response(200, "B" * 200)
+        # Known-true matches TRUE baseline (normal)
+        kt_resp = self._mock_response(200, "A" * 100)
+        kf_resp = self._mock_response(200, "B" * 200)
+
+        mock_session.get.side_effect = [true_resp, false_resp, kt_resp, kf_resp]
+
+        tool = BlindSqliBooleanTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "url": "http://test.com",
+            "method": "GET",
+            "param": "id",
+            "operation": "test_condition",
+            "true_condition": "' AND 1=1 --",
+            "false_condition": "' AND 1=2 --",
+            "detect_oracle_inversion": True,
+        }))
+
+        assert "NORMAL" in result or "not inverted" in result.lower()
+
+    def test_no_inversion_detection_when_disabled(self):
+        """Test that oracle inversion detection is skipped when not requested."""
+        mock_session = MagicMock()
+
+        true_resp = self._mock_response(200, "A" * 100)
+        false_resp = self._mock_response(200, "B" * 200)
+
+        mock_session.get.side_effect = [true_resp, false_resp]
+
+        tool = BlindSqliBooleanTool(session=mock_session)
+        result = tool.use(json.dumps({
+            "url": "http://test.com",
+            "method": "GET",
+            "param": "id",
+            "operation": "test_condition",
+            "true_condition": "' AND 1=1 --",
+            "false_condition": "' AND 1=2 --",
+            "detect_oracle_inversion": False,
+        }))
+
+        assert "INVERTED" not in result
+        assert "Detecting oracle inversion" not in result

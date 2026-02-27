@@ -23,6 +23,15 @@ from ctf_solver.tools.ssti_tools import SstiProbeTool, SstiExploitSuggester
 from ctf_solver.tools.upload_tools import FileUploadTool, UploadLocationFinder
 from ctf_solver.tools.xxe_tools import XxeProbeTool, XxePayloadGenerator, XxeDocTypeBuilder
 from ctf_solver.tools.shell_tools import ShellExecuteTool
+from ctf_solver.tools.xpath_tools import XPathProbeTool, XPathBlindBooleanTool, XPathPayloadGenerator
+from ctf_solver.tools.filter_bypass_tools import FilterEnumeratorTool, PayloadMutatorTool
+from ctf_solver.tools.ssrf_tools import SsrfProbeTool, SsrfPayloadGenerator
+from ctf_solver.tools.attack_planner import AttackPlannerTool
+from ctf_solver.tools.lfi_tools import LfiProbeTool, LfiPayloadGenerator
+from ctf_solver.tools.nosql_tools import NosqlProbeTool, NosqlPayloadGenerator
+from ctf_solver.tools.cmdi_tools import CommandInjectionProbeTool, CommandInjectionPayloadGenerator
+from ctf_solver.tools.crypto_tools import CryptoProbeTool, CryptoAnalyzerTool, CryptoPayloadGenerator
+from ctf_solver.tools.deserialization_tools import DeserializationProbeTool, DeserializationPayloadGenerator
 
 __all__ = [
     "HttpFetchTool",
@@ -67,4 +76,32 @@ __all__ = [
     "XxeDocTypeBuilder",
     # Shell execution tools
     "ShellExecuteTool",
+    # XPath injection tools
+    "XPathProbeTool",
+    "XPathBlindBooleanTool",
+    "XPathPayloadGenerator",
+    # Filter bypass tools
+    "FilterEnumeratorTool",
+    "PayloadMutatorTool",
+    # SSRF tools
+    "SsrfProbeTool",
+    "SsrfPayloadGenerator",
+    # Attack planner
+    "AttackPlannerTool",
+    # LFI/RFI tools
+    "LfiProbeTool",
+    "LfiPayloadGenerator",
+    # NoSQL injection tools
+    "NosqlProbeTool",
+    "NosqlPayloadGenerator",
+    # Command injection tools
+    "CommandInjectionProbeTool",
+    "CommandInjectionPayloadGenerator",
+    # Crypto tools
+    "CryptoProbeTool",
+    "CryptoAnalyzerTool",
+    "CryptoPayloadGenerator",
+    # Deserialization tools
+    "DeserializationProbeTool",
+    "DeserializationPayloadGenerator",
 ]

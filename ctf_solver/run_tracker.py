@@ -27,6 +27,17 @@ class RunTracker:
     completion_tokens: int = 0
     tool_calls: Counter = field(default_factory=Counter)
 
+    # Academic study tracking
+    rag_mode: str = ""
+    challenge_url: str = ""
+    challenge_description: str = ""
+    run_succeeded: bool = False
+    candidate_flags_found: List[str] = field(default_factory=list)
+    failure_doc_generated: bool = False
+
+    # Detailed tool call log for failure analysis
+    tool_call_log: List[Dict[str, Any]] = field(default_factory=list)
+
     def start(self) -> None:
         self.start_time = time.time()
 
@@ -53,6 +64,17 @@ class RunTracker:
         self.prompt_tokens += prompt_chars // 4
         self.completion_tokens += completion_chars // 4
 
+    def record_detailed_tool_call(
+        self, tool_name: str, tool_input: str, tool_output: str
+    ) -> None:
+        """Record full tool call details for failure analysis."""
+        self.tool_call_log.append({
+            "tool": tool_name,
+            "input": tool_input[:2000],
+            "output": tool_output[:2000],
+            "timestamp": time.time(),
+        })
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "duration_seconds": round(self.duration_seconds, 2),
@@ -62,6 +84,12 @@ class RunTracker:
             "completion_tokens_est": self.completion_tokens,
             "total_tokens_est": self.total_tokens,
             "tool_calls": dict(self.tool_calls),
+            "rag_mode": self.rag_mode,
+            "challenge_url": self.challenge_url,
+            "challenge_description": self.challenge_description,
+            "run_succeeded": self.run_succeeded,
+            "candidate_flags_found": self.candidate_flags_found,
+            "failure_doc_generated": self.failure_doc_generated,
         }
 
 

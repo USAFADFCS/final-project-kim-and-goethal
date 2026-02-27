@@ -19,10 +19,25 @@ Your job is to solve web Capture-The-Flag challenges by exploring the target web
 understanding how it works, and extracting the final flag.
 
 You have tools for:
-- HTTP fetching and form submission ('http_fetch', 'form_submit')
+- HTTP requests including JSON POST/PUT/PATCH ('http_fetch' with 'body' param, 'form_submit')
 - HTML inspection and JavaScript inspection ('html_inspector', 'javascript_source')
 - Working with cookies and robots.txt ('cookie_inspector', 'cookie_set', 'robots_txt')
 - Searching and analyzing responses ('regex_search', 'response_search', 'sql_pattern_hint')
+- SQL injection ('sqli_probe', 'blind_sqli_boolean', 'blind_sqli_time', 'sqli_data_dumper')
+- XPath injection ('xpath_probe', 'xpath_blind_boolean')
+- Command injection ('cmdi_probe', 'cmdi_payload_generator')
+- File inclusion / path traversal ('lfi_probe', 'lfi_payload_generator')
+- NoSQL injection ('nosql_probe', 'nosql_payload_generator')
+- Server-side request forgery ('ssrf_probe', 'ssrf_payload_generator')
+- Cryptographic analysis ('crypto_probe', 'crypto_analyzer', 'crypto_payload_generator')
+- Deserialization attacks ('deserialization_probe', 'deserialization_payload_generator')
+- Template injection ('ssti_probe', 'ssti_exploit_suggester')
+- File upload exploitation ('file_upload', 'upload_location_finder')
+- XXE attacks ('xxe_probe', 'xxe_payload_generator', 'xxe_doctype_builder')
+- JWT manipulation ('jwt_tool')
+- Filter/WAF bypass ('filter_enumerator', 'payload_mutator')
+- Encoding and hashing ('encoding', 'hash_identifier')
+- Attack planning ('attack_planner')
 - Consulting an internal web-exploitation knowledge base ('ctf_knowledge_query')
 
 Use a Thought -> Action -> Tool Observation loop:
@@ -38,9 +53,20 @@ Guidelines:
 - Follow interesting links, inspect robots.txt, and check cookies when relevant
 - Inspect client-side JavaScript when you suspect client-side validation or password checks
 - Use the 'ctf_knowledge_query' tool when uncertain which exploitation technique to apply
+- Use 'attack_planner' to get a structured multi-step plan for complex challenges
 - Avoid brute forcing credentials or inputs - rely on logical reasoning and response analysis
 - When you see a string matching the flag pattern, note it and verify its context
 - When confident you have the correct flag, clearly state it in your final answer
+- When JavaScript uses fetch() with JSON body, replay it using 'http_fetch' with method POST and 'body' parameter
+- If 'form_submit' returns 400/415 errors, the server likely expects JSON — switch to 'http_fetch' POST with 'body'
+
+Self-Reflection Protocol:
+- After every 3-4 tool calls, pause and ask yourself: "Am I making progress or repeating the same approach?"
+- If a tool returns an error or unexpected result, STOP and reason about WHY before trying the same tool again
+- If you receive a [SELF-REFLECTION] warning, you MUST change your approach - do NOT repeat the same tool/input
+- Consider: Is this the right vulnerability type? Should I try a completely different attack vector?
+- Use 'ctf_knowledge_query' to look up alternative techniques when stuck
+- Use 'attack_planner' to get a fresh multi-step plan when your current approach fails
 
 IMPORTANT: Do not loop indefinitely. If you've tried multiple approaches without success,
 summarize what you've learned and suggest next steps."""
@@ -55,7 +81,17 @@ You have tools for:
 - HTML inspection and JavaScript inspection ('html_inspector', 'javascript_source'),
 - working with cookies and robots.txt ('cookie_inspector', 'cookie_set', 'robots_txt'),
 - searching and analyzing responses ('regex_search', 'response_search', 'sql_pattern_hint'),
-- and consulting an internal web-exploitation knowledge base ('ctf_knowledge_query').
+- SQL injection ('sqli_probe', 'blind_sqli_boolean', 'sqli_data_dumper'),
+- XPath injection ('xpath_probe', 'xpath_blind_boolean'),
+- command injection ('cmdi_probe'), file inclusion ('lfi_probe'),
+- NoSQL injection ('nosql_probe'), SSRF ('ssrf_probe'),
+- cryptographic analysis ('crypto_probe', 'crypto_analyzer'),
+- deserialization ('deserialization_probe'),
+- template injection ('ssti_probe'), file upload ('file_upload'),
+- XXE ('xxe_probe'), JWT ('jwt_tool'), filter bypass ('filter_enumerator', 'payload_mutator'),
+- attack planning and multi-phase exploitation ('attack_planner'),
+- consulting an internal web-exploitation knowledge base ('ctf_knowledge_query'),
+- and self-reflection when stuck (analyze what failed and try different approaches).
 
 Use a Thought -> Action -> Tool Observation loop: think step-by-step about what to do next,
 choose ONE tool to call, read the observation, then continue reasoning until you can
@@ -119,6 +155,91 @@ function checkPassword(input) {
 
 Thought: The JavaScript compares the user input to the string 'super-secret-password'. That must be the correct password. I should report this as the answer using the final_answer tool.
 Action: {"tool_name": "final_answer", "tool_input": "The correct password is 'super-secret-password', recovered from the client-side JavaScript check."}
+"""
+)
+
+# Few-shot example: Self-reflection when stuck
+SELF_REFLECTION_EXAMPLE = Example(
+    """User Request: Bypass the login form at https://example.com/login to find the flag. The challenge mentions 'structured data'.
+
+Thought: The login form likely has an injection vulnerability. I'll start by probing for SQL injection.
+Action: {"tool_name": "sqli_probe", "tool_input": {"url": "https://example.com/login", "method": "POST", "param": "username", "data": {"password": "test"}}}
+
+Tool Observation: [SqliProbeTool] No SQL injection detected. No error messages, no differential responses.
+
+Thought: Basic SQLi didn't work. Let me try with authentication bypass payloads.
+Action: {"tool_name": "sqli_probe", "tool_input": {"url": "https://example.com/login", "method": "POST", "param": "username", "payload_set": "auth_bypass", "data": {"password": "test"}}}
+
+Tool Observation: [SqliProbeTool] No SQL injection detected. All payloads returned identical responses.
+
+[SELF-REFLECTION] You have called 'sqli_probe' with the same input 3 times. You are stuck in a loop.
+
+Tools used recently: sqli_probe (3x)
+Errors observed:
+  - No SQL injection detected
+Attack categories already tried: SQL Injection
+Untried attack categories to consider:
+  - XPath Injection
+  - NoSQL Injection
+  - Command Injection
+
+MANDATORY: You MUST change your approach.
+
+Thought: I need to stop and reflect. SQL injection isn't working, and the challenge mentions 'structured data'. That could mean XML/XPath rather than SQL. Let me consult the knowledge base and consider XPath or NoSQL injection instead.
+Action: {"tool_name": "ctf_knowledge_query", "tool_input": "What web vulnerabilities involve structured data besides SQL? Consider XPath injection and NoSQL injection."}
+
+Tool Observation: XPath injection targets XML-based authentication. If the backend stores users in XML, try payloads like ' or '1'='1 in login fields. NoSQL injection targets MongoDB with operators like $ne and $gt.
+
+Thought: The hint 'structured data' likely refers to XML/XPath. Let me probe for XPath injection on the login form.
+Action: {"tool_name": "xpath_probe", "tool_input": {"url": "https://example.com/login", "method": "POST", "param": "username", "data": {"password": "test"}}}
+
+Tool Observation: [XPathProbeTool] INJECTION DETECTED. True-condition and false-condition payloads produce different responses. XPath injection confirmed.
+
+Thought: XPath injection is confirmed. Now I should extract the password or find a bypass using blind XPath extraction.
+Action: {"tool_name": "xpath_blind_boolean", "tool_input": {"url": "https://example.com/login", "method": "POST", "param": "username", "operation": "extract_string", "xpath_expression": "//user[1]/password", "true_indicator": "Welcome", "data": {"password": "test"}}}
+
+Tool Observation: [XPathBlindBooleanTool] Extracted string: 's3cret_p4ss'. FLAGS FOUND: FLAG{xpath_m4ster}
+
+Thought: I successfully extracted data via XPath injection after pivoting from SQL injection. The flag was found.
+Action: {"tool_name": "final_answer", "tool_input": "The flag is FLAG{xpath_m4ster}, found by exploiting XPath injection after SQL injection failed."}
+"""
+)
+
+
+# Few-shot example: JSON API interaction (replaying a JavaScript fetch)
+JSON_API_EXAMPLE = Example(
+    """User Request: The challenge is a combination lock page. Hack the page to access the protected content and find the flag.
+
+Thought: I should start by fetching the main page to understand the challenge structure.
+Action: {"tool_name": "http_fetch", "tool_input": {"url": "https://example.com/"}}
+
+Tool Observation: [HttpFetchTool] Method: GET
+URL: https://example.com/
+Status: 200
+Body:
+<html>...<script>
+const correctCombination = ['6', '8', '7', '2'];
+function checkCombination() {
+    const status = combination.map((num, index) => num === correctCombination[index] ? 'open' : 'locked');
+    fetch('/check-combination', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+    }).then(response => response.json()).then(data => { messageElement.textContent = data.message; });
+}
+</script>...</html>
+
+Thought: The JavaScript reveals the correct combination is ['6', '8', '7', '2']. The checkCombination function sends a POST request to /check-combination with a JSON body containing a 'status' array where each element is 'open' when the wheel matches. To unlock, I need to send {"status": ["open", "open", "open", "open"]} as a JSON body. I can use http_fetch with method POST and a body parameter.
+Action: {"tool_name": "http_fetch", "tool_input": {"url": "https://example.com/check-combination", "method": "POST", "body": {"status": ["open", "open", "open", "open"]}}}
+
+Tool Observation: [HttpFetchTool] Method: POST
+URL: https://example.com/check-combination
+Status: 200
+Body:
+{"message": "Access Granted! Flag: FLAG{json_api_master}"}
+
+Thought: The server accepted the JSON POST and returned the flag in the response. The key insight was reading the JavaScript to understand the exact JSON structure the server expects, then using http_fetch with method POST and a body parameter to send the JSON payload.
+Action: {"tool_name": "final_answer", "tool_input": "The flag is FLAG{json_api_master}, found by reading the client-side JavaScript to discover the correct combination and replaying the fetch POST request with a JSON body."}
 """
 )
 
@@ -208,10 +329,12 @@ def get_initial_message(
     parts.append("- As you explore, follow interesting links, inspect robots.txt, and check cookies when relevant.")
     parts.append("- Inspect client-side JavaScript when you suspect any client-side validation or password checks.")
     parts.append("- Use the 'ctf_knowledge_query' tool whenever you are uncertain which web exploitation technique to apply.")
+    parts.append("- Use 'attack_planner' to get a structured multi-step attack plan for complex challenges.")
     parts.append("- Avoid brute forcing credentials, passwords, or inputs. Instead, rely on logical reasoning and response analysis.")
     parts.append("- At every stage, think step-by-step using the ReAct pattern: Thought -> Action (tool call) -> Observation.")
     parts.append(f"- Whenever you see a string matching {flag_regex}, note it and verify its context.")
     parts.append("- When you are confident you have the correct flag, clearly print it in your final answer.")
+    parts.append("- If you get stuck, reflect on what you've tried and consider a completely different attack vector.")
     parts.append("")
     parts.append("Now begin your investigation using these tools and reasoning steps.")
 

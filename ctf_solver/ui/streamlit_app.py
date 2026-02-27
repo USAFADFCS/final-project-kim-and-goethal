@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from ctf_solver.config import (
     SolverConfig,
+    RAGMode,
     extract_candidate_flags,
     validate_flag_regex,
     COMMON_FLAG_PATTERNS,
@@ -50,6 +51,7 @@ _find_and_load_dotenv()
 from ctf_solver.agent import build_agent
 from ctf_solver.prompts import get_initial_message, DEFAULT_SYSTEM_PROMPT
 from ctf_solver.run_tracker import RunTracker
+from ctf_solver.failure_analyzer import run_failure_analysis_pipeline
 
 
 # Page configuration
@@ -95,6 +97,9 @@ def init_session_state():
         "run_history": [],
         "error_message": None,
         "run_stats": None,
+        # RAG study settings
+        "rag_mode": "original",
+        "auto_analyze_failures": False,
     }
 
     for key, value in defaults.items():
@@ -131,6 +136,8 @@ def validate_url(url: str) -> tuple[bool, str]:
 async def run_agent_async(config: SolverConfig) -> str:
     """Run the agent asynchronously with run statistics tracking."""
     tracker = RunTracker()
+    tracker.challenge_url = config.challenge_url or ""
+    tracker.challenge_description = config.challenge_description or ""
     agent = build_agent(config, log_callback=log_callback, tracker=tracker)
 
     initial_message = get_initial_message(
@@ -150,6 +157,39 @@ async def run_agent_async(config: SolverConfig) -> str:
     tracker.start()
     response = await agent.arun(initial_message)
     tracker.stop()
+
+    # Extract candidate flags from response and all tool output
+    all_text = response or ""
+    for entry in tracker.tool_call_log:
+        all_text += "\n" + entry.get("output", "")
+    candidate_flags = extract_candidate_flags(all_text, config.flag_regex)
+    tracker.candidate_flags_found = candidate_flags
+
+    # Determine success
+    tracker.run_succeeded = len(candidate_flags) > 0
+
+    # Run failure analysis if enabled
+    if config.auto_analyze_failures and not tracker.run_succeeded:
+        config_data = {
+            "challenge_url": config.challenge_url,
+            "challenge_description": config.challenge_description,
+        }
+        failure_doc_path = run_failure_analysis_pipeline(
+            config_data=config_data,
+            tracker_data=tracker.to_dict(),
+            tool_call_log=tracker.tool_call_log,
+            agent_response=response,
+            candidate_flags=candidate_flags,
+            failure_docs_dir=config.failure_docs_dir,
+            max_steps=config.max_steps,
+            actual_steps=tracker.steps,
+            flag_regex=config.flag_regex,
+        )
+        if failure_doc_path:
+            tracker.failure_doc_generated = True
+            log_callback(f"[Failure Analysis] Generated knowledge doc: {failure_doc_path}")
+        else:
+            log_callback("[Failure Analysis] No failure doc generated (run may have succeeded)")
 
     st.session_state.run_stats = tracker.to_dict()
 
@@ -196,7 +236,10 @@ def run_agent():
                 path = project_root / path
             kb_files.append(str(path))
 
-    # Build config
+    # Build config with RAG mode
+    rag_mode_str = st.session_state.get("rag_mode", "original")
+    auto_analyze = st.session_state.get("auto_analyze_failures", False)
+
     config = SolverConfig(
         platform_name=st.session_state.platform_name,
         agent_system_prompt=st.session_state.agent_prompt if st.session_state.agent_prompt != DEFAULT_SYSTEM_PROMPT else None,
@@ -207,6 +250,8 @@ def run_agent():
         docs_dirs=docs_dirs,
         kb_files=kb_files,
         max_steps=st.session_state.max_steps,
+        rag_mode=rag_mode_str,
+        auto_analyze_failures=auto_analyze,
     )
 
     try:
@@ -231,6 +276,8 @@ def run_agent():
             "answer": response,
             "flags": flags if response else [],
             "stats": st.session_state.run_stats,
+            "rag_mode": rag_mode_str,
+            "run_succeeded": len(flags) > 0 if response else False,
         })
 
     except Exception as e:
@@ -319,6 +366,52 @@ def render_sidebar():
 
     st.sidebar.markdown("---")
 
+    # RAG Study Mode
+    st.sidebar.header("RAG Study Mode")
+
+    rag_mode_options = {
+        "No RAG": "none",
+        "Original (docs only)": "original",
+        "Augmented (docs + failure knowledge)": "augmented",
+    }
+    rag_mode_labels = list(rag_mode_options.keys())
+    # Find current selection index
+    current_mode = st.session_state.get("rag_mode", "original")
+    current_idx = list(rag_mode_options.values()).index(current_mode) if current_mode in rag_mode_options.values() else 1
+
+    selected_label = st.sidebar.radio(
+        "RAG Mode",
+        options=rag_mode_labels,
+        index=current_idx,
+        help=(
+            "**No RAG**: Agent has no knowledge base.\n\n"
+            "**Original**: Agent uses the original docs/ knowledge base.\n\n"
+            "**Augmented**: Agent uses original docs + auto-generated failure knowledge."
+        ),
+    )
+    st.session_state.rag_mode = rag_mode_options[selected_label]
+
+    # Auto-analyze checkbox (only relevant for augmented mode)
+    if st.session_state.rag_mode == "augmented":
+        st.session_state.auto_analyze_failures = st.sidebar.checkbox(
+            "Auto-analyze failures",
+            value=st.session_state.get("auto_analyze_failures", False),
+            help="When enabled, failed runs are automatically analyzed and a knowledge document is generated.",
+        )
+
+        # Show count of existing failure docs
+        project_root = Path(st.session_state.get("project_root", get_project_root()))
+        failure_dir = project_root / "out" / "failure_knowledge"
+        if failure_dir.exists():
+            failure_doc_count = len(list(failure_dir.glob("failure_*.md")))
+            st.sidebar.caption(f"📄 Failure knowledge docs: {failure_doc_count}")
+        else:
+            st.sidebar.caption("📄 Failure knowledge docs: 0")
+    else:
+        st.session_state.auto_analyze_failures = False
+
+    st.sidebar.markdown("---")
+
     # API key status
     api_key = os.getenv("OPENAI_API_KEY", "")
     if api_key:
@@ -336,6 +429,22 @@ def _render_run_statistics():
         return
 
     st.markdown("### Run Statistics")
+
+    # RAG mode and outcome
+    rag_mode_display = stats.get("rag_mode", "unknown")
+    run_succeeded = stats.get("run_succeeded", False)
+    outcome_text = "Success" if run_succeeded else "Failed"
+    outcome_color = "green" if run_succeeded else "red"
+
+    rc1, rc2, rc3 = st.columns(3)
+    rc1.metric("RAG Mode", rag_mode_display.capitalize())
+    rc2.metric("Outcome", outcome_text)
+    if stats.get("failure_doc_generated"):
+        rc3.metric("Failure Doc", "Generated")
+    else:
+        rc3.metric("Failure Doc", "N/A")
+
+    st.markdown("---")
 
     # Top-level metrics in columns
     c1, c2, c3, c4 = st.columns(4)
@@ -515,11 +624,16 @@ def render_main_panel():
             st.markdown("### Run History")
             if st.session_state.run_history:
                 for i, run in enumerate(reversed(st.session_state.run_history), 1):
-                    with st.expander(f"Run {len(st.session_state.run_history) - i + 1} - {run['timestamp'][:19]}"):
+                    run_num = len(st.session_state.run_history) - i + 1
+                    rag_label = run.get("rag_mode", "?").capitalize()
+                    succeeded = run.get("run_succeeded", False)
+                    status_icon = "✅" if succeeded else "❌"
+                    with st.expander(f"Run {run_num} [{rag_label}] {status_icon} - {run['timestamp'][:19]}"):
                         if run["url"]:
                             st.markdown(f"**URL:** {run['url']}")
                         if run["description"]:
                             st.markdown(f"**Description:** {run['description'][:100]}...")
+                        st.markdown(f"**RAG Mode:** {rag_label} | **Outcome:** {'Success' if succeeded else 'Failed'}")
                         if run["flags"]:
                             st.markdown(f"**Flags Found:** {', '.join(run['flags'])}")
                         if run.get("stats"):

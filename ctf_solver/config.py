@@ -24,6 +24,14 @@ class LLMProviderType(str, Enum):
     HYBRID = "hybrid"
 
 
+class RAGMode(str, Enum):
+    """RAG modes for the academic study on failure-driven knowledge augmentation."""
+
+    NONE = "none"          # No knowledge base at all
+    ORIGINAL = "original"  # Only the original docs in docs/
+    AUGMENTED = "augmented"  # Original docs + auto-generated failure knowledge
+
+
 def _find_and_load_dotenv() -> None:
     """Find and load .env file from project root or current directory."""
     # Try multiple locations for .env
@@ -113,6 +121,11 @@ class SolverConfig:
     kb_files: List[str] = field(default_factory=list)
     vector_store_dir: str = "out/ctf_vector_store"
 
+    # RAG study configuration
+    rag_mode: Union[str, "RAGMode"] = RAGMode.ORIGINAL
+    failure_docs_dir: str = "out/failure_knowledge"
+    auto_analyze_failures: bool = False
+
     # API configuration
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
@@ -146,6 +159,13 @@ class SolverConfig:
             except ValueError:
                 # Keep as string if not a valid enum value
                 pass
+
+        # Normalize RAG mode to enum
+        if isinstance(self.rag_mode, str):
+            try:
+                self.rag_mode = RAGMode(self.rag_mode.lower())
+            except ValueError:
+                self.rag_mode = RAGMode.ORIGINAL
 
         # Load API keys from environment if not provided
         if not self.openai_api_key:
@@ -226,6 +246,10 @@ class SolverConfig:
             "llm_base_url": self.llm_base_url,
             "verbose": self.verbose,
             "vector_store_dir": self.vector_store_dir,
+            # RAG study configuration
+            "rag_mode": self.rag_mode,
+            "failure_docs_dir": self.failure_docs_dir,
+            "auto_analyze_failures": self.auto_analyze_failures,
             # Caching configuration
             "cache_enabled": self.cache_enabled,
             "cache_ttl": self.cache_ttl,

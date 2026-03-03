@@ -1,9 +1,9 @@
-# Consolidated Lessons: Client-Side (HTML/JS) Analysis (Thymeleaf)
+# Consolidated Lessons: Encoding / Obfuscation
 
-> **Auto-generated:** 2026-03-03 08:34:49 UTC
-> **Category:** Client-Side (HTML/JS) Analysis
+> **Auto-generated:** 2026-03-03 15:28:53 UTC
+> **Category:** Encoding / Obfuscation
 > **Type:** consolidated_lessons (2 docs — 2 success, 0 failure)
-> **Tags:** `consolidated, client_side_html_js_analysis, lessons, high-priority, wisdom`
+> **Tags:** `consolidated, encoding___obfuscation, lessons, high-priority, wisdom`
 
 > **Agent Note:** This consolidates patterns from multiple runs on this category.
 > Use the Quick Exploitation Path as your primary action guide.
@@ -18,12 +18,12 @@
 
 ## Best Exploitation Path (from most recent success)
 
-1. **`http_fetch`**: Fetch the target URL to map the application and identify input forms — use: `{"url":"http://verbal-sleep.picoctf.net:54516/","method":"GET"}`
+> **Note:** Replace `<TARGET_URL>` with the current challenge URL.
+
+1. **`http_fetch`**: Fetch the target URL to map the application and identify input forms — use: `{"url":"<TARGET_URL>/","method":"GET","max_body":4000}`
 2. **`javascript_source`**: Inspect JS for injection points, credentials, or API endpoints
 3. **`robots_txt`**: Check robots.txt for hidden paths
 4. **`encoding`**: Use `encoding` — use: `{"text":"cGljb0NURntjMDBrMWVfbTBuc3Rlcl9sMHZlc19jMDBraWVzX0M0MzBBRTIwfQ==","operation":"base64_decode"}`
-
-> **Next-step strategy:** Run `javascript_source` on every JS file linked from the page. Credentials and tokens are often hard-coded or in loca
 
 ## Key Takeaways (ranked by frequency across runs)
 
@@ -34,6 +34,6 @@
 
 These exact requests produced the flag:
 
-- `http_fetch` input: {"url":"http://verbal-sleep.picoctf.net:54516/","method":"GET"}
-- `http_fetch` input: {"url":"http://verbal-sleep.picoctf.net:54516/login.php","method":"GET"}
+- `http_fetch` input: {"url":"http://verbal-sleep.picoctf.net:50876/","method":"GET","max_body":4000}
+- `http_fetch` input: {"url":"http://verbal-sleep.picoctf.net:50876/login.php","method":"GET","max_body":4000}
 - `encoding` input: {"text":"cGljb0NURntjMDBrMWVfbTBuc3Rlcl9sMHZlc19jMDBraWVzX0M0MzBBRTIwfQ==","operation":"base64_decode"}

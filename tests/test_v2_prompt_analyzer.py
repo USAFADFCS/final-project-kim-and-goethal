@@ -9,11 +9,8 @@ Validates that:
 - _TOOL_TO_CATEGORY maps all new/renamed tools and does not contain stale names
 """
 
-import pytest
-
-from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT, DEFAULT_ROLE_DEFINITION
-from ctf_solver.failure_analyzer import _TOOL_TO_CATEGORY, _CATEGORY_LABELS
-
+from ctf_solver.failure_analyzer import _TOOL_TO_CATEGORY
+from ctf_solver.prompts.templates import DEFAULT_ROLE_DEFINITION, DEFAULT_SYSTEM_PROMPT
 
 # -----------------------------------------------------------------------
 # System prompt content tests
@@ -82,13 +79,20 @@ class TestFailureAnalyzerToolMappings:
         assert "timing_compare" in _TOOL_TO_CATEGORY
 
     def test_generic_tools_not_in_category_map(self):
-        """Generic tools should NOT be in _TOOL_TO_CATEGORY to avoid biasing inference."""
+        """Generic tools should NOT be in _TOOL_TO_CATEGORY to avoid biasing inference.
+        Note: 'encoding' is intentionally included (maps to encoding_obfuscation) because
+        it is the primary exploit vector for encoding/obfuscation challenges.
+        """
         generic_tools = ["http_fetch", "form_submit", "regex_search",
-                         "response_search", "encoding", "hash_identifier"]
+                         "response_search", "hash_identifier"]
         for tool in generic_tools:
             assert tool not in _TOOL_TO_CATEGORY, (
                 f"Generic tool '{tool}' should not be in _TOOL_TO_CATEGORY"
             )
+
+    def test_encoding_tool_mapped_to_encoding_obfuscation(self):
+        """encoding tool is the primary exploit vector for encoding challenges."""
+        assert _TOOL_TO_CATEGORY.get("encoding") == "encoding_obfuscation"
 
     def test_all_category_specific_tools_have_categories(self):
         """Every category-specific tool name must appear in _TOOL_TO_CATEGORY."""

@@ -21,6 +21,7 @@ from ctf_solver.config import (
     SolverConfig,
     extract_candidate_flags,
 )
+from ctf_solver.consolidate_knowledge import consolidate_lessons_knowledge
 from ctf_solver.failure_analyzer import (
     _detect_partial_successes,
     find_and_compress_prior_lesson,
@@ -182,6 +183,18 @@ Examples:
         ),
     )
 
+    # LLM-enhanced lessons generation
+    parser.add_argument(
+        "--llm-lessons",
+        action="store_true",
+        help="Enrich lesson docs with gpt-4o-mini causal explanations (uses OPENAI_API_KEY)",
+    )
+    parser.add_argument(
+        "--lessons-model",
+        default="gpt-4o-mini",
+        help="Model to use for lesson generation (default: gpt-4o-mini)",
+    )
+
     # Legacy compatibility (deprecated)
     parser.add_argument(
         "--base-url",
@@ -282,6 +295,8 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         max_steps=args.max_steps if args.max_steps != 20 else None,
         verbose=args.verbose if args.verbose else None,
         rag_mode=args.rag_mode if args.rag_mode else None,
+        use_llm_for_lessons=True if args.llm_lessons else None,
+        lessons_llm_model=args.lessons_model if args.lessons_model != "gpt-4o-mini" else None,
     )
 
 
@@ -421,9 +436,16 @@ async def run_agent(config: SolverConfig) -> str:
                 actual_steps=tracker.steps,
                 flag_regex=config.flag_regex,
                 site_fingerprint=tracker.site_fingerprint,
+                use_llm=config.use_llm_for_lessons,
+                openai_api_key=config.openai_api_key or "",
+                lessons_llm_model=config.lessons_llm_model,
             )
             if written_paths:
                 print(f"[Lessons DB] {len(written_paths)} rule doc(s) saved.")
+                # Consolidate lessons by category (fires when ≥2 docs per category)
+                consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
+                if consolidated:
+                    print(f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated.")
                 # Rebuild index so new docs are queryable in the same session
                 active_tool = get_active_knowledge_tool()
                 if active_tool is not None:

@@ -156,6 +156,10 @@ class SolverConfig:
     lessons_docs_dir: str = "out/lessons_knowledge"
     auto_analyze_failures: bool = False
 
+    # LLM-enhanced lessons generation (opt-in; uses openai_api_key)
+    use_llm_for_lessons: bool = False
+    lessons_llm_model: str = "gpt-4o-mini"
+
     # API configuration
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
@@ -256,6 +260,10 @@ class SolverConfig:
             # Deduplication
             deduplication_enabled=os.getenv("CTF_DEDUP_ENABLED", "true").lower()
             in ("true", "1", "yes"),
+            # LLM-enhanced lessons
+            use_llm_for_lessons=os.getenv("CTF_LLM_LESSONS", "").lower()
+            in ("true", "1", "yes"),
+            lessons_llm_model=os.getenv("CTF_LESSONS_MODEL", "gpt-4o-mini"),
         )
 
     def merge_with_args(self, **kwargs) -> "SolverConfig":
@@ -288,6 +296,9 @@ class SolverConfig:
             "failure_docs_dir": self.failure_docs_dir,
             "lessons_docs_dir": self.lessons_docs_dir,
             "auto_analyze_failures": self.auto_analyze_failures,
+            # LLM-enhanced lessons
+            "use_llm_for_lessons": self.use_llm_for_lessons,
+            "lessons_llm_model": self.lessons_llm_model,
             # Caching configuration
             "cache_enabled": self.cache_enabled,
             "cache_ttl": self.cache_ttl,

@@ -52,6 +52,7 @@ from ctf_solver.config import (
 _find_and_load_dotenv()
 from ctf_solver.agent import build_agent
 from ctf_solver.config import RAG_EXPERIENCE_MODES, RAG_WRITE_MODES
+from ctf_solver.consolidate_knowledge import consolidate_lessons_knowledge
 from ctf_solver.failure_analyzer import (
     _detect_partial_successes,
     find_and_compress_prior_lesson,
@@ -110,6 +111,7 @@ def init_session_state():
         # RAG study settings
         "rag_mode": "original",
         "auto_analyze_failures": False,
+        "use_llm_for_lessons": False,
         # Challenge name for contamination filtering and lessons-learned doc naming
         "challenge_name": "",
         # Source code files (filename → content)
@@ -225,10 +227,16 @@ async def run_agent_async(config: SolverConfig) -> str:
                 actual_steps=tracker.steps,
                 flag_regex=config.flag_regex,
                 site_fingerprint=tracker.site_fingerprint,
+                use_llm=config.use_llm_for_lessons,
+                openai_api_key=config.openai_api_key or "",
+                lessons_llm_model=config.lessons_llm_model,
             )
             if written:
                 tracker.failure_doc_generated = True
                 log_callback(f"[Lessons DB] {len(written)} rule doc(s) saved.")
+                consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
+                if consolidated:
+                    log_callback(f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated.")
                 active_tool = get_active_knowledge_tool()
                 if active_tool is not None:
                     active_tool.refresh_index()
@@ -318,6 +326,7 @@ def run_agent():
     # Build config with RAG mode
     rag_mode_str = st.session_state.get("rag_mode", "original")
     auto_analyze = st.session_state.get("auto_analyze_failures", False)
+    use_llm_lessons = st.session_state.get("use_llm_for_lessons", False)
 
     config = SolverConfig(
         platform_name=st.session_state.platform_name,
@@ -338,6 +347,7 @@ def run_agent():
         model_name=st.session_state.model_name,
         rag_mode=rag_mode_str,
         auto_analyze_failures=auto_analyze,
+        use_llm_for_lessons=use_llm_lessons,
     )
 
     try:
@@ -512,6 +522,19 @@ def render_sidebar():
     st.session_state.auto_analyze_failures = st.session_state.rag_mode in (
         "lessons_write", "lessons_buildonly"
     )
+
+    # LLM-enhanced lesson generation (only meaningful in write modes)
+    if st.session_state.rag_mode in ("lessons_write", "lessons_buildonly"):
+        st.session_state.use_llm_for_lessons = st.sidebar.checkbox(
+            "Enrich lessons with gpt-4o-mini",
+            value=st.session_state.get("use_llm_for_lessons", False),
+            help=(
+                "After each run, call gpt-4o-mini to write richer causal explanations "
+                "and reflexion summaries (~$0.0003/run). Uses your OPENAI_API_KEY."
+            ),
+        )
+    else:
+        st.session_state.use_llm_for_lessons = False
 
     # Show lessons database stats for modes that use it (read or write)
     if st.session_state.rag_mode in ("lessons_write", "lessons_buildonly", "lessons_readonly"):

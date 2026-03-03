@@ -310,7 +310,7 @@ def initialize_knowledge_base(
         try:
             vector_store.load()
             log(f"Loaded existing FAISS index from {index_dir}")
-        except Exception as e:
+        except Exception:
             log(f"Creating new FAISS index at {index_dir}")
     except Exception as e:
         logger.error("Failed to initialize FaissVectorStore: %s", e, exc_info=True)
@@ -398,14 +398,18 @@ class SafeKnowledgeQueryTool:
     """
     A crash-safe wrapper around KnowledgeBaseQueryTool.
 
-    This wrapper catches exceptions during retrieval to prevent segmentation
-    faults or crashes from bringing down the entire application.
-
     Enhanced with:
     - Query expansion for improved recall
     - Hybrid search (BM25 + vector) for better coverage
     - Reranking for improved precision
-    - Increased retrieval to top-5
+    - Content-fingerprint contamination filter (v2.4): excludes docs whose
+      stored site fingerprint (title/h1/form) matches the current run's
+      fingerprint — robust to URL changes and similar challenges at different
+      paths.  URL-based filtering was removed because it was fragile.
+    - Seen-doc exclusion per run: prevents the same doc from appearing in
+      every query response within a single run (VOYAGER, Wang et al. 2023)
+    - rag_queries_made counter incremented on every use() call
+    - Mid-session index refresh via refresh_index()
     """
 
     def __init__(
@@ -416,12 +420,21 @@ class SafeKnowledgeQueryTool:
         use_hybrid_search: bool = True,
         use_reranking: bool = True,
         top_k: int = 5,
+        rag_config: Optional["SolverConfig"] = None,
     ):
         self._retriever = retriever
         self._use_query_expansion = use_query_expansion
         self._use_hybrid_search = use_hybrid_search
         self._use_reranking = use_reranking
         self._top_k = top_k
+        self._rag_config = rag_config  # Stored so refresh_index() can rebuild
+
+        # Tracker reference for fingerprint access + rag_queries_made tracking
+        # (TYPE_CHECKING import avoided; we access attributes by name at runtime)
+        self._tracker: Optional[Any] = None
+
+        # Seen-doc exclusion (reset via reset_session)
+        self._seen_source_files: set = set()
 
         self.name = "ctf_knowledge_query"
         self.description = (
@@ -435,14 +448,87 @@ class SafeKnowledgeQueryTool:
             "Use this tool when you need guidance on exploitation techniques."
         )
 
+    def set_challenge_context(
+        self,
+        challenge_name: Optional[str] = None,
+        tracker: Optional[Any] = None,
+    ) -> None:
+        """Store tracker reference for fingerprint-based contamination filtering.
+
+        The site fingerprint (page title/h1/form action extracted by RunTracker
+        from the first http_fetch output) is used at query time to exclude docs
+        that describe the same website — avoiding contamination from the agent's
+        own prior runs on the same challenge.
+
+        challenge_name is kept for Reflexion slug lookup only (not filtering).
+        """
+        self._tracker = tracker
+
+    def reset_session(self) -> None:
+        """Reset the seen-doc set. Call at the start of each agent run."""
+        self._seen_source_files = set()
+
+    def _is_excluded(self, doc_content: str) -> bool:
+        """Return True if doc_content belongs to the current challenge.
+
+        Compares the stored site fingerprint in the doc (written by
+        generate_atomic_rule_doc) against the current run's fingerprint
+        (lazily populated by RunTracker from the first http_fetch output).
+
+        Returns False if either fingerprint is empty — never over-filters.
+        """
+        if not self._tracker:
+            return False
+        current_fp: str = getattr(self._tracker, "site_fingerprint", "")
+        if not current_fp:
+            return False
+        fp_match = re.search(r"\*\*Site fingerprint:\*\*\s*(.+)", doc_content)
+        if not fp_match:
+            return False
+        doc_fp = fp_match.group(1).strip()
+        if not doc_fp:
+            return False
+        # Jaccard similarity on word tokens
+        wa = set(re.findall(r"\w+", current_fp.lower()))
+        wb = set(re.findall(r"\w+", doc_fp.lower()))
+        if not wa or not wb:
+            return False
+        overlap = len(wa & wb) / len(wa | wb)
+        return overlap >= 0.60
+
+    def refresh_index(self) -> None:
+        """Rebuild the retriever from the stored rag_config.
+
+        Call this after run_lessons_learned_pipeline() writes new docs so the
+        new atomic rules become queryable in the same session without restarting.
+        """
+        if self._rag_config is None:
+            logger.warning("[RAG] refresh_index called but no rag_config stored; skipping.")
+            return
+        try:
+            clear_cache()
+            new_retriever = initialize_knowledge_base(self._rag_config)
+            if new_retriever is not None:
+                self._retriever = new_retriever
+                logger.info("[RAG] Index rebuilt — new lessons docs are now queryable.")
+        except Exception as exc:
+            logger.error("[RAG] refresh_index failed: %s", exc, exc_info=True)
+
     def use(self, query: str) -> str:
         """Execute a knowledge base query with crash protection.
 
         This is the primary method called by FAIR's LoggingToolWrapper.
 
-        Uses query expansion, hybrid search, and reranking when available
-        for improved retrieval quality.
+        Uses query expansion, hybrid search, reranking, fingerprint-based
+        contamination filtering, and seen-doc exclusion for improved retrieval.
         """
+        # Increment rag_queries_made metric
+        if self._tracker is not None:
+            try:
+                self._tracker.rag_queries_made += 1
+            except AttributeError:
+                pass
+
         try:
             expanded_query = query
 
@@ -451,30 +537,70 @@ class SafeKnowledgeQueryTool:
                 expanded_query = _cached_query_expander.expand_query(query)
                 logger.debug(f"Expanded query: {expanded_query}")
 
-            # Step 2: Retrieve results (hybrid or vector-only)
+            # Step 2: Retrieve results (hybrid or vector-only) — over-retrieve
+            # to account for filtering losses in steps 3–4
+            over_k = self._top_k * 3
             if self._use_hybrid_search and _cached_hybrid_searcher is not None:
                 hybrid_results = _cached_hybrid_searcher.search(
-                    expanded_query, top_k=self._top_k * 2  # Over-retrieve for reranking
+                    expanded_query, top_k=over_k
                 )
                 results = [hr.document for hr in hybrid_results]
             else:
-                results = self._retriever.retrieve(
-                    expanded_query, top_k=self._top_k * 2
-                )
+                results = self._retriever.retrieve(expanded_query, top_k=over_k)
 
             if not results:
                 return "No relevant information found in the knowledge base."
 
-            # Step 3: Rerank results
+            # Step 3: Apply fingerprint-based contamination filter and seen-doc exclusion
+            filtered: list = []
+            for doc in results:
+                content = getattr(doc, "page_content", str(doc))
+                metadata = getattr(doc, "metadata", {})
+                sf = metadata.get("source_file", "")
+                if self._is_excluded(content):
+                    logger.debug(f"[RAG] Excluded same-challenge doc (fingerprint match): {sf}")
+                    continue
+                if sf in self._seen_source_files:
+                    logger.debug(f"[RAG] Excluded already-seen doc: {sf}")
+                    continue
+                filtered.append(doc)
+
+            if not filtered:
+                return "No relevant information found in the knowledge base (all results filtered)."
+
+            # Step 4: Rerank filtered results
             if self._use_reranking and _cached_reranker is not None:
                 scored_results = _cached_reranker.rerank(
                     query,  # Use original query for reranking
-                    results,
+                    filtered,
                     top_k=self._top_k,
                 )
                 results = [sr.document for sr in scored_results]
             else:
-                results = results[:self._top_k]
+                results = filtered[: self._top_k]
+
+            # Step 5: Apply doc_type boosting — prefer consolidated_wisdom > success > failure
+            _DOC_TYPE_BOOST = {
+                "consolidated": 1.15,
+                "experience_success": 1.10,
+                "experience_failure": 1.0,
+                "curated": 1.0,
+            }
+
+            def _boost_key(d: object) -> float:
+                dt = getattr(d, "metadata", {}).get("doc_type", "")
+                for k, boost in _DOC_TYPE_BOOST.items():
+                    if k in dt:
+                        return -boost  # negative for sort ascending
+                return -1.0
+
+            results.sort(key=_boost_key)
+
+            # Step 6: Record seen docs to prevent repetition within this run
+            for doc in results:
+                sf = getattr(doc, "metadata", {}).get("source_file", "")
+                if sf:
+                    self._seen_source_files.add(sf)
 
             # Format results with metadata
             formatted = []
@@ -513,6 +639,24 @@ class SafeKnowledgeQueryTool:
         return self.use(query)
 
 
+# ---------------------------------------------------------------------------
+# Module-level active-tool registry (for mid-session refresh)
+# ---------------------------------------------------------------------------
+
+_active_tool: Optional[SafeKnowledgeQueryTool] = None
+
+
+def get_active_knowledge_tool() -> Optional[SafeKnowledgeQueryTool]:
+    """Return the currently registered SafeKnowledgeQueryTool, or None."""
+    return _active_tool
+
+
+def set_active_knowledge_tool(tool: SafeKnowledgeQueryTool) -> None:
+    """Register the active SafeKnowledgeQueryTool for post-run index refresh."""
+    global _active_tool
+    _active_tool = tool
+
+
 def build_knowledge_tool(
     retriever: Optional[SimpleRetriever],
     platform_name: str = "Generic CTF",
@@ -520,6 +664,7 @@ def build_knowledge_tool(
     use_hybrid_search: bool = True,
     use_reranking: bool = True,
     top_k: int = 5,
+    rag_config: Optional["SolverConfig"] = None,
 ) -> Optional[SafeKnowledgeQueryTool]:
     """
     Create a crash-safe CTF knowledge query tool.
@@ -534,6 +679,7 @@ def build_knowledge_tool(
         use_hybrid_search: Enable BM25 + vector hybrid search
         use_reranking: Enable result reranking for better precision
         top_k: Number of results to return
+        rag_config: SolverConfig used to build this retriever (for refresh_index)
 
     Returns:
         SafeKnowledgeQueryTool instance or None if retriever is None
@@ -551,6 +697,7 @@ def build_knowledge_tool(
         use_hybrid_search=use_hybrid_search,
         use_reranking=use_reranking,
         top_k=top_k,
+        rag_config=rag_config,
     )
 
 

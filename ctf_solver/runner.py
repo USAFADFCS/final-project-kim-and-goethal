@@ -12,19 +12,25 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from ctf_solver.config import (
-    SolverConfig,
-    RAGMode,
-    extract_candidate_flags,
-    COMMON_FLAG_PATTERNS,
-)
 from ctf_solver.agent import build_agent
-from ctf_solver.prompts import get_initial_message
+from ctf_solver.config import (
+    COMMON_FLAG_PATTERNS,
+    RAG_EXPERIENCE_MODES,
+    RAG_WRITE_MODES,
+    RAGMode,
+    SolverConfig,
+    extract_candidate_flags,
+)
 from ctf_solver.failure_analyzer import (
-    find_prior_failure_doc,
+    _detect_partial_successes,
+    find_and_compress_prior_lesson,
     run_failure_analysis_pipeline,
+    run_lessons_learned_pipeline,
     run_success_knowledge_pipeline,
 )
+from ctf_solver.prompts import get_initial_message
+from ctf_solver.rag import get_active_knowledge_tool
+from ctf_solver.run_tracker import RunTracker
 
 logger = logging.getLogger(__name__)
 
@@ -123,17 +129,35 @@ Examples:
         help="Specific file to include in knowledge base (can be repeated)",
     )
 
+    # Challenge name
+    parser.add_argument(
+        "--challenge-name",
+        required=False,
+        metavar="NAME",
+        help=(
+            "Human-readable name for the challenge (e.g. 'Great Paywall'). "
+            "Used for naming lessons-learned docs and filtering same-challenge "
+            "docs from RAG retrieval to prevent contamination."
+        ),
+    )
+
     # RAG mode
     parser.add_argument(
         "--rag-mode",
-        choices=["none", "original", "augmented_readonly", "augmented"],
+        choices=[
+            "none", "original",
+            "augmented_readonly", "augmented",                  # legacy names
+            "lessons_readonly", "lessons_write", "lessons_buildonly",  # new names
+        ],
         default=None,
         help=(
             "Knowledge base mode. "
             "'none': disabled. "
             "'original': curated docs only. "
-            "'augmented_readonly': docs + read experience DB. "
-            "'augmented': docs + read/write experience DB (saves failure/success docs)."
+            "'lessons_readonly': curated docs + read lessons DB (never writes). "
+            "'lessons_write': curated docs + read/write lessons DB (saves atomic rules after every run). "
+            "'lessons_buildonly': curated docs only during run; saves atomic rules after every run (no RAG reads from lessons DB). "
+            "'augmented'/'augmented_readonly': legacy aliases for lessons_write/lessons_readonly."
         ),
     )
 
@@ -237,6 +261,9 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
     # Load source files if provided
     source_files = _load_source_files(args.source_files) if args.source_files else None
 
+    # Derive challenge name from args or URL if not provided
+    challenge_name = getattr(args, "challenge_name", None)
+
     # Merge with command-line arguments
     return config.merge_with_args(
         platform_name=(
@@ -248,6 +275,7 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         challenge_url=challenge_url,
         challenge_description=description,
         challenge_hints=args.hints,
+        challenge_name=challenge_name,
         source_files=source_files,
         docs_dirs=args.docs_dirs if args.docs_dirs else None,
         kb_files=args.kb_files if args.kb_files else None,
@@ -285,9 +313,13 @@ async def run_agent(config: SolverConfig) -> str:
         print(f"Description: {config.challenge_description[:100]}...")
     print("=" * 60 + "\n")
 
-    # Build the agent
+    # Build the agent — create tracker externally so we can pass real data to
+    # run_lessons_learned_pipeline after the run (fixes the empty-tracker bug).
     logger.info("Building CTF solver agent...")
-    agent = build_agent(config)
+    tracker = RunTracker()
+    tracker.challenge_url = config.challenge_url or ""
+    tracker.challenge_description = config.challenge_description or ""
+    agent = build_agent(config, tracker=tracker)
     logger.info("Agent built successfully.")
 
     # Generate initial message
@@ -302,22 +334,25 @@ async def run_agent(config: SolverConfig) -> str:
         source_files=config.source_files or None,
     )
 
-    # Reflexion injection: if a prior failure doc exists for this URL, prepend it
-    # so the agent avoids repeating the same mistakes (Shinn et al. 2023).
-    if (
-        config.rag_mode in (RAGMode.AUGMENTED, RAGMode.AUGMENTED_READONLY)
-        and config.challenge_url
-    ):
-        prior_failure = find_prior_failure_doc(
-            config.challenge_url, config.failure_docs_dir
+    # Reflexion injection: if a prior lesson exists for this challenge (matched
+    # by challenge_name only — URL matching was removed as fragile), inject a
+    # compressed verbal reflection so the agent avoids repeating past mistakes.
+    # (Shinn et al. NeurIPS 2023; Wang et al. LONGMEM 2024)
+    if config.rag_mode in RAG_EXPERIENCE_MODES and config.challenge_name:
+        prior_reflection = find_and_compress_prior_lesson(
+            challenge_name=config.challenge_name,
+            challenge_url=config.challenge_url,
+            lessons_docs_dir=config.lessons_docs_dir,
+            fallback_failure_docs_dir=config.failure_docs_dir,
         )
-        if prior_failure:
-            print("[Reflexion] Prior failure analysis found — injecting into context.")
+        if prior_reflection:
+            print("[Reflexion] Prior lesson found — injecting compressed reflection.")
+            tracker.prior_reflection_injected = True
             initial_message += (
                 "\n\n## Prior Attempt Analysis\n"
-                "> A previous run on this challenge URL failed. "
-                "Carefully review the analysis below and **avoid repeating these mistakes**.\n\n"
-                + prior_failure
+                "> A previous run on this challenge was analyzed. "
+                "Use the lesson below to avoid repeating past mistakes.\n\n"
+                + prior_reflection
             )
 
     print("\n=== Agent Input ===")
@@ -325,56 +360,103 @@ async def run_agent(config: SolverConfig) -> str:
     print("=" * 40 + "\n")
 
     # Run the agent
+    tracker.start()
     try:
         response = await agent.arun(initial_message)
     except Exception as exc:
         logger.exception("Error while running agent:")
         print(f"\n[ERROR] Agent encountered an error: {exc}")
         return f"Error: {exc}"
+    finally:
+        tracker.stop()
 
     # Extract and log potential flags
     candidate_flags: List[str] = []
     if isinstance(response, str):
         candidate_flags = extract_candidate_flags(response, config.flag_regex)
+        # Also scan all tool outputs
+        for entry in tracker.tool_call_log:
+            candidate_flags.extend(
+                extract_candidate_flags(entry.get("output", ""), config.flag_regex)
+            )
+        candidate_flags = list(dict.fromkeys(candidate_flags))  # deduplicate
         for flag in candidate_flags:
             print(f"\n[FLAG DETECTED] {flag}")
+
+    tracker.candidate_flags_found = candidate_flags
+    tracker.run_succeeded = bool(candidate_flags)
+
+    # Set 3-way outcome metric
+    if candidate_flags:
+        tracker.outcome = "success"
+    elif _detect_partial_successes(tracker.tool_call_log):
+        tracker.outcome = "partial"
+    else:
+        tracker.outcome = "failure"
 
     print("\n=== Agent Final Answer ===")
     print(response)
     print("=" * 40 + "\n")
 
-    # Write experience-database docs when mode is AUGMENTED
-    if config.rag_mode == RAGMode.AUGMENTED:
+    # Write experience-database docs after every run in WRITE modes.
+    # LESSONS_WRITE uses the new unified lessons-learned pipeline (atomic rules).
+    # AUGMENTED uses the legacy failure/success pipeline for backward compat.
+    if config.rag_mode in RAG_WRITE_MODES:
         experience_data = {
             "challenge_url": config.challenge_url or "",
             "challenge_description": config.challenge_description or "",
+            "challenge_name": config.challenge_name or "",
         }
-        run_succeeded = bool(candidate_flags)
-        if not run_succeeded:
-            doc_path = run_failure_analysis_pipeline(
+
+        if config.rag_mode in (RAGMode.LESSONS_WRITE, RAGMode.LESSONS_BUILDONLY):
+            # New unified pipeline: always runs, produces atomic rule docs
+            written_paths = run_lessons_learned_pipeline(
                 config_data=experience_data,
-                tracker_data={"steps": 0, "tool_calls": {}, "duration_seconds": 0.0},
-                tool_call_log=[],
+                tracker_data=tracker.to_dict(),
+                tool_call_log=tracker.tool_call_log,
                 agent_response=response,
                 candidate_flags=candidate_flags,
-                failure_docs_dir=config.failure_docs_dir,
+                lessons_docs_dir=config.lessons_docs_dir,
                 max_steps=config.max_steps,
-                actual_steps=config.max_steps,
+                actual_steps=tracker.steps,
                 flag_regex=config.flag_regex,
+                site_fingerprint=tracker.site_fingerprint,
             )
-            if doc_path:
-                print(f"[Experience DB] Failure doc saved: {doc_path}")
+            if written_paths:
+                print(f"[Lessons DB] {len(written_paths)} rule doc(s) saved.")
+                # Rebuild index so new docs are queryable in the same session
+                active_tool = get_active_knowledge_tool()
+                if active_tool is not None:
+                    active_tool.refresh_index()
+            else:
+                print("[Lessons DB] No new rule docs (duplicate run or confidence bumped).")
         else:
-            doc_path = run_success_knowledge_pipeline(
-                config_data=experience_data,
-                tracker_data={"steps": 0, "tool_calls": {}, "duration_seconds": 0.0},
-                tool_call_log=[],
-                agent_response=response,
-                candidate_flags=candidate_flags,
-                failure_docs_dir=config.failure_docs_dir,
-            )
-            if doc_path:
-                print(f"[Experience DB] Success doc saved: {doc_path}")
+            # Legacy AUGMENTED mode: separate failure/success pipeline
+            if not candidate_flags:
+                doc_path = run_failure_analysis_pipeline(
+                    config_data=experience_data,
+                    tracker_data=tracker.to_dict(),
+                    tool_call_log=tracker.tool_call_log,
+                    agent_response=response,
+                    candidate_flags=candidate_flags,
+                    failure_docs_dir=config.failure_docs_dir,
+                    max_steps=config.max_steps,
+                    actual_steps=tracker.steps,
+                    flag_regex=config.flag_regex,
+                )
+                if doc_path:
+                    print(f"[Experience DB] Failure doc saved: {doc_path}")
+            else:
+                doc_path = run_success_knowledge_pipeline(
+                    config_data=experience_data,
+                    tracker_data=tracker.to_dict(),
+                    tool_call_log=tracker.tool_call_log,
+                    agent_response=response,
+                    candidate_flags=candidate_flags,
+                    failure_docs_dir=config.failure_docs_dir,
+                )
+                if doc_path:
+                    print(f"[Experience DB] Success doc saved: {doc_path}")
 
     return response
 

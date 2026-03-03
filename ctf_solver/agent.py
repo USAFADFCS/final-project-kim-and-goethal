@@ -29,7 +29,7 @@ from fairlib import (
 from fairlib.core.message import FinalAnswer, Message
 from fairlib.modules.planning.react_planner import SimpleReActPlanner
 
-from ctf_solver.config import SolverConfig, RAGMode
+from ctf_solver.config import SolverConfig, RAGMode, RAG_EXPERIENCE_MODES
 from ctf_solver.tools import (
     HttpFetchTool,
     FormSubmitTool,
@@ -106,7 +106,12 @@ from ctf_solver.tools import (
     WebSocketProbeTool,
     WasmAnalyzerTool,
 )
-from ctf_solver.rag import initialize_knowledge_base, build_knowledge_tool, clear_cache
+from ctf_solver.rag import (
+    initialize_knowledge_base,
+    build_knowledge_tool,
+    clear_cache,
+    set_active_knowledge_tool,
+)
 from ctf_solver.prompts import (
     get_role_definition,
     ROBOTS_EXAMPLE,
@@ -362,7 +367,7 @@ class CTFAgent(SimpleAgent):
     def _get_tools_used(self) -> List[str]:
         """Return the list of tool names used so far from the tracker."""
         if self._tracker and hasattr(self._tracker, "tool_call_log"):
-            return [entry.get("tool_name", "") for entry in self._tracker.tool_call_log]
+            return [entry.get("tool", "") for entry in self._tracker.tool_call_log]
         return []
 
     def _only_recon_so_far(self) -> bool:
@@ -654,20 +659,34 @@ def _build_rag_config(config: SolverConfig, mode: RAGMode) -> SolverConfig:
     Create a modified config for RAG initialization based on the selected mode.
 
     - ORIGINAL: uses config.docs_dirs and config.vector_store_dir (default behavior)
-    - AUGMENTED: adds failure_docs_dir to docs_dirs and uses a separate vector store
-    - AUGMENTED_READONLY: same index as AUGMENTED (reads experience DB) but never writes
+    - LESSONS_WRITE / LESSONS_READONLY: adds lessons_docs_dir to docs_dirs; uses
+      a separate vector store to avoid cross-contamination with the original index
+    - AUGMENTED / AUGMENTED_READONLY (legacy): adds failure_docs_dir to docs_dirs;
+      same separate vector store behavior for backward compat with existing docs
     """
     if mode == RAGMode.ORIGINAL:
         return config
 
-    # AUGMENTED / AUGMENTED_READONLY: include experience knowledge docs
-    augmented_docs_dirs = list(config.docs_dirs)
-    failure_dir = config.failure_docs_dir
-    if failure_dir not in augmented_docs_dirs:
-        augmented_docs_dirs.append(failure_dir)
+    if mode not in RAG_EXPERIENCE_MODES:
+        return config
 
-    # Use a separate vector store to avoid cross-contamination with original
+    augmented_docs_dirs = list(config.docs_dirs)
     augmented_vector_store = config.vector_store_dir + "_augmented"
+
+    if mode in (RAGMode.LESSONS_WRITE, RAGMode.LESSONS_READONLY):
+        # New lessons-learned pipeline: read from lessons_docs_dir
+        lessons_dir = config.lessons_docs_dir
+        if lessons_dir not in augmented_docs_dirs:
+            augmented_docs_dirs.append(lessons_dir)
+        # Also include legacy failure docs for backward compat (agent can learn from both)
+        failure_dir = config.failure_docs_dir
+        if failure_dir not in augmented_docs_dirs:
+            augmented_docs_dirs.append(failure_dir)
+    else:
+        # Legacy AUGMENTED / AUGMENTED_READONLY: read from failure_docs_dir only
+        failure_dir = config.failure_docs_dir
+        if failure_dir not in augmented_docs_dirs:
+            augmented_docs_dirs.append(failure_dir)
 
     return config.merge_with_args(
         docs_dirs=augmented_docs_dirs,
@@ -1002,9 +1021,24 @@ def build_agent(
         # Clear cache to ensure mode switch takes effect
         clear_cache()
         rag_retriever = initialize_knowledge_base(rag_config, log_callback=log_fn)
-        ctf_knowledge_tool = build_knowledge_tool(rag_retriever, config.platform_name)
+        ctf_knowledge_tool = build_knowledge_tool(
+            rag_retriever,
+            config.platform_name,
+            rag_config=rag_config,
+        )
 
         if ctf_knowledge_tool is not None:
+            # Wire the tracker for fingerprint-based contamination filtering (v2.4)
+            # and rag_queries_made tracking.  challenge_name kept for Reflexion
+            # slug lookup but filtering is now content-based, not URL-based.
+            ctf_knowledge_tool.set_challenge_context(
+                challenge_name=getattr(config, "challenge_name", None),
+                tracker=tracker,
+            )
+            ctf_knowledge_tool.reset_session()
+            # Register as active tool so post-run refresh_index() can find it
+            set_active_knowledge_tool(ctf_knowledge_tool)
+
             wrapped_rag = LoggingToolWrapper(
                 ctf_knowledge_tool,
                 flag_regex=config.flag_regex,

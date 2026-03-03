@@ -25,16 +25,32 @@ class LLMProviderType(str, Enum):
 
 
 class RAGMode(str, Enum):
-    """RAG modes for the academic study on failure-driven knowledge augmentation."""
+    """RAG modes for the academic study on lessons-learned knowledge augmentation."""
 
     NONE = "none"  # No knowledge base at all
     ORIGINAL = "original"  # Only the original docs in docs/
-    AUGMENTED = (
-        "augmented"  # Original docs + experience DB; writes new docs on each run
-    )
-    AUGMENTED_READONLY = (
-        "augmented_readonly"  # Original docs + experience DB; never writes
-    )
+    # Legacy names kept for backward compat with existing failure/success docs
+    AUGMENTED = "augmented"  # Legacy alias for LESSONS_WRITE
+    AUGMENTED_READONLY = "augmented_readonly"  # Legacy alias for LESSONS_READONLY
+    # New unified lessons-learned modes
+    LESSONS_WRITE = "lessons_write"  # Curated docs + experience DB; writes atomic rules after every run
+    LESSONS_READONLY = "lessons_readonly"  # Curated docs + experience DB; reads only, never writes
+    LESSONS_BUILDONLY = "lessons_buildonly"  # Curated docs only during run; writes atomic rules after every run
+
+
+# ---------------------------------------------------------------------------
+# Convenience sets for mode-checking throughout the codebase
+# ---------------------------------------------------------------------------
+
+#: Modes that write new experience docs after every run.
+RAG_WRITE_MODES: frozenset = frozenset(
+    {RAGMode.AUGMENTED, RAGMode.LESSONS_WRITE, RAGMode.LESSONS_BUILDONLY}
+)
+
+#: Modes that read from the experience database.
+RAG_EXPERIENCE_MODES: frozenset = frozenset(
+    {RAGMode.AUGMENTED, RAGMode.AUGMENTED_READONLY, RAGMode.LESSONS_WRITE, RAGMode.LESSONS_READONLY}
+)
 
 
 def _find_and_load_dotenv() -> None:
@@ -120,6 +136,10 @@ class SolverConfig:
     challenge_url: Optional[str] = None
     challenge_description: Optional[str] = None
     challenge_hints: Optional[str] = None
+    # Human-readable challenge name (e.g. "Great Paywall"). Used for:
+    # - Naming lessons-learned docs (slug form)
+    # - Contamination filtering: excludes same-challenge docs from RAG retrieval
+    challenge_name: Optional[str] = None
     # Source files provided by the challenge (filename → content).
     # When non-empty, the agent receives the source code at the start of the run
     # so it can identify the vulnerability before making live HTTP requests.
@@ -133,6 +153,7 @@ class SolverConfig:
     # RAG study configuration
     rag_mode: Union[str, "RAGMode"] = RAGMode.ORIGINAL
     failure_docs_dir: str = "out/failure_knowledge"
+    lessons_docs_dir: str = "out/lessons_knowledge"
     auto_analyze_failures: bool = False
 
     # API configuration
@@ -250,6 +271,7 @@ class SolverConfig:
             "challenge_url": self.challenge_url,
             "challenge_description": self.challenge_description,
             "challenge_hints": self.challenge_hints,
+            "challenge_name": self.challenge_name,
             "source_files": dict(self.source_files),
             "docs_dirs": self.docs_dirs.copy(),
             "kb_files": self.kb_files.copy(),
@@ -264,6 +286,7 @@ class SolverConfig:
             # RAG study configuration
             "rag_mode": self.rag_mode,
             "failure_docs_dir": self.failure_docs_dir,
+            "lessons_docs_dir": self.lessons_docs_dir,
             "auto_analyze_failures": self.auto_analyze_failures,
             # Caching configuration
             "cache_enabled": self.cache_enabled,

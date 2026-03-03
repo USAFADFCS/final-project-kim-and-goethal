@@ -13,13 +13,28 @@ Design decision: analysis is purely deterministic to avoid confounding
 variables in the academic study and to keep costs at zero.
 """
 
-import os
 import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+# Default flag regex (mirrors config.py — avoid circular import)
+_DEFAULT_FLAG_REGEX = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}"
+
+
+def _scrub_flags(text: str, flag_regex: str = _DEFAULT_FLAG_REGEX) -> str:
+    """Replace flag values with [FLAG_REDACTED] before storing in knowledge docs.
+
+    Prevents the agent from finding the actual flag value by querying the
+    knowledge base rather than solving the challenge. Applies the caller-supplied
+    regex first, then falls back to the default generic pattern.
+    """
+    text = re.sub(flag_regex, "[FLAG_REDACTED]", text, flags=re.IGNORECASE)
+    if flag_regex != _DEFAULT_FLAG_REGEX:
+        text = re.sub(_DEFAULT_FLAG_REGEX, "[FLAG_REDACTED]", text, flags=re.IGNORECASE)
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +542,7 @@ def analyze_failure(
 
         # -- LFI: path traversal --
         if tool_name in _LFI_TOOLS and "../" in tool_input:
-            seen_payloads.add(f"[lfi] path_traversal_attempted")
+            seen_payloads.add("[lfi] path_traversal_attempted")
 
         # -- Errors from output --
         for err_pattern in _ERROR_PATTERNS:
@@ -854,7 +869,7 @@ def generate_failure_knowledge_doc(
             lines.append(f"- **{goal.replace('_', ' ').title()}** confirmed")
         lines.append("")
 
-    return "\n".join(lines)
+    return _scrub_flags("\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -1092,7 +1107,7 @@ def generate_success_knowledge_doc(
     lines.append(f"> {takeaway}")
     lines.append("")
 
-    return "\n".join(lines)
+    return _scrub_flags("\n".join(lines))
 
 
 def _is_success_duplicate(
@@ -1254,3 +1269,700 @@ def run_failure_analysis_pipeline(
     doc_path.write_text(doc_content, encoding="utf-8")
 
     return str(doc_path)
+
+
+# ===========================================================================
+# v2.3 — Unified Lessons-Learned Pipeline
+# ===========================================================================
+# Replaces the separate failure/success pipelines with a single pipeline that
+# always runs after every attempt and produces atomic rule documents optimised
+# for RAG retrieval (ExpeL, Zhao et al. AAAI 2024).
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AtomicRule:
+    """A single transferable lesson extracted from one agent run.
+
+    Kept small (≤400 words when rendered) so each doc has a tight, focused
+    embedding — the core ExpeL insight for high-precision retrieval.
+    """
+
+    triggering_condition: str  # "When you see X"
+    agent_takeaway: str  # Imperative: "Do Y because Z"
+    rule_type: str  # "do" or "do_not"
+    tool_context: List[str]  # which tools this rule relates to
+    confidence: str = "low"  # "low" | "medium" | "high"
+    causal_explanation: str = ""  # why the rule holds
+
+
+@dataclass
+class LessonsLearnedDoc:
+    """Unified result from analyzing any run — success, failure, or partial."""
+
+    challenge_name: str = ""
+    challenge_url: str = ""
+    challenge_description: str = ""
+    outcome: str = "failure"  # "success" | "failure" | "partial"
+    category: str = "unknown"
+    timestamp: str = ""
+    total_steps: int = 0
+    duration_seconds: float = 0.0
+
+    # What happened
+    tool_sequence: List[str] = field(default_factory=list)  # ordered
+    tool_frequency: Dict[str, int] = field(default_factory=dict)
+    causal_diagnosis: str = ""  # why the run went how it did
+    partial_successes: List[str] = field(default_factory=list)
+    missed_signals: List[str] = field(default_factory=list)
+
+    # Extracted atomic rules (2–5 per run)
+    atomic_rules: List[AtomicRule] = field(default_factory=list)
+
+    # Compressed verbal reflection for Reflexion-style injection (100–200 words)
+    reflexion_summary: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Causal pattern library — maps response observations to diagnoses
+# ---------------------------------------------------------------------------
+
+_CAUSAL_PATTERNS: List[Tuple[str, str, str]] = [
+    # (response_pattern_regex, triggering_condition_template, diagnosis)
+    (
+        r"(?i)same.{0,20}response|identical.{0,20}length",
+        "When tool outputs are identical across different payloads on the same parameter",
+        "Backend likely uses parameterized queries or a WAF strips injection chars — SQLi on this parameter is ineffective; pivot to auth-bypass logic or NoSQL operators",
+    ),
+    (
+        r"(?i)(400|bad request).{0,60}(quote|'|\"|special)",
+        "When the server returns 400 for payloads containing quote characters",
+        "WAF or strict input validation blocks special chars — use filter_enumerator with bypass_waf:true or try URL/hex/unicode encoding",
+    ),
+    (
+        r"(?i)redirect.{0,40}(login|auth|403)",
+        "When injection payloads trigger a redirect to login or a 403",
+        "Input is reflected server-side before the DB query; authentication is required before injection is reachable — authenticate first or try unauthenticated endpoints",
+    ),
+    (
+        r"(?i)no.{0,20}(table|column|result|row).{0,40}found",
+        "When UNION/data-dump queries return empty result sets",
+        "Schema enumeration incomplete — use sqli_column_counter to determine column count, then enumerate table names via information_schema before dumping data",
+    ),
+    (
+        r"(?i)(connection refused|timeout|reset)",
+        "When tools repeatedly encounter connection errors",
+        "Service may be rate-limiting or the challenge URL has changed — reduce request rate, verify URL, and try http_fetch before specialised tools",
+    ),
+]
+
+
+def _infer_outcome(candidate_flags: List[str], partial_successes: List[str]) -> str:
+    """Determine outcome string from run results."""
+    if candidate_flags:
+        return "success"
+    if partial_successes:
+        return "partial"
+    return "failure"
+
+
+def _challenge_name_to_slug(name: str) -> str:
+    """Convert a challenge name to a filesystem-safe slug."""
+    slug = re.sub(r"[^\w\s-]", "", name.lower())
+    slug = re.sub(r"[\s_]+", "-", slug).strip("-")
+    return slug or "unknown"
+
+
+def _extract_tool_sequence(tool_call_log: List[Dict[str, Any]]) -> List[str]:
+    """Return an ordered deduplicated list of tools from the call log."""
+    seen: List[str] = []
+    seen_set: set = set()
+    for entry in tool_call_log:
+        t = entry.get("tool", "")
+        if t and t not in seen_set:
+            seen.append(t)
+            seen_set.add(t)
+    return seen
+
+
+def _apply_causal_patterns(tool_call_log: List[Dict[str, Any]]) -> str:
+    """Scan tool outputs against _CAUSAL_PATTERNS and return the first match."""
+    all_outputs = " ".join(e.get("output", "") or "" for e in tool_call_log)
+    for pattern, _condition, diagnosis in _CAUSAL_PATTERNS:
+        if re.search(pattern, all_outputs):
+            return diagnosis
+    return ""
+
+
+def analyze_run(
+    config_data: Dict[str, Any],
+    tracker_data: Dict[str, Any],
+    tool_call_log: List[Dict[str, Any]],
+    agent_response: Optional[str],
+    candidate_flags: List[str],
+) -> LessonsLearnedDoc:
+    """
+    Analyze any run (success, failure, or partial) and produce a LessonsLearnedDoc.
+
+    All analysis is deterministic — no LLM calls.
+
+    Args:
+        config_data: Dict with challenge_url, challenge_description, challenge_name.
+        tracker_data: Dict from RunTracker.to_dict()
+        tool_call_log: List of detailed tool call records
+        agent_response: The agent's final response text
+        candidate_flags: Flags found during the run
+
+    Returns:
+        LessonsLearnedDoc with extracted insights and atomic rules
+    """
+    # Determine partial successes and outcome
+    partial_successes = _detect_partial_successes(tool_call_log)
+    missed_signals = _detect_missed_signals(tool_call_log)
+    outcome = _infer_outcome(candidate_flags, partial_successes)
+
+    # Category inference from tool frequency
+    tool_counts: Dict[str, int] = tracker_data.get("tool_calls", {})
+    category_scores: Counter = Counter()
+    for tool_name, count in tool_counts.items():
+        cat = _TOOL_TO_CATEGORY.get(tool_name)
+        if cat:
+            category_scores[cat] += count
+    category = category_scores.most_common(1)[0][0] if category_scores else "unknown"
+
+    # Causal diagnosis from response patterns
+    causal_diagnosis = _apply_causal_patterns(tool_call_log)
+    if not causal_diagnosis and outcome == "failure":
+        causal_diagnosis = f"The run exhausted its budget without finding the flag after {tracker_data.get('steps', 0)} steps in category '{_CATEGORY_LABELS.get(category, category)}'"
+
+    doc = LessonsLearnedDoc(
+        challenge_name=config_data.get("challenge_name", ""),
+        challenge_url=config_data.get("challenge_url", ""),
+        challenge_description=config_data.get("challenge_description", ""),
+        outcome=outcome,
+        category=category,
+        timestamp=time.strftime("%Y-%m-%d", time.gmtime()),
+        total_steps=tracker_data.get("steps", 0),
+        duration_seconds=tracker_data.get("duration_seconds", 0.0),
+        tool_sequence=_extract_tool_sequence(tool_call_log),
+        tool_frequency=dict(tool_counts),
+        causal_diagnosis=causal_diagnosis,
+        partial_successes=partial_successes,
+        missed_signals=missed_signals,
+    )
+
+    doc.atomic_rules = _extract_atomic_rules(doc)
+    doc.reflexion_summary = _compress_to_reflexion_summary(doc)
+    return doc
+
+
+def _extract_atomic_rules(doc: LessonsLearnedDoc) -> List[AtomicRule]:
+    """
+    Extract 2–5 atomic rules from a LessonsLearnedDoc.
+
+    For failure/partial runs: missed-signal rules + causal-diagnosis rule.
+    For success runs: winning tool chain rule + key decision-point rules.
+    """
+    rules: List[AtomicRule] = []
+    category_label = _CATEGORY_LABELS.get(doc.category, "web exploitation")
+
+    if doc.outcome == "success":
+        # Rule 1: winning tool chain
+        chain = " → ".join(doc.tool_sequence[:6]) if doc.tool_sequence else "unknown"
+        rules.append(
+            AtomicRule(
+                triggering_condition=f"When facing a {category_label} challenge with these tools available",
+                agent_takeaway=f"Follow this winning tool sequence: {chain}",
+                rule_type="do",
+                tool_context=doc.tool_sequence[:6],
+                confidence="low",
+                causal_explanation=f"This sequence successfully found the flag in {doc.total_steps} steps",
+            )
+        )
+        # Rule 2: partial successes confirmed
+        for ps in doc.partial_successes[:2]:
+            rules.append(
+                AtomicRule(
+                    triggering_condition=f"When you achieve '{ps}' during a {category_label} challenge",
+                    agent_takeaway=f"Continue exploitation after confirming '{ps}' — do not stop at reconnaissance",
+                    rule_type="do",
+                    tool_context=doc.tool_sequence[:3],
+                    confidence="low",
+                    causal_explanation="Partial successes are exploitation footholds, not endpoints",
+                )
+            )
+
+    else:
+        # Rule from causal diagnosis
+        if doc.causal_diagnosis:
+            # Find matching triggering condition from _CAUSAL_PATTERNS
+            triggering = f"When {category_label} probes return no useful output after multiple payloads"
+            for _pattern, condition, diagnosis in _CAUSAL_PATTERNS:
+                if diagnosis == doc.causal_diagnosis:
+                    triggering = condition
+                    break
+            rules.append(
+                AtomicRule(
+                    triggering_condition=triggering,
+                    agent_takeaway=doc.causal_diagnosis,
+                    rule_type="do_not",
+                    tool_context=doc.tool_sequence[:3],
+                    confidence="low",
+                    causal_explanation="Observed from response patterns in this run",
+                )
+            )
+
+        # Rules from missed signals
+        for signal in doc.missed_signals[:3]:
+            # Parse signal format: "`tool` found X but no follow-up (Y) was attempted"
+            label_match = re.search(r"found\s+(\w+)", signal)
+            label = label_match.group(1) if label_match else "an actionable finding"
+            follow_match = re.search(r"\(([^)]+)\)", signal)
+            follow_up = follow_match.group(1) if follow_match else "follow-up exploitation tools"
+            rules.append(
+                AtomicRule(
+                    triggering_condition=f"When a tool output contains {label} during a {category_label} challenge",
+                    agent_takeaway=f"Immediately call {follow_up} before exploring other vectors — do not miss this signal",
+                    rule_type="do",
+                    tool_context=[follow_up.split(",")[0].strip()],
+                    confidence="low",
+                    causal_explanation=f"Signal was detected but not exploited: {signal}",
+                )
+            )
+
+        # Generic rule if nothing else was extracted
+        if not rules:
+            top_tools = list(doc.tool_frequency.keys())[:3]
+            rules.append(
+                AtomicRule(
+                    triggering_condition=f"When a {category_label} challenge resists standard payloads",
+                    agent_takeaway="Pivot to a different attack vector early rather than repeating the same approach with minor variations",
+                    rule_type="do_not",
+                    tool_context=top_tools,
+                    confidence="low",
+                    causal_explanation=f"Run exhausted {doc.total_steps} steps without progress",
+                )
+            )
+
+    return rules[:5]  # cap at 5 per run
+
+
+def _compress_to_reflexion_summary(doc: LessonsLearnedDoc) -> str:
+    """
+    Produce a 100–200 word verbal reflection for Reflexion-style injection.
+
+    Much more useful than the raw 2000-char failure doc because it's causally
+    structured and scoped to the key lesson (Shinn et al. NeurIPS 2023).
+    """
+    category_label = _CATEGORY_LABELS.get(doc.category, "web exploitation")
+    outcome_verb = "succeeded" if doc.outcome == "success" else "failed"
+    top_tools = list(doc.tool_frequency.keys())[:3]
+    tools_str = ", ".join(f"`{t}`" for t in top_tools) if top_tools else "no tools"
+
+    lines = [
+        f"In a prior attempt on a {category_label} challenge, the agent {outcome_verb} "
+        f"after {doc.total_steps} steps.",
+        f"Primary tools used: {tools_str}.",
+    ]
+
+    if doc.causal_diagnosis:
+        lines.append(f"Diagnosis: {doc.causal_diagnosis}.")
+
+    if doc.partial_successes:
+        ps_str = ", ".join(doc.partial_successes[:2])
+        lines.append(f"Partial progress confirmed: {ps_str}.")
+
+    if doc.missed_signals:
+        ms_str = "; ".join(doc.missed_signals[:2])
+        lines.append(f"Missed signals not exploited: {ms_str}.")
+
+    if doc.outcome == "success" and doc.tool_sequence:
+        chain = " → ".join(doc.tool_sequence[:5])
+        lines.append(f"Winning sequence: {chain}.")
+        lines.append("Replicate this sequence on similar challenges.")
+    elif doc.outcome != "success" and doc.atomic_rules:
+        rule = doc.atomic_rules[0]
+        lines.append(f"Key lesson: {rule.agent_takeaway}.")
+
+    return _scrub_flags(" ".join(lines))
+
+
+def generate_atomic_rule_doc(
+    rule: AtomicRule,
+    doc: LessonsLearnedDoc,
+    rule_index: int,
+    site_fingerprint: str = "",
+    flag_regex: str = _DEFAULT_FLAG_REGEX,
+) -> str:
+    """
+    Generate a single atomic-rule markdown document for one extracted rule.
+
+    The template places the most retrieval-relevant content (triggering condition
+    + agent takeaway) in the first ~200 tokens, matching best practices from
+    RAFT (Zhang 2024) and Self-RAG (Asai 2023).
+
+    Flag values are scrubbed via _scrub_flags() to prevent leakage into RAG.
+    The site_fingerprint (page title/h1/form) is stored for content-based
+    contamination filtering rather than URL matching.
+    """
+    category_label = _CATEGORY_LABELS.get(doc.category, "General Web Exploitation")
+    date_str = doc.timestamp or time.strftime("%Y-%m-%d", time.gmtime())
+    challenge_slug = _challenge_name_to_slug(doc.challenge_name or doc.challenge_url or "unknown")
+    tags = ", ".join(
+        filter(None, [doc.category, doc.outcome, "experience", rule.rule_type])
+    )
+    # Scrub flag values from rule text before storing
+    clean_triggering = _scrub_flags(rule.triggering_condition, flag_regex)
+    clean_takeaway = _scrub_flags(rule.agent_takeaway, flag_regex)
+    clean_causal = _scrub_flags(rule.causal_explanation, flag_regex)
+    clean_summary = _scrub_flags(
+        doc.reflexion_summary or f"Run outcome: {doc.outcome} after {doc.total_steps} steps.",
+        flag_regex,
+    )
+    lines = [
+        f"# {category_label}: {clean_triggering[:70]}",
+        "",
+        f"**Type:** experience_{doc.outcome}",
+        f"**Category:** {category_label}",
+        f"**Challenge:** {doc.challenge_name or challenge_slug}",
+        f"**Challenge URL:** {doc.challenge_url or 'unknown'}",
+        f"**Auto-generated:** {date_str}",
+        f"**Tags:** {tags}",
+        f"**Confidence:** {rule.confidence}",
+    ]
+    if site_fingerprint:
+        lines.append(f"**Site fingerprint:** {site_fingerprint}")
+    lines += [
+        "",
+        f"**Applies when:** {clean_triggering}",
+        "",
+        f"**Agent takeaway:** {clean_takeaway}",
+        "",
+        "---",
+        "",
+        "## What Happened",
+        "",
+        clean_summary,
+        "",
+        "## Transferable Rule",
+        "",
+        f"{'Do' if rule.rule_type == 'do' else 'Avoid this'}: {clean_takeaway}",
+        "",
+        f"Reason: {clean_causal}" if clean_causal else "",
+        "",
+        "## Tools Involved",
+        "",
+    ]
+
+    for t in rule.tool_context[:4]:
+        lines.append(f"- `{t}`")
+
+    if doc.outcome == "success" and doc.tool_sequence:
+        chain = " → ".join(doc.tool_sequence[:6])
+        lines.append("")
+        lines.append(f"**Full sequence:** {chain}")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _tool_sequence_hash(tool_call_log: List[Dict[str, Any]]) -> int:
+    """Return a hash of the first 5 tool names in the log.
+
+    Used to distinguish runs that took different approaches on the same
+    challenge: same URL+category+outcome but different tool sequence is NOT
+    a duplicate and should produce a new lessons doc.
+    """
+    first_five = tuple(entry.get("tool", "") for entry in tool_call_log[:5])
+    return hash(first_five)
+
+
+def _is_lessons_duplicate(
+    challenge_url: str,
+    category: str,
+    outcome: str,
+    seq_hash: int,
+    lessons_dir: Path,
+) -> bool:
+    """Return True if an identical run (same URL + category + outcome + tool approach) exists.
+
+    A different tool sequence (even with same URL + category + outcome) is
+    NOT a duplicate — the agent tried a new approach and we want that captured.
+    """
+    if not lessons_dir.exists():
+        return False
+    expected_label = _CATEGORY_LABELS.get(category, "")
+    for doc_path in lessons_dir.glob("lessons_*.md"):
+        try:
+            content = doc_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        url_match = re.search(r"\*\*Challenge URL:\*\*\s*(\S+)", content)
+        doc_url = url_match.group(1) if url_match else ""
+        if challenge_url and doc_url != challenge_url:
+            continue
+        type_match = re.search(r"\*\*Type:\*\*\s*experience_(\w+)", content)
+        doc_outcome = type_match.group(1) if type_match else ""
+        cat_match = re.search(r"\*\*Category:\*\*\s*(.+)", content)
+        doc_cat = cat_match.group(1).strip() if cat_match else ""
+        # Check stored sequence hash (written as **Seq hash:** <int>)
+        hash_match = re.search(r"\*\*Seq hash:\*\*\s*(-?\d+)", content)
+        doc_hash = int(hash_match.group(1)) if hash_match else None
+        if (
+            doc_outcome == outcome
+            and doc_cat == expected_label
+            and doc_hash is not None
+            and doc_hash == seq_hash
+        ):
+            return True
+    return False
+
+
+def _jaccard_word_overlap(a: str, b: str) -> float:
+    """Return Jaccard similarity between word sets of two strings."""
+    wa: Set[str] = set(re.findall(r"\w+", a.lower()))
+    wb: Set[str] = set(re.findall(r"\w+", b.lower()))
+    if not wa and not wb:
+        return 1.0
+    if not wa or not wb:
+        return 0.0
+    return len(wa & wb) / len(wa | wb)
+
+
+def _find_similar_rule_doc(
+    triggering_condition: str,
+    category: str,
+    lessons_dir: Path,
+) -> Optional[Path]:
+    """Find an existing lessons doc with a similar triggering condition.
+
+    Returns the path to the most similar doc (Jaccard ≥ 0.60 on word tokens),
+    or None if no sufficiently similar doc exists.  Used to bump confidence of
+    recurring patterns rather than writing redundant docs.
+    """
+    if not lessons_dir.exists():
+        return None
+    expected_label = _CATEGORY_LABELS.get(category, "")
+    best_path: Optional[Path] = None
+    best_score = 0.0
+    for doc_path in lessons_dir.glob("lessons_*.md"):
+        try:
+            content = doc_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        cat_match = re.search(r"\*\*Category:\*\*\s*(.+)", content)
+        doc_cat = cat_match.group(1).strip() if cat_match else ""
+        if doc_cat != expected_label:
+            continue
+        applies_match = re.search(r"\*\*Applies when:\*\*\s*(.+)", content)
+        if not applies_match:
+            continue
+        score = _jaccard_word_overlap(triggering_condition, applies_match.group(1))
+        if score >= 0.60 and score > best_score:
+            best_score = score
+            best_path = doc_path
+    return best_path
+
+
+_CONFIDENCE_LADDER = {"low": "medium", "medium": "high", "high": "high"}
+
+
+def _bump_confidence(doc_path: Path) -> None:
+    """Promote the confidence level of an existing rule doc by one step.
+
+    Confidence ladder: low → medium → high.  Called when a new run produces a
+    rule that is semantically similar to an existing one, indicating the pattern
+    is recurring and should be trusted more by the reranker.
+    """
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return
+    current_match = re.search(r"(\*\*Confidence:\*\*\s*)(\w+)", content)
+    if not current_match:
+        return
+    current = current_match.group(2)
+    new_level = _CONFIDENCE_LADDER.get(current, current)
+    if new_level == current:
+        return  # Already at max
+    updated = content[: current_match.start(2)] + new_level + content[current_match.end(2) :]
+    doc_path.write_text(updated, encoding="utf-8")
+
+
+def run_lessons_learned_pipeline(
+    config_data: Dict[str, Any],
+    tracker_data: Dict[str, Any],
+    tool_call_log: List[Dict[str, Any]],
+    agent_response: Optional[str],
+    candidate_flags: List[str],
+    lessons_docs_dir: str = "out/lessons_knowledge",
+    max_steps: int = 20,
+    actual_steps: int = 0,
+    flag_regex: str = _DEFAULT_FLAG_REGEX,
+    site_fingerprint: str = "",
+) -> List[str]:
+    """
+    Unified post-run pipeline that always runs (success or failure).
+
+    Generates atomic rule documents inspired by ExpeL (Zhao et al. AAAI 2024):
+    one small, focused markdown file per extracted rule, optimised for RAG
+    retrieval.
+
+    Dedup is approach-aware: same URL+category+outcome with a DIFFERENT tool
+    sequence is NOT a duplicate — the agent tried a new approach and we want
+    that captured.  When a new rule's triggering condition is semantically
+    similar to an existing one (Jaccard ≥ 0.60), we bump the existing doc's
+    confidence (low→medium→high) instead of writing a redundant file.
+
+    Args:
+        config_data: Dict with challenge_url, challenge_description, challenge_name.
+        tracker_data: Dict from RunTracker.to_dict()
+        tool_call_log: List of tool call records
+        agent_response: The agent's final response text
+        candidate_flags: Flags found during the run
+        lessons_docs_dir: Directory to save lesson docs
+        max_steps: Maximum steps configured
+        actual_steps: Actual steps taken
+        flag_regex: Flag regex for scrubbing
+        site_fingerprint: Content fingerprint from RunTracker (title/h1/form)
+
+    Returns:
+        List of paths to generated doc files (empty if all skipped/merged).
+    """
+    docs_dir = Path(lessons_docs_dir)
+    docs_dir.mkdir(parents=True, exist_ok=True)
+
+    doc = analyze_run(
+        config_data=config_data,
+        tracker_data=tracker_data,
+        tool_call_log=tool_call_log,
+        agent_response=agent_response,
+        candidate_flags=candidate_flags,
+    )
+
+    # Dedup: skip if same URL+category+outcome+tool_approach already stored
+    seq_hash = _tool_sequence_hash(tool_call_log)
+    if _is_lessons_duplicate(doc.challenge_url, doc.category, doc.outcome, seq_hash, docs_dir):
+        return []
+
+    challenge_slug = _challenge_name_to_slug(doc.challenge_name or doc.challenge_url or "unknown")
+    timestamp_slug = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+    written: List[str] = []
+
+    for i, rule in enumerate(doc.atomic_rules, 1):
+        # Cross-run confidence merging: bump similar existing rule instead of writing new
+        similar = _find_similar_rule_doc(rule.triggering_condition, doc.category, docs_dir)
+        if similar is not None:
+            _bump_confidence(similar)
+            continue
+
+        rule_content = generate_atomic_rule_doc(
+            rule, doc, i,
+            site_fingerprint=site_fingerprint,
+            flag_regex=flag_regex,
+        )
+        # Embed sequence hash so dedup can identify identical approaches
+        rule_content += f"\n**Seq hash:** {seq_hash}\n"
+        existing = list(docs_dir.glob("lessons_*.md"))
+        next_index = len(existing) + 1
+        filename = f"lessons_{next_index:03d}_{challenge_slug}_r{i}_{timestamp_slug}.md"
+        doc_path = docs_dir / filename
+        doc_path.write_text(rule_content, encoding="utf-8")
+        written.append(str(doc_path))
+
+    return written
+
+
+def find_and_compress_prior_lesson(
+    challenge_name: Optional[str],
+    challenge_url: Optional[str],
+    lessons_docs_dir: str = "out/lessons_knowledge",
+    fallback_failure_docs_dir: str = "out/failure_knowledge",
+) -> Optional[str]:
+    """
+    Find the most recent lesson doc for this challenge and return a compressed
+    verbal reflection (100–200 words) for Reflexion-style injection.
+
+    Unlike find_prior_failure_doc(), this returns a semantically compressed
+    reflection rather than a raw truncated doc — much better signal-to-noise
+    for pre-run context injection (Shinn et al. 2023; Wang et al. 2024).
+
+    Falls back to failure_*.md docs for backward compatibility.
+
+    Args:
+        challenge_name: Human-readable challenge name.
+        challenge_url: Challenge URL (used as secondary search key).
+        lessons_docs_dir: Directory with lessons_*.md files.
+        fallback_failure_docs_dir: Fallback directory with failure_*.md files.
+
+    Returns:
+        Compressed reflection string, or None if no prior doc exists.
+    """
+    # Reflexion injection matches by challenge NAME only (not URL — URLs are
+    # fragile and two different challenges can share similar-looking paths).
+    # If challenge_name is not set, no Reflexion injection happens.
+    if not challenge_name:
+        return None
+
+    def _find_in_dir(directory: str, pattern: str) -> Optional[str]:
+        d = Path(directory)
+        if not d.exists():
+            return None
+        matching: List[Tuple[float, str]] = []
+        name_slug = _challenge_name_to_slug(challenge_name)
+        for doc_path in d.glob(pattern):
+            try:
+                content = doc_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            # Match by challenge name: slug in filename OR full name in content
+            if (
+                name_slug in doc_path.name
+                or challenge_name.lower() in content.lower()
+            ):
+                matching.append((doc_path.stat().st_mtime, content))
+        if not matching:
+            return None
+        matching.sort(key=lambda x: x[0], reverse=True)
+        return matching[0][1]
+
+    # 1. Try lessons_*.md first (new format)
+    content = _find_in_dir(lessons_docs_dir, "lessons_*.md")
+    if content:
+        # Lessons docs already contain a reflexion summary — extract it
+        summary_match = re.search(r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", content, re.DOTALL)
+        if summary_match:
+            return summary_match.group(1).strip()[:1500]
+        return content[:1000]
+
+    # 2. Fallback to failure_*.md (legacy) and compress on-the-fly
+    raw = _find_in_dir(fallback_failure_docs_dir, "failure_*.md")
+    if not raw:
+        return None
+
+    # Extract key sections from the legacy failure doc
+    lines: List[str] = []
+
+    cat_match = re.search(r"\*\*Category:\*\*\s*(.+)", raw)
+    if cat_match:
+        lines.append(f"Prior attempt category: {cat_match.group(1).strip()}.")
+
+    reason_match = re.search(r"\*\*Failure Reason:\*\*\s*(.+)", raw)
+    if reason_match:
+        lines.append(f"Failure reason: {reason_match.group(1).strip()}.")
+
+    # Extract suggestions (section 7)
+    sugg_match = re.search(
+        r"##\s*\d*\.?\s*Suggestions.*?\n(.*?)(?:\n## |\Z)", raw, re.DOTALL
+    )
+    if sugg_match:
+        sugg_text = sugg_match.group(1).strip()[:400]
+        lines.append(f"Suggestions from prior run: {sugg_text}")
+
+    missed_match = re.search(
+        r"##\s*\d*\.?\s*Missed.*?\n(.*?)(?:\n## |\Z)", raw, re.DOTALL
+    )
+    if missed_match:
+        lines.append(f"Missed signals: {missed_match.group(1).strip()[:200]}")
+
+    return " ".join(lines)[:1500] if lines else None

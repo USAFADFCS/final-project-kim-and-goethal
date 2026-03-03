@@ -22,6 +22,8 @@ from ctf_solver.rag.knowledge_base import (
     get_query_expander,
     get_reranker,
     get_hybrid_searcher,
+    get_active_knowledge_tool,
+    set_active_knowledge_tool,
 )
 
 from ctf_solver.rag.query_expander import (
@@ -55,6 +57,8 @@ __all__ = [
     "get_query_expander",
     "get_reranker",
     "get_hybrid_searcher",
+    "get_active_knowledge_tool",
+    "set_active_knowledge_tool",
     # Query expansion
     "QueryExpander",
     "create_query_expander",

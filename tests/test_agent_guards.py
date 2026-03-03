@@ -35,7 +35,7 @@ class TestExtractJsonObject:
     """Tests for _extract_json_object helper."""
 
     def test_pure_json(self):
-        text = '{"thought": "hello", "action": {"tool_name": "x", "tool_input": "y"}}'
+        text = '{"thought": "hello", "action": {"tool":"x", "tool_input": "y"}}'
         assert _extract_json_object(text) == text
 
     def test_json_with_leading_text(self):
@@ -199,9 +199,9 @@ class TestCTFAgentGuards:
         agent = self._make_agent()
         agent._tracker = MagicMock()
         agent._tracker.tool_call_log = [
-            {"tool_name": "http_fetch"},
-            {"tool_name": "javascript_source"},
-            {"tool_name": "robots_txt"},
+            {"tool":"http_fetch"},
+            {"tool":"javascript_source"},
+            {"tool":"robots_txt"},
         ]
         assert agent._only_recon_so_far()
 
@@ -209,8 +209,8 @@ class TestCTFAgentGuards:
         agent = self._make_agent()
         agent._tracker = MagicMock()
         agent._tracker.tool_call_log = [
-            {"tool_name": "http_fetch"},
-            {"tool_name": "sqli_probe"},
+            {"tool":"http_fetch"},
+            {"tool":"sqli_probe"},
         ]
         assert not agent._only_recon_so_far()
 
@@ -223,7 +223,7 @@ class TestCTFAgentGuards:
     def test_build_guard_message_attempt_1(self):
         agent = self._make_agent()
         agent._tracker = MagicMock()
-        agent._tracker.tool_call_log = [{"tool_name": "http_fetch"}]
+        agent._tracker.tool_call_log = [{"tool":"http_fetch"}]
         msg = agent._build_guard_message(1, "I found the password")
         assert "Finding information is NOT the same" in msg
         assert "http_fetch" in msg
@@ -231,7 +231,7 @@ class TestCTFAgentGuards:
     def test_build_guard_message_attempt_2_with_findings(self):
         agent = self._make_agent()
         agent._tracker = MagicMock()
-        agent._tracker.tool_call_log = [{"tool_name": "javascript_source"}]
+        agent._tracker.tool_call_log = [{"tool":"javascript_source"}]
         msg = agent._build_guard_message(2, "I found the password in JavaScript")
         assert "URGENT" in msg
         assert "EXPLOIT" in msg
@@ -239,7 +239,7 @@ class TestCTFAgentGuards:
     def test_build_guard_message_attempt_2_without_findings(self):
         agent = self._make_agent()
         agent._tracker = MagicMock()
-        agent._tracker.tool_call_log = [{"tool_name": "sqli_probe"}]
+        agent._tracker.tool_call_log = [{"tool":"sqli_probe"}]
         msg = agent._build_guard_message(2, "I could not find any vulnerabilities")
         assert "COMPLETELY different approach" in msg
 

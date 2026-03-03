@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from dotenv import load_dotenv
 
@@ -27,9 +27,14 @@ class LLMProviderType(str, Enum):
 class RAGMode(str, Enum):
     """RAG modes for the academic study on failure-driven knowledge augmentation."""
 
-    NONE = "none"          # No knowledge base at all
+    NONE = "none"  # No knowledge base at all
     ORIGINAL = "original"  # Only the original docs in docs/
-    AUGMENTED = "augmented"  # Original docs + auto-generated failure knowledge
+    AUGMENTED = (
+        "augmented"  # Original docs + experience DB; writes new docs on each run
+    )
+    AUGMENTED_READONLY = (
+        "augmented_readonly"  # Original docs + experience DB; never writes
+    )
 
 
 def _find_and_load_dotenv() -> None:
@@ -115,6 +120,10 @@ class SolverConfig:
     challenge_url: Optional[str] = None
     challenge_description: Optional[str] = None
     challenge_hints: Optional[str] = None
+    # Source files provided by the challenge (filename → content).
+    # When non-empty, the agent receives the source code at the start of the run
+    # so it can identify the vulnerability before making live HTTP requests.
+    source_files: Dict[str, str] = field(default_factory=dict)
 
     # Knowledge base configuration
     docs_dirs: List[str] = field(default_factory=list)
@@ -211,16 +220,21 @@ class SolverConfig:
             verbose=os.getenv("CTF_VERBOSE", "").lower() in ("true", "1", "yes"),
             vector_store_dir=os.getenv("CTF_VECTOR_STORE_DIR", "out/ctf_vector_store"),
             # Caching configuration
-            cache_enabled=os.getenv("CTF_CACHE_ENABLED", "true").lower() in ("true", "1", "yes"),
+            cache_enabled=os.getenv("CTF_CACHE_ENABLED", "true").lower()
+            in ("true", "1", "yes"),
             cache_ttl=float(os.getenv("CTF_CACHE_TTL", "300")),
             cache_max_entries=int(os.getenv("CTF_CACHE_MAX_ENTRIES", "1000")),
-            cache_max_size_bytes=int(os.getenv("CTF_CACHE_MAX_SIZE_BYTES", str(50 * 1024 * 1024))),
+            cache_max_size_bytes=int(
+                os.getenv("CTF_CACHE_MAX_SIZE_BYTES", str(50 * 1024 * 1024))
+            ),
             # Async configuration
-            async_enabled=os.getenv("CTF_ASYNC_ENABLED", "true").lower() in ("true", "1", "yes"),
+            async_enabled=os.getenv("CTF_ASYNC_ENABLED", "true").lower()
+            in ("true", "1", "yes"),
             async_max_workers=int(os.getenv("CTF_ASYNC_MAX_WORKERS", "10")),
             async_timeout=float(os.getenv("CTF_ASYNC_TIMEOUT", "30")),
             # Deduplication
-            deduplication_enabled=os.getenv("CTF_DEDUP_ENABLED", "true").lower() in ("true", "1", "yes"),
+            deduplication_enabled=os.getenv("CTF_DEDUP_ENABLED", "true").lower()
+            in ("true", "1", "yes"),
         )
 
     def merge_with_args(self, **kwargs) -> "SolverConfig":
@@ -236,6 +250,7 @@ class SolverConfig:
             "challenge_url": self.challenge_url,
             "challenge_description": self.challenge_description,
             "challenge_hints": self.challenge_hints,
+            "source_files": dict(self.source_files),
             "docs_dirs": self.docs_dirs.copy(),
             "kb_files": self.kb_files.copy(),
             "max_steps": self.max_steps,

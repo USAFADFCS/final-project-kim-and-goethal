@@ -47,9 +47,9 @@ class HtmlInspectorTool:
         "Inspect and summarize the structure of HTML. Input JSON keys: "
         "'url' (optional) or 'html' (optional), and 'max_items' (optional int). "
         "If 'url' is given, fetches that page; otherwise uses the provided 'html'. "
-        "Extracts links, external scripts, stylesheets, and comments and returns "
-        "a readable summary. Use this tool to understand page structure and find "
-        "hidden elements like comments or interesting links."
+        "Extracts links, external scripts, inline script previews, stylesheets, "
+        "comments, forms, meta tags, and hidden inputs. NOTE: For full inline "
+        "JavaScript code, use 'javascript_source' — this tool only shows previews."
     )
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
@@ -111,6 +111,19 @@ class HtmlInspectorTool:
             src = script["src"]
             scripts.append(f"- src={src!r}")
 
+        # Extract inline scripts (preview only — use javascript_source for full code)
+        inline_scripts: List[str] = []
+        for idx, script in enumerate(soup.find_all("script"), start=1):
+            if script.get("src"):
+                continue  # already captured above
+            js_code = (script.string or script.get_text() or "").strip()
+            if not js_code:
+                continue
+            preview = js_code[:200].replace("\n", " ").strip()
+            if len(js_code) > 200:
+                preview += " ...[truncated]"
+            inline_scripts.append(f"- [INLINE #{idx}] ({len(js_code)} chars): {preview}")
+
         # Extract stylesheets
         stylesheets: List[str] = []
         for link in soup.find_all("link", rel=True, href=True):
@@ -158,6 +171,17 @@ class HtmlInspectorTool:
 
         summary_parts.append("[SCRIPTS - external src]")
         summary_parts.extend(scripts or ["- (none found)"])
+        summary_parts.append("")
+
+        inline_scripts = truncate_list(inline_scripts, max_items_int)
+        summary_parts.append("[SCRIPTS - inline]")
+        if inline_scripts:
+            summary_parts.extend(inline_scripts)
+            summary_parts.append(
+                ">>> Use 'javascript_source' tool to read full inline JavaScript code."
+            )
+        else:
+            summary_parts.append("- (none found)")
         summary_parts.append("")
 
         summary_parts.append("[STYLESHEETS]")

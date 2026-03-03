@@ -31,6 +31,9 @@ _FORMAT_ERROR_STATUS_RE = re.compile(r"\bStatus:\s*(400|405|415|422)\b")
 # Pattern to extract the target URL from tool output
 _URL_IN_OUTPUT_RE = re.compile(r"URL:\s*(https?://[^\s]+)")
 
+# TODO: Consolidate this mapping with failure_analyzer._TOOL_TO_CATEGORY and
+# classifier TOOL_PRIORITIES into a single shared source in ctf_solver/config.py
+# or a new ctf_solver/categories.py to prevent drift across the 3 copies.
 # Map tool names to broad attack categories for reflection suggestions
 _TOOL_CATEGORIES = {
     "sqli_probe": "sql_injection",
@@ -65,6 +68,28 @@ _TOOL_CATEGORIES = {
     "crypto_payload_generator": "crypto",
     "deserialization_probe": "deserialization",
     "deserialization_payload_generator": "deserialization",
+    "xss_probe": "xss",
+    "xss_payload_generator": "xss",
+    "csp_analyzer": "xss",
+    "graphql_introspection": "graphql",
+    "graphql_query": "graphql",
+    "race_condition": "race_condition",
+    "request_repeater": "recon",
+    "crlf_probe": "crlf_injection",
+    "php_type_juggling": "php_type_juggling",
+    "prototype_pollution_probe": "prototype_pollution",
+    "idor_enumerator": "idor",
+    "open_redirect_probe": "open_redirect",
+    "css_injection_payload_generator": "css_injection",
+    "css_exfiltration_builder": "css_injection",
+    "http_smuggling_probe": "http_smuggling",
+    "flask_session_forge": "flask_session",
+    "dom_clobbering_payload_generator": "dom_clobbering",
+    "oauth_probe": "oauth_oidc",
+    "oauth_payload_generator": "oauth_oidc",
+    "php_filter_chain": "php_filter",
+    "parser_differential_probe": "parser_differential",
+    "websocket_probe": "websocket",
     "http_fetch": "recon",
     "html_inspector": "recon",
     "robots_txt": "recon",
@@ -88,15 +113,57 @@ _CATEGORY_NAMES = {
     "ssrf": "Server-Side Request Forgery",
     "crypto": "Cryptographic Attacks",
     "deserialization": "Insecure Deserialization",
+    "xss": "Cross-Site Scripting (XSS)",
+    "graphql": "GraphQL Exploitation",
+    "race_condition": "Race Condition",
+    "crlf_injection": "CRLF / Header Injection",
+    "php_type_juggling": "PHP Type Juggling",
+    "prototype_pollution": "Prototype / Class Pollution",
+    "idor": "Insecure Direct Object Reference (IDOR)",
+    "open_redirect": "Open Redirect",
+    "css_injection": "CSS Injection / Exfiltration",
+    "http_smuggling": "HTTP Request Smuggling",
+    "flask_session": "Flask Session Cookie Forgery",
+    "dom_clobbering": "DOM Clobbering",
+    "oauth_oidc": "OAuth / OpenID Connect",
+    "php_filter": "PHP Filter Chain",
+    "parser_differential": "Parser Differential",
+    "websocket": "WebSocket Exploitation",
     "recon": "Reconnaissance",
     "planning": "Attack Planning",
 }
 
 # All known attack categories for suggesting alternatives
 _ALL_ATTACK_CATEGORIES = [
-    "sql_injection", "xpath_injection", "ssti", "xxe", "jwt",
-    "file_upload", "filter_bypass", "file_inclusion", "nosql_injection",
-    "command_injection", "ssrf", "crypto", "deserialization",
+    "sql_injection",
+    "xpath_injection",
+    "ssti",
+    "xxe",
+    "jwt",
+    "file_upload",
+    "filter_bypass",
+    "file_inclusion",
+    "nosql_injection",
+    "command_injection",
+    "ssrf",
+    "crypto",
+    "deserialization",
+    "xss",
+    "graphql",
+    "race_condition",
+    "crlf_injection",
+    "php_type_juggling",
+    "prototype_pollution",
+    "idor",
+    "open_redirect",
+    "css_injection",
+    "http_smuggling",
+    "flask_session",
+    "dom_clobbering",
+    "oauth_oidc",
+    "php_filter",
+    "parser_differential",
+    "websocket",
 ]
 
 
@@ -226,14 +293,14 @@ class ReflectionEngine:
 
         tried_section = ""
         if tried_names:
-            tried_section = f"\nAttack categories already tried: {', '.join(tried_names)}"
+            tried_section = (
+                f"\nAttack categories already tried: {', '.join(tried_names)}"
+            )
 
         alt_section = ""
         if alternatives:
             alt_lines = "\n".join(f"  - {a}" for a in alternatives)
-            alt_section = (
-                f"\nUntried attack categories to consider:\n{alt_lines}"
-            )
+            alt_section = f"\nUntried attack categories to consider:\n{alt_lines}"
 
         # Check for tool-level format mismatch (e.g. form-encoded vs JSON)
         format_warning = self._detect_format_mismatch(recent)
@@ -362,7 +429,9 @@ class LoggingToolWrapper:
         self._stuck_detector = StuckDetector() if tracker is not None else None
 
         # Contextual reflection engine (only active when tracker is present)
-        self._reflection_engine = ReflectionEngine(tracker) if tracker is not None else None
+        self._reflection_engine = (
+            ReflectionEngine(tracker) if tracker is not None else None
+        )
 
     def _log(self, message: str) -> None:
         """Log a message using the configured callback."""
@@ -390,8 +459,14 @@ class LoggingToolWrapper:
         result = self.inner.use(tool_input)
 
         # Record detailed tool call for failure analysis
-        if self.tracker is not None and hasattr(self.tracker, "record_detailed_tool_call"):
-            self.tracker.record_detailed_tool_call(self.name, tool_input, result if isinstance(result, str) else str(result))
+        if self.tracker is not None and hasattr(
+            self.tracker, "record_detailed_tool_call"
+        ):
+            self.tracker.record_detailed_tool_call(
+                self.name,
+                tool_input,
+                result if isinstance(result, str) else str(result),
+            )
 
         # Stuck detection: warn if repeating same tool+input
         if self._stuck_detector is not None and isinstance(result, str):
@@ -400,14 +475,23 @@ class LoggingToolWrapper:
             )
             if warning:
                 result = result + warning
-                self._log(f"[LOG] STUCK DETECTED: {self.name} called with same input multiple times")
+                self._log(
+                    f"[LOG] STUCK DETECTED: {self.name} called with same input multiple times"
+                )
 
-        # Log potential flags in tool output
+        # Log potential flags in tool output and record in tracker
         if isinstance(result, str):
             try:
                 matches = re.findall(self.flag_regex, result)
                 for m in matches:
                     self._log(f"[LOG] Potential flag seen in {self.name} output: {m}")
+                    # Record in tracker so agent._has_flag() can detect it
+                    if (
+                        self.tracker is not None
+                        and hasattr(self.tracker, "candidate_flags_found")
+                        and m not in self.tracker.candidate_flags_found
+                    ):
+                        self.tracker.candidate_flags_found.append(m)
             except re.error:
                 pass  # Invalid regex, skip flag detection
 

@@ -26,10 +26,12 @@ os.environ["MKL_NUM_THREADS"] = "1"
 
 # Now safe to import everything else
 import asyncio
+import io
 import re
+import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import streamlit as st
 
@@ -51,7 +53,10 @@ _find_and_load_dotenv()
 from ctf_solver.agent import build_agent
 from ctf_solver.prompts import get_initial_message, DEFAULT_SYSTEM_PROMPT
 from ctf_solver.run_tracker import RunTracker
-from ctf_solver.failure_analyzer import run_failure_analysis_pipeline
+from ctf_solver.failure_analyzer import (
+    run_failure_analysis_pipeline,
+    run_success_knowledge_pipeline,
+)
 
 
 # Page configuration
@@ -84,9 +89,10 @@ def init_session_state():
         "challenge_description": "",
         "challenge_hints": "",
         "agent_prompt": DEFAULT_SYSTEM_PROMPT,
+        "model_name": "gpt-4o",
         "max_steps": 20,
         "docs_dirs": default_docs_dirs,  # Actual default, not just placeholder
-        "kb_files": default_kb_files,    # Actual default, not just placeholder
+        "kb_files": default_kb_files,  # Actual default, not just placeholder
         "project_root": str(project_root),
         # Runtime state
         "logs": [],
@@ -100,6 +106,8 @@ def init_session_state():
         # RAG study settings
         "rag_mode": "original",
         "auto_analyze_failures": False,
+        # Source code files (filename → content)
+        "source_files": {},
     }
 
     for key, value in defaults.items():
@@ -146,13 +154,16 @@ async def run_agent_async(config: SolverConfig) -> str:
         challenge_url=config.challenge_url,
         challenge_description=config.challenge_description,
         challenge_hints=config.challenge_hints,
+        source_files=config.source_files or None,
     )
 
-    st.session_state.execution_trace.append({
-        "type": "input",
-        "content": initial_message,
-        "timestamp": datetime.now().isoformat(),
-    })
+    st.session_state.execution_trace.append(
+        {
+            "type": "input",
+            "content": initial_message,
+            "timestamp": datetime.now().isoformat(),
+        }
+    )
 
     tracker.start()
     response = await agent.arun(initial_message)
@@ -168,36 +179,52 @@ async def run_agent_async(config: SolverConfig) -> str:
     # Determine success
     tracker.run_succeeded = len(candidate_flags) > 0
 
-    # Run failure analysis if enabled
-    if config.auto_analyze_failures and not tracker.run_succeeded:
-        config_data = {
+    # Write experience-database docs when the user opted into building the database
+    if config.auto_analyze_failures:
+        experience_data = {
             "challenge_url": config.challenge_url,
             "challenge_description": config.challenge_description,
         }
-        failure_doc_path = run_failure_analysis_pipeline(
-            config_data=config_data,
-            tracker_data=tracker.to_dict(),
-            tool_call_log=tracker.tool_call_log,
-            agent_response=response,
-            candidate_flags=candidate_flags,
-            failure_docs_dir=config.failure_docs_dir,
-            max_steps=config.max_steps,
-            actual_steps=tracker.steps,
-            flag_regex=config.flag_regex,
-        )
-        if failure_doc_path:
-            tracker.failure_doc_generated = True
-            log_callback(f"[Failure Analysis] Generated knowledge doc: {failure_doc_path}")
+        if not tracker.run_succeeded:
+            failure_doc_path = run_failure_analysis_pipeline(
+                config_data=experience_data,
+                tracker_data=tracker.to_dict(),
+                tool_call_log=tracker.tool_call_log,
+                agent_response=response,
+                candidate_flags=candidate_flags,
+                failure_docs_dir=config.failure_docs_dir,
+                max_steps=config.max_steps,
+                actual_steps=tracker.steps,
+                flag_regex=config.flag_regex,
+            )
+            if failure_doc_path:
+                tracker.failure_doc_generated = True
+                log_callback(f"[Experience DB] Failure doc saved: {failure_doc_path}")
+            else:
+                log_callback("[Experience DB] Duplicate failure doc skipped")
         else:
-            log_callback("[Failure Analysis] No failure doc generated (run may have succeeded)")
+            success_doc_path = run_success_knowledge_pipeline(
+                config_data=experience_data,
+                tracker_data=tracker.to_dict(),
+                tool_call_log=tracker.tool_call_log,
+                agent_response=response,
+                candidate_flags=candidate_flags,
+                failure_docs_dir=config.failure_docs_dir,
+            )
+            if success_doc_path:
+                log_callback(f"[Experience DB] Success doc saved: {success_doc_path}")
+            else:
+                log_callback("[Experience DB] Duplicate success doc skipped")
 
     st.session_state.run_stats = tracker.to_dict()
 
-    st.session_state.execution_trace.append({
-        "type": "output",
-        "content": response,
-        "timestamp": datetime.now().isoformat(),
-    })
+    st.session_state.execution_trace.append(
+        {
+            "type": "output",
+            "content": response,
+            "timestamp": datetime.now().isoformat(),
+        }
+    )
 
     return response
 
@@ -242,14 +269,20 @@ def run_agent():
 
     config = SolverConfig(
         platform_name=st.session_state.platform_name,
-        agent_system_prompt=st.session_state.agent_prompt if st.session_state.agent_prompt != DEFAULT_SYSTEM_PROMPT else None,
+        agent_system_prompt=(
+            st.session_state.agent_prompt
+            if st.session_state.agent_prompt != DEFAULT_SYSTEM_PROMPT
+            else None
+        ),
         flag_regex=st.session_state.flag_regex,
         challenge_url=st.session_state.challenge_url or None,
         challenge_description=st.session_state.challenge_description or None,
         challenge_hints=st.session_state.challenge_hints or None,
+        source_files=dict(st.session_state.get("source_files", {})),
         docs_dirs=docs_dirs,
         kb_files=kb_files,
         max_steps=st.session_state.max_steps,
+        model_name=st.session_state.model_name,
         rag_mode=rag_mode_str,
         auto_analyze_failures=auto_analyze,
     )
@@ -269,16 +302,18 @@ def run_agent():
             st.session_state.candidate_flags = flags
 
         # Add to run history
-        st.session_state.run_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "url": config.challenge_url,
-            "description": config.challenge_description,
-            "answer": response,
-            "flags": flags if response else [],
-            "stats": st.session_state.run_stats,
-            "rag_mode": rag_mode_str,
-            "run_succeeded": len(flags) > 0 if response else False,
-        })
+        st.session_state.run_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "url": config.challenge_url,
+                "description": config.challenge_description,
+                "answer": response,
+                "flags": flags if response else [],
+                "stats": st.session_state.run_stats,
+                "rag_mode": rag_mode_str,
+                "run_succeeded": len(flags) > 0 if response else False,
+            }
+        )
 
     except Exception as e:
         st.session_state.error_message = str(e)
@@ -328,6 +363,18 @@ def render_sidebar():
     # Agent configuration
     st.sidebar.header("Agent Settings")
 
+    model_options = ["gpt-4o", "gpt-5.2"]
+    current_model = st.session_state.get("model_name", "gpt-4o")
+    current_index = (
+        model_options.index(current_model) if current_model in model_options else 0
+    )
+    st.session_state.model_name = st.sidebar.selectbox(
+        "LLM Model",
+        options=model_options,
+        index=current_index,
+        help="OpenAI model to use for the agent",
+    )
+
     st.session_state.max_steps = st.sidebar.slider(
         "Max Steps",
         min_value=5,
@@ -356,7 +403,9 @@ def render_sidebar():
     )
 
     # Show project root for clarity
-    st.sidebar.caption(f"📁 Project root: {st.session_state.get('project_root', 'unknown')}")
+    st.sidebar.caption(
+        f"📁 Project root: {st.session_state.get('project_root', 'unknown')}"
+    )
 
     # Reset KB settings button
     if st.sidebar.button("🔄 Reset KB to Defaults", use_container_width=True):
@@ -366,49 +415,53 @@ def render_sidebar():
 
     st.sidebar.markdown("---")
 
-    # RAG Study Mode
-    st.sidebar.header("RAG Study Mode")
+    # RAG / Experience Database Mode
+    st.sidebar.header("Knowledge Base Mode")
 
     rag_mode_options = {
         "No RAG": "none",
-        "Original (docs only)": "original",
-        "Augmented (docs + failure knowledge)": "augmented",
+        "Normal (docs only)": "original",
+        "Normal + use experience database": "augmented_readonly",
+        "Normal + build experience database": "augmented",
     }
     rag_mode_labels = list(rag_mode_options.keys())
-    # Find current selection index
     current_mode = st.session_state.get("rag_mode", "original")
-    current_idx = list(rag_mode_options.values()).index(current_mode) if current_mode in rag_mode_options.values() else 1
+    current_idx = (
+        list(rag_mode_options.values()).index(current_mode)
+        if current_mode in rag_mode_options.values()
+        else 1
+    )
 
     selected_label = st.sidebar.radio(
-        "RAG Mode",
+        "Mode",
         options=rag_mode_labels,
         index=current_idx,
         help=(
-            "**No RAG**: Agent has no knowledge base.\n\n"
-            "**Original**: Agent uses the original docs/ knowledge base.\n\n"
-            "**Augmented**: Agent uses original docs + auto-generated failure knowledge."
+            "**No RAG:** Agent has no knowledge base.\n\n"
+            "**Normal:** Agent uses the curated docs/ knowledge base only.\n\n"
+            "**Normal + use experience database:** Also reads past failure and success "
+            "patterns — never writes new ones.\n\n"
+            "**Normal + build experience database:** Reads past patterns AND writes new "
+            "failure/success docs after every run."
         ),
     )
     st.session_state.rag_mode = rag_mode_options[selected_label]
 
-    # Auto-analyze checkbox (only relevant for augmented mode)
-    if st.session_state.rag_mode == "augmented":
-        st.session_state.auto_analyze_failures = st.sidebar.checkbox(
-            "Auto-analyze failures",
-            value=st.session_state.get("auto_analyze_failures", False),
-            help="When enabled, failed runs are automatically analyzed and a knowledge document is generated.",
-        )
+    # auto_analyze_failures: True only when the user wants the agent to write new docs
+    st.session_state.auto_analyze_failures = st.session_state.rag_mode == "augmented"
 
-        # Show count of existing failure docs
+    # Show experience database stats for modes that use it
+    if st.session_state.rag_mode in ("augmented", "augmented_readonly"):
         project_root = Path(st.session_state.get("project_root", get_project_root()))
         failure_dir = project_root / "out" / "failure_knowledge"
         if failure_dir.exists():
-            failure_doc_count = len(list(failure_dir.glob("failure_*.md")))
-            st.sidebar.caption(f"📄 Failure knowledge docs: {failure_doc_count}")
+            failure_count = len(list(failure_dir.glob("failure_*.md")))
+            success_count = len(list(failure_dir.glob("success_*.md")))
+            st.sidebar.caption(
+                f"Experience DB: {failure_count} failure doc(s), {success_count} success doc(s)"
+            )
         else:
-            st.sidebar.caption("📄 Failure knowledge docs: 0")
-    else:
-        st.session_state.auto_analyze_failures = False
+            st.sidebar.caption("Experience DB: 0 docs (no runs yet)")
 
     st.sidebar.markdown("---")
 
@@ -481,6 +534,62 @@ def _render_run_statistics():
     st.caption("Token counts are rough estimates (~4 characters per token).")
 
 
+def _process_uploaded_files(uploaded_files) -> Dict[str, str]:
+    """
+    Decode uploaded files into a filename → content mapping.
+
+    Supports plain text/source files and ZIP archives (extracted recursively).
+    Binary files that can't be decoded as UTF-8 are skipped with a warning.
+
+    Args:
+        uploaded_files: List of Streamlit UploadedFile objects.
+
+    Returns:
+        Dict mapping filename to text content.
+    """
+    result: Dict[str, str] = {}
+
+    _TEXT_EXTENSIONS = {
+        ".py", ".php", ".js", ".ts", ".java", ".go", ".rb", ".c", ".h",
+        ".cpp", ".cs", ".sql", ".yaml", ".yml", ".json", ".html", ".xml",
+        ".sh", ".env", ".conf", ".cfg", ".ini", ".toml", ".txt", ".md",
+        ".htm", ".jsx", ".tsx", ".rs", ".swift", ".kt",
+    }
+
+    def _add_bytes(filename: str, data: bytes) -> None:
+        ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+        if ext not in _TEXT_EXTENSIONS:
+            return  # skip binary-only types silently
+        try:
+            result[filename] = data.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                result[filename] = data.decode("latin-1")
+            except UnicodeDecodeError:
+                pass  # truly binary — skip
+
+    for uf in uploaded_files:
+        raw = uf.read()
+        name = uf.name
+        ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
+        if ext == ".zip":
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                    for member in zf.namelist():
+                        if member.endswith("/"):
+                            continue  # directory entry
+                        member_data = zf.read(member)
+                        # Use just the basename to keep filenames short
+                        member_name = member.split("/")[-1] if "/" in member else member
+                        _add_bytes(member_name, member_data)
+            except zipfile.BadZipFile:
+                pass  # not a valid ZIP — skip
+        else:
+            _add_bytes(name, raw)
+
+    return result
+
+
 def render_main_panel():
     """Render the main panel."""
     st.title("🚩 CTF Solver")
@@ -519,6 +628,34 @@ def render_main_panel():
             placeholder="Any hints provided by the challenge...",
             help="Hints that might help solve the challenge",
         )
+
+        # Source code file uploader
+        uploaded = st.file_uploader(
+            "Source Code Files (optional)",
+            accept_multiple_files=True,
+            type=[
+                "py", "php", "js", "ts", "java", "go", "rb", "c", "h",
+                "cpp", "cs", "sql", "yaml", "yml", "json", "html", "xml",
+                "sh", "txt", "md", "zip", "env", "conf", "cfg", "ini",
+                "toml", "jsx", "tsx", "rs",
+            ],
+            help=(
+                "Drop source files provided by the challenge here. "
+                "The agent will read them to identify vulnerabilities before making HTTP requests. "
+                "ZIP archives are automatically extracted."
+            ),
+        )
+        if uploaded:
+            st.session_state.source_files = _process_uploaded_files(uploaded)
+        elif not st.session_state.get("source_files"):
+            st.session_state.source_files = {}
+
+        if st.session_state.get("source_files"):
+            fnames = list(st.session_state.source_files.keys())
+            st.caption(
+                f"Source files loaded: {', '.join(fnames[:5])}"
+                + (f" (+{len(fnames)-5} more)" if len(fnames) > 5 else "")
+            )
 
     with col2:
         st.subheader("Quick Info")
@@ -580,13 +717,15 @@ def render_main_panel():
 
     # Display results in tabs
     if st.session_state.final_answer or st.session_state.logs:
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
-            "📋 Final Answer",
-            "🚩 Candidate Flags",
-            "📈 Run Statistics",
-            "📜 Execution Log",
-            "📊 History",
-        ])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(
+            [
+                "📋 Final Answer",
+                "🚩 Candidate Flags",
+                "📈 Run Statistics",
+                "📜 Execution Log",
+                "📊 History",
+            ]
+        )
 
         with tab1:
             if st.session_state.final_answer:
@@ -628,12 +767,18 @@ def render_main_panel():
                     rag_label = run.get("rag_mode", "?").capitalize()
                     succeeded = run.get("run_succeeded", False)
                     status_icon = "✅" if succeeded else "❌"
-                    with st.expander(f"Run {run_num} [{rag_label}] {status_icon} - {run['timestamp'][:19]}"):
+                    with st.expander(
+                        f"Run {run_num} [{rag_label}] {status_icon} - {run['timestamp'][:19]}"
+                    ):
                         if run["url"]:
                             st.markdown(f"**URL:** {run['url']}")
                         if run["description"]:
-                            st.markdown(f"**Description:** {run['description'][:100]}...")
-                        st.markdown(f"**RAG Mode:** {rag_label} | **Outcome:** {'Success' if succeeded else 'Failed'}")
+                            st.markdown(
+                                f"**Description:** {run['description'][:100]}..."
+                            )
+                        st.markdown(
+                            f"**RAG Mode:** {rag_label} | **Outcome:** {'Success' if succeeded else 'Failed'}"
+                        )
                         if run["flags"]:
                             st.markdown(f"**Flags Found:** {', '.join(run['flags'])}")
                         if run.get("stats"):
@@ -644,7 +789,11 @@ def render_main_panel():
                                 f"~{stats['total_tokens_est']} tokens"
                             )
                         st.markdown("**Answer:**")
-                        st.markdown(run["answer"][:500] + "..." if len(run["answer"]) > 500 else run["answer"])
+                        st.markdown(
+                            run["answer"][:500] + "..."
+                            if len(run["answer"]) > 500
+                            else run["answer"]
+                        )
             else:
                 st.info("No run history yet.")
 

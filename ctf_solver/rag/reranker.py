@@ -5,6 +5,7 @@ Provides lightweight reranking of retrieval results based on
 keyword overlap, term frequency, and domain-specific signals.
 """
 
+import datetime
 import math
 import re
 from collections import Counter
@@ -40,14 +41,50 @@ class SimpleReranker:
     # CTF-specific high-value terms that should boost scores
     HIGH_VALUE_TERMS: Set[str] = {
         # Vulnerabilities
-        "sql injection", "sqli", "xss", "csrf", "ssrf", "xxe", "lfi", "rfi",
-        "ssti", "rce", "deserialization", "race condition", "jwt",
+        "sql injection",
+        "sqli",
+        "xss",
+        "csrf",
+        "ssrf",
+        "xxe",
+        "lfi",
+        "rfi",
+        "ssti",
+        "rce",
+        "deserialization",
+        "race condition",
+        "jwt",
         # Actions
-        "exploit", "bypass", "payload", "injection", "attack", "vulnerability",
+        "exploit",
+        "bypass",
+        "payload",
+        "injection",
+        "attack",
+        "vulnerability",
         # Results
-        "flag", "shell", "admin", "root", "password", "secret", "key",
+        "flag",
+        "shell",
+        "admin",
+        "root",
+        "password",
+        "secret",
+        "key",
         # Techniques
-        "bruteforce", "enumeration", "fuzzing", "scanning",
+        "bruteforce",
+        "enumeration",
+        "fuzzing",
+        "scanning",
+        # Client-side / access control
+        "paywall",
+        "client-side",
+        "dom",
+        "access control",
+        "authorization",
+        "privilege",
+        "restricted",
+        "premium",
+        "overlay",
+        "cookie manipulation",
     }
 
     # Section headers that indicate high-relevance content
@@ -90,7 +127,7 @@ class SimpleReranker:
 
     def _tokenize(self, text: str) -> List[str]:
         """Simple tokenization to lowercase words."""
-        return re.findall(r'\b[a-z0-9]+\b', text.lower())
+        return re.findall(r"\b[a-z0-9]+\b", text.lower())
 
     def _compute_term_overlap(
         self, query_terms: List[str], doc_terms: List[str]
@@ -148,7 +185,7 @@ class SimpleReranker:
             max_score = 0.0
             for phrase_len in range(len(words), 2, -1):
                 for i in range(len(words) - phrase_len + 1):
-                    phrase = " ".join(words[i:i + phrase_len])
+                    phrase = " ".join(words[i : i + phrase_len])
                     if phrase in doc_lower:
                         # Score based on phrase length relative to query
                         score = phrase_len / len(words)
@@ -216,6 +253,67 @@ class SimpleReranker:
             return sum(position_scores) / len(position_scores)
         return 0.0
 
+    def _recency_score(self, doc_content: str) -> float:
+        """
+        Compute a time-decay score based on the doc's embedded timestamp.
+
+        Experience docs (failure_* / success_*) include a line like::
+
+            > **Auto-generated:** 2026-03-02 12:00:00 UTC
+
+        Curated docs have no such line and receive a neutral score of 1.0.
+        Half-life is 90 days: a 90-day-old experience doc scores ~0.5 relative
+        to a doc created today.
+
+        Args:
+            doc_content: Full text of the document.
+
+        Returns:
+            Decay weight in (0, 1].  Curated docs always return 1.0.
+        """
+        match = re.search(r"\*\*Auto-generated:\*\*\s*(\d{4}-\d{2}-\d{2})", doc_content)
+        if not match:
+            return 1.0
+        try:
+            doc_date = datetime.datetime.strptime(match.group(1), "%Y-%m-%d")
+            days_old = (
+                datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+                - doc_date
+            ).days
+            # exp(-ln(2)/90 * days) → half-life of 90 days
+            return math.exp(-0.693 * days_old / 90.0)
+        except ValueError:
+            return 1.0
+
+    def adaptive_threshold(self, scores: List[float]) -> float:
+        """
+        Compute a query-specific similarity threshold from the score distribution.
+
+        Three cases:
+        - **Large gap** between top and second score (> 0.15): tighten threshold
+          to be selective when there is a clear best match.
+        - **All low scores** (top < 0.20): loosen threshold to avoid
+          under-retrieval when the query is unusual.
+        - **Otherwise**: return the configured ``similarity_threshold``.
+
+        Args:
+            scores: Raw similarity/combined scores for the current candidate set.
+
+        Returns:
+            Adjusted threshold value.
+        """
+        if len(scores) < 2:
+            return self.similarity_threshold
+        sorted_scores = sorted(scores, reverse=True)
+        top = sorted_scores[0]
+        second = sorted_scores[1]
+        gap = top - second
+        if gap > 0.15:
+            return min(self.similarity_threshold + 0.05, 0.30)
+        if top < 0.20:
+            return max(self.similarity_threshold * 0.50, 0.03)
+        return self.similarity_threshold
+
     def score_document(
         self, query: str, document: Any
     ) -> Tuple[float, Dict[str, float]]:
@@ -266,6 +364,10 @@ class SimpleReranker:
         """
         Rerank a list of documents based on query relevance.
 
+        Uses an adaptive similarity threshold derived from the score distribution
+        and applies a small recency decay to experience docs so that stale failure
+        docs are nudged below fresh ones when scores are otherwise equal.
+
         Args:
             query: The search query
             documents: List of documents to rerank
@@ -274,18 +376,28 @@ class SimpleReranker:
         Returns:
             List of ScoredDocument objects, sorted by score descending
         """
-        scored_docs = []
-
+        # Score all documents first (no threshold yet)
+        pre_scored: List[Tuple[Any, float, Dict[str, float]]] = []
         for doc in documents:
             score, details = self.score_document(query, doc)
+            pre_scored.append((doc, score, details))
 
-            # Apply similarity threshold
-            if score >= self.similarity_threshold:
+        # Compute adaptive threshold from the raw score distribution
+        threshold = self.adaptive_threshold([s for _, s, _ in pre_scored])
+
+        # Filter, apply recency weighting, and build final list
+        scored_docs: List[ScoredDocument] = []
+        for doc, score, details in pre_scored:
+            doc_content = getattr(doc, "page_content", str(doc))
+            recency = self._recency_score(doc_content)
+            # 80% base score + 20% recency-weighted score
+            adjusted = score * (0.80 + 0.20 * recency)
+            details["recency"] = recency
+            if adjusted >= threshold:
                 scored_docs.append(
-                    ScoredDocument(document=doc, score=score, match_details=details)
+                    ScoredDocument(document=doc, score=adjusted, match_details=details)
                 )
 
-        # Sort by score descending
         scored_docs.sort(key=lambda x: x.score, reverse=True)
 
         if top_k is not None:
@@ -304,6 +416,10 @@ class SimpleReranker:
         """
         Rerank documents, incorporating original retrieval scores.
 
+        Uses an adaptive threshold derived from the combined-score distribution
+        and applies a small recency decay so that stale experience docs are gently
+        deprioritised when scores are otherwise similar.
+
         Args:
             query: The search query
             documents: List of documents to rerank
@@ -317,28 +433,31 @@ class SimpleReranker:
         if len(documents) != len(original_scores):
             raise ValueError("documents and original_scores must have same length")
 
-        scored_docs = []
         rerank_weight = 1.0 - original_weight
 
+        # Pre-compute all combined scores for adaptive threshold
+        pre_scored: List[Tuple[Any, float, float, float, Dict[str, float]]] = []
         for doc, orig_score in zip(documents, original_scores):
             rerank_score, details = self.score_document(query, doc)
-
-            # Normalize original score to 0-1 range if needed
             orig_normalized = min(max(orig_score, 0.0), 1.0)
+            combined = original_weight * orig_normalized + rerank_weight * rerank_score
+            pre_scored.append((doc, orig_normalized, rerank_score, combined, details))
 
-            # Combine scores
-            combined_score = (
-                original_weight * orig_normalized + rerank_weight * rerank_score
-            )
+        threshold = self.adaptive_threshold([c for _, _, _, c, _ in pre_scored])
+
+        scored_docs: List[ScoredDocument] = []
+        for doc, orig_normalized, rerank_score, combined, details in pre_scored:
+            doc_content = getattr(doc, "page_content", str(doc))
+            recency = self._recency_score(doc_content)
+            adjusted = combined * (0.80 + 0.20 * recency)
 
             details["original_score"] = orig_normalized
             details["rerank_score"] = rerank_score
+            details["recency"] = recency
 
-            if combined_score >= self.similarity_threshold:
+            if adjusted >= threshold:
                 scored_docs.append(
-                    ScoredDocument(
-                        document=doc, score=combined_score, match_details=details
-                    )
+                    ScoredDocument(document=doc, score=adjusted, match_details=details)
                 )
 
         scored_docs.sort(key=lambda x: x.score, reverse=True)

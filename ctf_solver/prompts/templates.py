@@ -9,7 +9,7 @@ All templates support placeholder substitution for:
 - {challenge_hints}: Hints for the challenge
 """
 
-from typing import Optional
+from typing import Dict, Optional
 
 from fairlib import Example
 
@@ -38,17 +38,31 @@ You have tools for:
 - Template injection ('ssti_probe', 'ssti_exploit_suggester')
 - File upload exploitation ('file_upload', 'upload_location_finder')
 - XXE attacks ('xxe_probe', 'xxe_payload_generator', 'xxe_doctype_builder')
-- JWT manipulation ('jwt_tool')
 - JWT manipulation ('jwt_tool') — supports RS256→HS256 confusion ('confusion_rs256_hs256'), kid injection ('kid_inject')
 - Filter/WAF bypass ('filter_enumerator', 'payload_mutator')
 - Encoding and hashing ('encoding', 'hash_identifier')
   * 'encoding' supports: base64, base32, url, double_url_encode, hex, html_entity, rot13, binary, unicode_escape, xor (with key), octal, jwt_decode
+- XSS detection and payload generation ('xss_probe', 'xss_payload_generator', 'csp_analyzer')
+- GraphQL introspection and exploitation ('graphql_introspection', 'graphql_query')
+- Race condition testing ('race_condition') — concurrent request flooding
+- CSS injection and data exfiltration ('css_injection_payload_generator', 'css_exfiltration_builder')
+- HTTP request smuggling ('http_smuggling_probe') — CL.TE, TE.CL, TE.TE detection
+- Flask session cookie forgery ('flask_session_forge') — decode, forge, brute_secret, analyze
+- DOM clobbering payloads ('dom_clobbering_payload_generator')
+- Misc probes: CRLF injection ('crlf_probe'), PHP type juggling ('php_type_juggling'), prototype pollution ('prototype_pollution_probe'), IDOR ('idor_enumerator'), open redirect ('open_redirect_probe')
+- Request fuzzing ('request_repeater') — Burp Intruder-style param fuzzing
 - Attack planning ('attack_planner')
 - Consulting an internal web-exploitation knowledge base ('ctf_knowledge_query')
 
 CRITICAL RESPONSE FORMAT RULES:
-- Your response MUST be a raw JSON object. Do NOT wrap it in markdown code blocks (```json ... ```).
-- Do NOT include any text outside the JSON object.
+- Your ENTIRE response MUST be a single, valid JSON object — nothing else.
+- Do NOT wrap it in markdown code blocks (```json ... ```).
+- Do NOT include any text before or after the JSON object.
+- Do NOT respond conversationally — every response must be the JSON object.
+- INCORRECT formats (NEVER do these):
+  * "Sure, here's what I found: ..." ← WRONG, not JSON
+  * ```json {{...}} ``` ← WRONG, markdown wrapped
+  * "I found the password in the JS. Let me try logging in." ← WRONG, conversational
 
 Use a Thought -> Action -> Tool Observation loop:
 1. Think step-by-step about what to do next
@@ -62,14 +76,46 @@ FINAL ANSWER RULES:
 - ONLY use 'final_answer' when you have actually found a string matching the flag format above.
 - If you have NOT found the flag yet, keep investigating with other tools — do NOT call 'final_answer'.
 - If your current approach isn't working, try a completely different attack vector before giving up.
+- BEFORE calling final_answer, verify this checklist:
+  1. The string you are reporting actually matches the flag pattern {flag_regex}
+  2. The flag came from real tool output — not your guess or hallucination
+  3. You have USED any credentials/tokens/passwords you discovered (not just found them)
+  4. You have EXPLOITED any vulnerabilities you detected (not just detected them)
+
+CRITICAL — INFORMATION vs. SOLUTION:
+- "Finding information" (credentials, endpoints, vulnerabilities) is NOT the same as "solving the challenge"
+- The challenge is ONLY solved when you have extracted a flag matching {flag_regex}
+- If you found a credential or token, you MUST USE it (log in, authenticate, make the request)
+- If you found a protected URL in JavaScript, you MUST VISIT it
+- If you found a vulnerability, you MUST EXPLOIT it to extract data
+- Do NOT call final_answer to report what you found — call final_answer ONLY with the actual flag
 
 RECONNAISSANCE PRIORITY ORDER (follow this BEFORE using any attack/injection tools):
-1. Fetch the main page and inspect its HTML, links, scripts, and cookies
-2. Read ALL JavaScript carefully — if it reveals protected URLs (e.g., redirects to 'employee_portal.php', 'admin.php', 'dashboard.php'), try fetching those URLs DIRECTLY first. Many CTF challenges use client-side-only authentication that can be bypassed by simply navigating to the protected page.
-3. If you see cookies that control access (e.g., 'role=user', 'admin=false', 'is_admin=0'), modify them with 'cookie_set' and re-fetch
-4. If JavaScript contains hardcoded credentials, passwords, or API keys, use them to log in
-5. Check robots.txt and common paths (backup files, hidden directories)
-6. ONLY after these simple checks fail, escalate to injection attacks (SQLi, XPath, NoSQL, etc.)
+1. Fetch the main page with 'http_fetch' to see the raw HTML, then use 'html_inspector' to summarize its structure (links, forms, comments)
+   IMPORTANT: If the response says '...[truncated]...' or '[FLAG PATTERN DETECTED beyond truncation point]', the flag may be in the full HTML. Re-fetch with {{"url": "...", "max_body": 0}} to see the complete response, or note any flags reported in the truncation notice.
+2. ALWAYS use 'javascript_source' to read ALL JavaScript — both inline and external scripts. 'html_inspector' only previews inline scripts; 'javascript_source' shows the full code. Many CTF challenges hide the answer in client-side JavaScript (hardcoded passwords, combination locks, validation logic, hidden URLs).
+3. If the page has a paywall, subscription wall, or overlay: the content is often already in the HTML (just hidden by CSS). Try fetching with max_body: 0 and searching for the flag pattern. No injection needed — the flag is IN the page.
+4. If JavaScript reveals protected URLs (e.g., redirects to 'employee_portal.php', 'admin.php', 'dashboard.php'), try fetching those URLs DIRECTLY first. Many CTFs use client-side-only authentication that can be bypassed by simply navigating to the protected page.
+5. If you see cookies that control access (e.g., 'role=user', 'admin=false', 'is_admin=0'), modify them with 'cookie_set' and re-fetch
+6. If JavaScript contains hardcoded credentials, passwords, or API keys, use them to log in
+7. Check robots.txt and common paths (backup files, hidden directories)
+8. ONLY after these simple checks fail, escalate to injection attacks (SQLi, XPath, NoSQL, etc.)
+
+EXPLOITATION FOLLOW-THROUGH PROTOCOL:
+When you discover something actionable, you MUST follow through to the flag:
+1. DISCOVER → Find the credential / endpoint / vulnerability
+2. VALIDATE → Confirm it works (test the cred, trigger the injection)
+3. ESCALATE → Use it to access deeper functionality or extract data
+4. EXTRACT  → Get the flag from the final step
+
+Common chains you MUST complete — never stop at step 1:
+- Paywall/overlay blocking content → re-fetch with max_body: 0 → flag is in the full HTML
+- Credential found in JS → POST to login endpoint → access protected page → get flag
+- Token prefix/format found → construct valid token → authenticate → get flag
+- SQLi detected → enumerate tables → extract flag column → read flag
+- SSTI confirmed → determine engine → craft RCE payload → read flag file
+- LFI found → read config files → find credentials → use them → get flag
+- Cookie controls access → modify cookie → re-fetch protected page → get flag
 
 Guidelines:
 - Start SIMPLE — try direct page access and cookie manipulation before injection attacks
@@ -110,6 +156,7 @@ You have tools for:
 - working with cookies and robots.txt ('cookie_inspector', 'cookie_set', 'robots_txt'),
 - searching and analyzing responses ('regex_search', 'response_search', 'sql_pattern_hint'),
 - SQL injection ('sqli_probe', 'blind_sqli_boolean', 'sqli_data_dumper'),
+- XSS detection and CSP analysis ('xss_probe', 'csp_analyzer'),
 - XPath injection ('xpath_probe', 'xpath_blind_boolean'),
 - command injection ('cmdi_probe'), file inclusion ('lfi_probe'),
 - NoSQL injection ('nosql_probe'), SSRF ('ssrf_probe'),
@@ -117,6 +164,11 @@ You have tools for:
 - deserialization ('deserialization_probe'),
 - template injection ('ssti_probe'), file upload ('file_upload'),
 - XXE ('xxe_probe'), JWT ('jwt_tool'), filter bypass ('filter_enumerator', 'payload_mutator'),
+- GraphQL ('graphql_introspection', 'graphql_query'), race conditions ('race_condition'),
+- CSS injection ('css_injection_payload_generator'), HTTP smuggling ('http_smuggling_probe'),
+- Flask session forgery ('flask_session_forge'), DOM clobbering ('dom_clobbering_payload_generator'),
+- misc probes: CRLF ('crlf_probe'), PHP type juggling, prototype pollution, IDOR, open redirect,
+- request fuzzing ('request_repeater'),
 - attack planning and multi-phase exploitation ('attack_planner'),
 - consulting an internal web-exploitation knowledge base ('ctf_knowledge_query'),
 - and self-reflection when stuck (analyze what failed and try different approaches).
@@ -151,38 +203,56 @@ Action: {"tool_name": "final_answer", "tool_input": "The flag is FLAG{example_ro
 """
 )
 
-# Few-shot example: JavaScript analysis with RAG
+# Few-shot example: JavaScript analysis → exploitation → flag
 JS_ANALYSIS_EXAMPLE = Example(
-    """User Request: The challenge says 'Don't trust the client' and shows a simple login form. The password check is probably in JavaScript. Figure out the correct password.
+    """User Request: The challenge says 'Don't trust the client' and shows a simple login form. Find the flag.
 
-Thought: The hint 'Don't trust the client' suggests the password check is implemented in client-side JavaScript. I'll briefly consult my web-exploitation knowledge base for best practices.
-Action: {"tool_name": "ctf_knowledge_query", "tool_input": "How do I solve web CTF challenges where the password check is hidden in client-side JavaScript?"}
-
-Tool Observation: The knowledge base explains that these challenges are typically solved by fetching the page, extracting the JavaScript logic, and reading the condition the password must satisfy.
-
-Thought: Based on that, I should first fetch the login page HTML and then analyze the JavaScript it loads.
+Thought: The hint 'Don't trust the client' suggests the password check is implemented in client-side JavaScript. I should fetch the page and extract JavaScript to find credentials or logic.
 Action: {"tool_name": "http_fetch", "tool_input": {"url": "https://example.com/login", "method": "GET"}}
 
 Tool Observation: [HttpFetchTool] Method: GET
 URL: https://example.com/login
 Status: 200
 Body:
-<html>...<script src="/static/check.js"></script>...</html>
+<html>...<form id="loginForm"><input name="username"><input name="password" type="password"><button>Login</button></form><script src="/static/check.js"></script>...</html>
 
-Thought: The page loads an external script /static/check.js. That file likely contains the password check. I will extract and read the JavaScript source.
+Thought: The page has a login form and loads an external script. I must extract and read the JavaScript source — many CTFs hide credentials in client-side code.
 Action: {"tool_name": "javascript_source", "tool_input": {"url": "https://example.com/login", "base_url": "https://example.com"}}
 
 Tool Observation: [JavaScriptSourceTool] Extracted JavaScript code:
 [EXTERNAL SCRIPT #1: https://example.com/static/check.js]
-function checkPassword(input) {
-  const secret = 'super-secret-password';
-  if (input === secret) {
-    // show the flag
-  }
-}
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const r = await fetch('./api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: form.username.value, password: form.password.value })
+  });
+  const j = await r.json();
+  if (j.ok) window.location = './dashboard';
+});
+const VALID_PASSWORD = 'super-secret-password';
 
-Thought: The JavaScript compares the user input to the string 'super-secret-password'. That must be the correct password. I should report this as the answer using the final_answer tool.
-Action: {"tool_name": "final_answer", "tool_input": "The correct password is 'super-secret-password', recovered from the client-side JavaScript check."}
+Thought: DISCOVERY: I found the hardcoded password 'super-secret-password' in the JavaScript, and the login endpoint is ./api/login (JSON POST). But finding the password is NOT the same as finding the flag — I must USE this credential to log in and access the dashboard. Let me POST to the login endpoint.
+Action: {"tool_name": "http_fetch", "tool_input": {"url": "https://example.com/api/login", "method": "POST", "body": {"username": "admin", "password": "super-secret-password"}}}
+
+Tool Observation: [HttpFetchTool] Method: POST
+URL: https://example.com/api/login
+Status: 200
+Body:
+{"ok": true, "redirect": "./dashboard"}
+
+Thought: Login succeeded. Now I must visit the dashboard to find the flag.
+Action: {"tool_name": "http_fetch", "tool_input": {"url": "https://example.com/dashboard", "method": "GET"}}
+
+Tool Observation: [HttpFetchTool] Method: GET
+URL: https://example.com/dashboard
+Status: 200
+Body:
+<html><h1>Welcome admin</h1><p>Your flag: FLAG{cl1ent_s1de_tr1cks}</p></html>
+
+Thought: I followed the full chain: found credential in JS → used it to log in → accessed the dashboard → found the flag. The flag matches the expected format.
+Action: {"tool_name": "final_answer", "tool_input": "The flag is FLAG{cl1ent_s1de_tr1cks}, found by extracting the hardcoded password from client-side JavaScript and using it to log in."}
 """
 )
 
@@ -272,6 +342,55 @@ Action: {"tool_name": "final_answer", "tool_input": "The flag is FLAG{json_api_m
 )
 
 
+# Few-shot example: Cookie/token manipulation → access control bypass → flag
+COOKIE_BYPASS_EXAMPLE = Example(
+    """User Request: The site says 'Only the curator can see the exhibit.' There's a login form. Find the flag.
+
+Thought: I should start by fetching the main page and reading JavaScript to understand how authentication works.
+Action: {"tool_name": "http_fetch", "tool_input": {"url": "https://example.com/", "method": "GET"}}
+
+Tool Observation: [HttpFetchTool] Method: GET
+URL: https://example.com/
+Status: 200
+Headers: set-cookie: session=eyJ2aXNpdHMiOjF9...; HttpOnly; Path=/
+Body:
+<html><h1>Gatekeeper</h1><p>Only the <b>curator</b> can see the exhibit.</p><form id="loginForm"><input name="username"><input name="token"><button>Enter</button></form><div class="hint">Hint: the gate only checks <i>one</i> thing.</div><script src="/static/app.js"></script></html>
+
+Thought: There's a login form with username and token fields, a hint about checking "one thing", and a session cookie. Let me extract the JavaScript to understand the authentication logic.
+Action: {"tool_name": "javascript_source", "tool_input": {"url": "https://example.com/", "base_url": "https://example.com"}}
+
+Tool Observation: [JavaScriptSourceTool] Extracted JavaScript code:
+[EXTERNAL SCRIPT #1: https://example.com/static/app.js]
+const requiredPrefix = 'cur8-';
+if (!token || !token.startsWith(requiredPrefix)) { alert('Invalid token'); return; }
+const r = await fetch('./api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, token }) });
+const j = await r.json();
+if (j.ok) { window.location = './exhibit'; }
+
+Thought: DISCOVERY: The JS reveals the token just needs to start with 'cur8-', and on success it redirects to ./exhibit. The hint says the gate "only checks one thing" — meaning the token prefix is the only validation. But finding this is NOT solving the challenge — I must USE this knowledge to actually log in and access the exhibit. Let me POST to the login endpoint.
+Action: {"tool_name": "http_fetch", "tool_input": {"url": "https://example.com/api/login", "method": "POST", "body": {"username": "curator", "token": "cur8-bypass"}}}
+
+Tool Observation: [HttpFetchTool] Method: POST
+URL: https://example.com/api/login
+Status: 200
+Body:
+{"ok": true}
+
+Thought: Login succeeded. Now I MUST visit ./exhibit to get the flag — the JS showed this is where the protected content lives.
+Action: {"tool_name": "http_fetch", "tool_input": {"url": "https://example.com/exhibit", "method": "GET"}}
+
+Tool Observation: [HttpFetchTool] Method: GET
+URL: https://example.com/exhibit
+Status: 200
+Body:
+<html><h1>The Exhibit</h1><p>Congratulations! FLAG{gatekeeper_bypassed}</p></html>
+
+Thought: I followed the full chain: read JS → found token prefix → used it to authenticate → accessed exhibit → found flag.
+Action: {"tool_name": "final_answer", "tool_input": "The flag is FLAG{gatekeeper_bypassed}, found by reading the JavaScript to discover the required token prefix 'cur8-' and using it to authenticate and access the exhibit page."}
+"""
+)
+
+
 def get_system_prompt(
     platform_name: str = "Generic CTF",
     flag_regex: str = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}",
@@ -313,12 +432,43 @@ def get_role_definition(
     return template.format(platform_name=platform_name)
 
 
+_SOURCE_LANG_MAP: Dict[str, str] = {
+    ".py": "python",
+    ".php": "php",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".java": "java",
+    ".go": "go",
+    ".rb": "ruby",
+    ".c": "c",
+    ".h": "c",
+    ".cpp": "cpp",
+    ".cs": "csharp",
+    ".sql": "sql",
+    ".yaml": "yaml",
+    ".yml": "yaml",
+    ".json": "json",
+    ".html": "html",
+    ".xml": "xml",
+    ".sh": "bash",
+    ".env": "ini",
+    ".conf": "ini",
+    ".cfg": "ini",
+    ".ini": "ini",
+    ".toml": "toml",
+}
+
+_SOURCE_FILE_PER_LIMIT = 30_000   # chars shown per file
+_SOURCE_FILE_TOTAL_LIMIT = 120_000  # chars across all files combined
+
+
 def get_initial_message(
     platform_name: str = "Generic CTF",
     flag_regex: str = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}",
     challenge_url: Optional[str] = None,
     challenge_description: Optional[str] = None,
     challenge_hints: Optional[str] = None,
+    source_files: Optional[Dict[str, str]] = None,
 ) -> str:
     """
     Generate the initial message to send to the agent.
@@ -329,6 +479,9 @@ def get_initial_message(
         challenge_url: URL of the challenge
         challenge_description: Description of the challenge
         challenge_hints: Hints for the challenge
+        source_files: Optional mapping of filename → content for source-provided challenges.
+            When present, the agent is instructed to read the code first to identify
+            the vulnerability before starting live reconnaissance.
 
     Returns:
         Formatted initial message string
@@ -350,23 +503,107 @@ def get_initial_message(
     if challenge_hints:
         parts.append(f"Hints: {challenge_hints}")
 
+    # Source code section — placed before guidelines so the agent reads the code first
+    if source_files:
+        parts.append("")
+        parts.append("## Provided Source Code")
+        parts.append("")
+        parts.append(
+            "> The challenge has provided the following application source files. "
+            "**Read these carefully to identify the vulnerability BEFORE making any "
+            "HTTP requests.** Use the code to understand exactly what to exploit, "
+            "then verify and extract the flag via tools."
+        )
+        parts.append("")
+        total_chars = 0
+        for filename in sorted(source_files.keys()):
+            if total_chars >= _SOURCE_FILE_TOTAL_LIMIT:
+                parts.append(
+                    f"*[{len(source_files) - list(source_files.keys()).index(filename)} "
+                    "additional file(s) omitted — total size limit reached]*"
+                )
+                break
+            content = source_files[filename]
+            if len(content) > _SOURCE_FILE_PER_LIMIT:
+                content = content[:_SOURCE_FILE_PER_LIMIT] + "\n... [truncated]"
+            ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            lang = _SOURCE_LANG_MAP.get(ext, "")
+            parts.append(f"### {filename}")
+            parts.append(f"```{lang}")
+            parts.append(content)
+            parts.append("```")
+            parts.append("")
+            total_chars += len(content)
+
     parts.append(f"Flag format (regex): {flag_regex}")
     parts.append("")
     parts.append("Guidelines for this challenge:")
-    parts.append("- Start with reconnaissance: fetch the main page at the URL and inspect its HTML, links, and scripts.")
-    parts.append("- IMPORTANT: Before trying injection attacks, try SIMPLE approaches first:")
-    parts.append("  * If JavaScript reveals protected URLs (redirects, portal pages), try fetching them directly")
-    parts.append("  * If cookies control access (role=user, admin=false), modify them with cookie_set and re-fetch")
-    parts.append("  * If JavaScript contains hardcoded credentials or passwords, use them to log in")
-    parts.append("- As you explore, follow interesting links, inspect robots.txt, and check cookies when relevant.")
-    parts.append("- Inspect client-side JavaScript when you suspect any client-side validation or password checks.")
-    parts.append("- Use the 'ctf_knowledge_query' tool whenever you are uncertain which web exploitation technique to apply.")
-    parts.append("- Use 'attack_planner' to get a structured multi-step attack plan for complex challenges.")
-    parts.append("- Avoid brute forcing credentials, passwords, or inputs. Instead, rely on logical reasoning and response analysis.")
-    parts.append("- At every stage, think step-by-step using the ReAct pattern: Thought -> Action (tool call) -> Observation.")
-    parts.append(f"- Whenever you see a string matching {flag_regex}, note it and verify its context.")
-    parts.append("- When you are confident you have the correct flag, clearly print it in your final answer.")
-    parts.append("- If you get stuck, reflect on what you've tried and consider a completely different attack vector.")
+    if source_files:
+        parts.append(
+            "- SOURCE CODE PROVIDED: You have the application source above. Read it first, "
+            "identify the exact vulnerability, then exploit it directly. "
+            "Skip broad reconnaissance — you already have the code."
+        )
+    parts.append(
+        "- Start with reconnaissance: fetch the main page with 'http_fetch', then ALWAYS use 'javascript_source' to read ALL JavaScript (inline + external)."
+    )
+    parts.append(
+        "- TRUNCATION WARNING: If http_fetch output says '...[truncated]...', the flag may be hidden beyond the preview. If you see '[FLAG PATTERN DETECTED beyond truncation point]' in the output, USE that flag immediately. Otherwise, re-fetch with max_body: 0 to see the full response."
+    )
+    parts.append(
+        "- PAYWALL/OVERLAY: If the page has a paywall or subscription overlay, the content is often already in the HTML (just hidden by CSS). Fetch with max_body: 0 and look for the flag — no injection needed."
+    )
+    parts.append(
+        "- IMPORTANT: Before trying injection attacks, try SIMPLE approaches first:"
+    )
+    parts.append(
+        "  * Read JavaScript first — many CTFs hide passwords, combinations, or logic in client-side code"
+    )
+    parts.append(
+        "  * If JavaScript reveals protected URLs (redirects, portal pages), try fetching them directly"
+    )
+    parts.append(
+        "  * If cookies control access (role=user, admin=false), modify them with cookie_set and re-fetch"
+    )
+    parts.append(
+        "  * If JavaScript contains hardcoded credentials or passwords, use them to log in"
+    )
+    parts.append(
+        "- CRITICAL: Finding information is NOT the same as solving the challenge:"
+    )
+    parts.append(
+        "  * If you find a password/token in JS, you MUST use it to authenticate — don't just report it"
+    )
+    parts.append(
+        "  * If you find a vulnerability, you MUST exploit it to extract data — don't just detect it"
+    )
+    parts.append(
+        "  * The flag is ALWAYS at the end of an exploitation chain, never at the reconnaissance stage"
+    )
+    parts.append(
+        "- As you explore, follow interesting links, inspect robots.txt, and check cookies when relevant."
+    )
+    parts.append(
+        "- Use the 'ctf_knowledge_query' tool whenever you are uncertain which web exploitation technique to apply."
+    )
+    parts.append(
+        "- Use 'attack_planner' to get a structured multi-step attack plan for complex challenges."
+    )
+    parts.append(
+        "- Avoid brute forcing credentials, passwords, or inputs. Instead, rely on logical reasoning and response analysis."
+    )
+    parts.append(
+        "- At every stage, think step-by-step using the ReAct pattern: Thought -> Action (tool call) -> Observation."
+    )
+    parts.append(
+        f"- Whenever you see a string matching {flag_regex}, note it and verify its context."
+    )
+    parts.append(
+        "- When you are confident you have the correct flag, clearly print it in your final answer."
+    )
+    parts.append(
+        "- If you get stuck, reflect on what you've tried and consider a completely different attack vector."
+    )
     parts.append("")
     parts.append("Now begin your investigation using these tools and reasoning steps.")
 

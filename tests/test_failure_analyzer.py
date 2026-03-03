@@ -176,7 +176,9 @@ class TestFailureAnalysis:
             },
         ]
 
-    def test_infers_sql_injection_category(self, sample_config_data, sample_tracker_data, sample_tool_call_log):
+    def test_infers_sql_injection_category(
+        self, sample_config_data, sample_tracker_data, sample_tool_call_log
+    ):
         analysis = analyze_failure(
             config_data=sample_config_data,
             tracker_data=sample_tracker_data,
@@ -186,7 +188,9 @@ class TestFailureAnalysis:
         )
         assert analysis.inferred_category == "sql_injection"
 
-    def test_extracts_urls(self, sample_config_data, sample_tracker_data, sample_tool_call_log):
+    def test_extracts_urls(
+        self, sample_config_data, sample_tracker_data, sample_tool_call_log
+    ):
         analysis = analyze_failure(
             config_data=sample_config_data,
             tracker_data=sample_tracker_data,
@@ -196,7 +200,9 @@ class TestFailureAnalysis:
         )
         assert any("example.com" in url for url in analysis.urls_accessed)
 
-    def test_extracts_errors(self, sample_config_data, sample_tracker_data, sample_tool_call_log):
+    def test_extracts_errors(
+        self, sample_config_data, sample_tracker_data, sample_tool_call_log
+    ):
         analysis = analyze_failure(
             config_data=sample_config_data,
             tracker_data=sample_tracker_data,
@@ -206,7 +212,9 @@ class TestFailureAnalysis:
         )
         assert len(analysis.errors_encountered) > 0
 
-    def test_detects_repeated_failures(self, sample_config_data, sample_tracker_data, sample_tool_call_log):
+    def test_detects_repeated_failures(
+        self, sample_config_data, sample_tracker_data, sample_tool_call_log
+    ):
         analysis = analyze_failure(
             config_data=sample_config_data,
             tracker_data=sample_tracker_data,
@@ -217,7 +225,9 @@ class TestFailureAnalysis:
         # The sqli_probe was called 3 times with the same input
         assert len(analysis.repeated_failures) > 0
 
-    def test_generates_suggestions(self, sample_config_data, sample_tracker_data, sample_tool_call_log):
+    def test_generates_suggestions(
+        self, sample_config_data, sample_tracker_data, sample_tool_call_log
+    ):
         analysis = analyze_failure(
             config_data=sample_config_data,
             tracker_data=sample_tracker_data,
@@ -227,7 +237,9 @@ class TestFailureAnalysis:
         )
         assert len(analysis.suggestions) > 0
 
-    def test_tool_frequency_captured(self, sample_config_data, sample_tracker_data, sample_tool_call_log):
+    def test_tool_frequency_captured(
+        self, sample_config_data, sample_tracker_data, sample_tool_call_log
+    ):
         analysis = analyze_failure(
             config_data=sample_config_data,
             tracker_data=sample_tracker_data,
@@ -252,7 +264,11 @@ class TestFailureAnalysis:
     def test_jwt_category_inference(self):
         analysis = analyze_failure(
             config_data={"challenge_url": "http://example.com"},
-            tracker_data={"steps": 5, "tool_calls": {"jwt_tool": 10}, "duration_seconds": 20},
+            tracker_data={
+                "steps": 5,
+                "tool_calls": {"jwt_tool": 10},
+                "duration_seconds": 20,
+            },
             tool_call_log=[],
             agent_response="Failed.",
             failure_reason="No flags",
@@ -294,7 +310,7 @@ class TestDocGeneration:
         assert doc.startswith("# Failure Analysis: SQL Injection")
         assert "## 1. Challenge Context" in doc
         assert "## 2. What Was Tried" in doc
-        assert "## 5. Suggestions" in doc
+        assert "## 7. Suggestions for Next Attempt" in doc
 
     def test_contains_tags(self, sample_analysis):
         doc = generate_failure_knowledge_doc(sample_analysis, doc_index=1)
@@ -402,7 +418,11 @@ class TestPipeline:
         with tempfile.TemporaryDirectory() as tmpdir:
             result = run_failure_analysis_pipeline(
                 config_data={"challenge_url": "http://example.com"},
-                tracker_data={"steps": 5, "tool_calls": {"jwt_tool": 3}, "duration_seconds": 10},
+                tracker_data={
+                    "steps": 5,
+                    "tool_calls": {"jwt_tool": 3},
+                    "duration_seconds": 10,
+                },
                 tool_call_log=[],
                 agent_response="Nothing found.",
                 candidate_flags=[],
@@ -631,8 +651,9 @@ class TestLoggingWrapperDetailedCapture:
 class TestFailureDocDeduplication:
     """Tests for _is_duplicate() and dedup integration in the pipeline."""
 
-    def _make_pipeline_call(self, tmpdir, url="http://example.com/challenge",
-                            tools=None, description="Test"):
+    def _make_pipeline_call(
+        self, tmpdir, url="http://example.com/challenge", tools=None, description="Test"
+    ):
         if tools is None:
             tools = {"http_fetch": 3, "sqli_probe": 2}
         return run_failure_analysis_pipeline(
@@ -683,8 +704,13 @@ class TestFailureDocDeduplication:
             assert first is not None
             # Completely different tool set but same category (sqli)
             second = self._make_pipeline_call(
-                tmpdir, tools={"sqli_probe": 1, "blind_sqli_boolean": 5,
-                               "blind_sqli_time": 3, "sqli_data_dumper": 2}
+                tmpdir,
+                tools={
+                    "sqli_probe": 1,
+                    "blind_sqli_boolean": 5,
+                    "blind_sqli_time": 3,
+                    "sqli_data_dumper": 2,
+                },
             )
             # Jaccard of {sqli_probe, http_fetch, form_submit} vs
             # {sqli_probe, blind_sqli_boolean, blind_sqli_time, sqli_data_dumper}
@@ -732,12 +758,14 @@ class TestStuckDetection:
 
     def test_no_warning_below_threshold(self):
         from ctf_solver.tools.logging_wrapper import StuckDetector
+
         detector = StuckDetector(threshold=3)
         assert detector.check("tool_a", "input1") is None
         assert detector.check("tool_a", "input1") is None
 
     def test_warning_at_threshold(self):
         from ctf_solver.tools.logging_wrapper import StuckDetector
+
         detector = StuckDetector(threshold=3)
         detector.check("tool_a", "input1")
         detector.check("tool_a", "input1")
@@ -748,6 +776,7 @@ class TestStuckDetection:
 
     def test_warning_increases_count(self):
         from ctf_solver.tools.logging_wrapper import StuckDetector
+
         detector = StuckDetector(threshold=3)
         for _ in range(3):
             detector.check("tool_a", "input1")
@@ -756,6 +785,7 @@ class TestStuckDetection:
 
     def test_different_inputs_no_warning(self):
         from ctf_solver.tools.logging_wrapper import StuckDetector
+
         detector = StuckDetector(threshold=3)
         for i in range(10):
             result = detector.check("tool_a", f"input_{i}")
@@ -763,6 +793,7 @@ class TestStuckDetection:
 
     def test_different_tools_no_warning(self):
         from ctf_solver.tools.logging_wrapper import StuckDetector
+
         detector = StuckDetector(threshold=3)
         assert detector.check("tool_a", "same_input") is None
         assert detector.check("tool_b", "same_input") is None
@@ -774,6 +805,7 @@ class TestStuckDetection:
         class FakeTool:
             name = "fake"
             description = "fake"
+
             def use(self, tool_input):
                 return "result"
 
@@ -785,6 +817,7 @@ class TestStuckDetection:
 
     def test_stuck_detector_reset(self):
         from ctf_solver.tools.logging_wrapper import StuckDetector
+
         detector = StuckDetector(threshold=3)
         detector.check("tool_a", "input1")
         detector.check("tool_a", "input1")
@@ -798,6 +831,7 @@ class TestStuckDetection:
         class FakeTool:
             name = "fake"
             description = "fake"
+
             def use(self, tool_input):
                 return "normal result"
 
@@ -817,6 +851,7 @@ class TestStuckDetection:
 
     def test_whitespace_normalization(self):
         from ctf_solver.tools.logging_wrapper import StuckDetector
+
         detector = StuckDetector(threshold=3)
         detector.check("tool_a", "  input1  ")
         detector.check("tool_a", "input1")

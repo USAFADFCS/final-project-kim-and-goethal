@@ -87,7 +87,9 @@ class ModelConfig:
 DEFAULT_CONFIGS: Dict[LLMProvider, ModelConfig] = {
     LLMProvider.OPENAI: ModelConfig(
         provider=LLMProvider.OPENAI,
-        model_name="gpt-4o",
+        model_name="gpt-5.2",
+        #   gpt-5.2
+        #   gpt-4o
     ),
     LLMProvider.ANTHROPIC: ModelConfig(
         provider=LLMProvider.ANTHROPIC,

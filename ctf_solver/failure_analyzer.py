@@ -24,6 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Category inference from tool usage
+# TODO: Consolidate this mapping with logging_wrapper._TOOL_CATEGORIES and
+# classifier TOOL_PRIORITIES into a single shared source to prevent drift.
 # ---------------------------------------------------------------------------
 
 _TOOL_TO_CATEGORY = {
@@ -86,6 +88,12 @@ _TOOL_TO_CATEGORY = {
     "http_smuggling_probe": "http_smuggling",
     "flask_session_forge": "flask_session",
     "dom_clobbering_payload_generator": "dom_clobbering",
+    "oauth_probe": "oauth_oidc",
+    "oauth_payload_generator": "oauth_oidc",
+    "php_filter_chain": "php_filter",
+    "parser_differential_probe": "parser_differential",
+    "websocket_probe": "websocket",
+    "wasm_analyzer": "wasm_re",
 }
 
 _CATEGORY_LABELS = {
@@ -117,6 +125,11 @@ _CATEGORY_LABELS = {
     "http_smuggling": "HTTP Request Smuggling",
     "flask_session": "Flask Session Cookie Forgery",
     "dom_clobbering": "DOM Clobbering",
+    "oauth_oidc": "OAuth / OpenID Connect",
+    "php_filter": "PHP Filter Chain",
+    "parser_differential": "Parser Differential",
+    "websocket": "WebSocket Exploitation",
+    "wasm_re": "WASM / Reverse Engineering",
     "unknown": "General Web Exploitation",
 }
 
@@ -140,10 +153,76 @@ _ERROR_PATTERNS = [
     r"(?i)(syntax error|parse error|invalid)",
 ]
 
+# ---------------------------------------------------------------------------
+# Actionable signal detection (v2.1 — missed signal & partial success)
+# ---------------------------------------------------------------------------
+
+# Each entry: (output_regex, label, tools_filter_or_None, required_follow_up_tools)
+# tools_filter: only trigger when the emitting tool is in this set (None = any tool)
+# required_follow_up_tools: the intersection with the NEXT 5 tool calls must be non-empty
+_ACTIONABLE_PATTERNS: List[Tuple[str, str, Optional[frozenset], frozenset]] = [
+    (
+        r"(?i)(?:password|passwd)\s*[:=]\s*\S+",
+        "credential_found",
+        None,
+        frozenset(["form_submit", "http_fetch"]),
+    ),
+    (
+        r"(?i)api[_-]?key\s*[:=]\s*\S+",
+        "api_key_found",
+        None,
+        frozenset(["http_fetch"]),
+    ),
+    (
+        r"eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+",
+        "jwt_token_found",
+        None,
+        frozenset(["jwt_tool"]),
+    ),
+    (
+        r"(?i)(?:you have an error in your sql|sql.*syntax.*error)",
+        "sqli_error_confirmed",
+        frozenset(
+            [
+                "sqli_probe",
+                "blind_sqli_boolean",
+                "blind_sqli_time",
+                "http_fetch",
+                "form_submit",
+            ]
+        ),
+        frozenset(["sqli_column_counter", "sqli_data_dumper", "blind_sqli_boolean"]),
+    ),
+    (
+        r"\b49\b",
+        "ssti_calculation_confirmed",
+        frozenset(["ssti_probe"]),
+        frozenset(["ssti_exploit_suggester"]),
+    ),
+    (
+        r"(?i)(?:admin.*panel|/admin[/\s]|administration.*page)",
+        "admin_endpoint_found",
+        None,
+        frozenset(["http_fetch", "form_submit", "cookie_set"]),
+    ),
+]
+
+# Patterns indicating sub-goal achievement within a failed run
+_PARTIAL_SUCCESS_INDICATORS: Dict[str, str] = {
+    "sqli_confirmed": r"(?i)(?:you have an error in your sql|sql.*syntax.*error)",
+    "ssti_confirmed": r"\b49\b",
+    "credential_found": r"(?i)(?:password|passwd)\s*[:=]\s*\S+",
+    "auth_bypassed": r"(?i)(?:welcome.*admin|logged in as admin|admin.*dashboard|admin.*panel.*access)",
+    "source_disclosed": r"(?i)(?:<\?php|def\s+check_flag|def\s+\w+.*flag)",
+    "schema_extracted": r"(?i)(?:information_schema|\.tables|column.*table)",
+    "recon_complete": r"(?:Status: 200|Found \d+ (?:endpoint|path|link|page))",
+}
+
 
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class FailureAnalysis:
@@ -166,6 +245,14 @@ class FailureAnalysis:
     errors_encountered: List[str] = field(default_factory=list)
     repeated_failures: List[str] = field(default_factory=list)
 
+    # Richer diagnostics (v2.0)
+    tool_output_snippets: Dict[str, List[str]] = field(default_factory=dict)
+    response_patterns: List[str] = field(default_factory=list)
+
+    # Hindsight analysis (v2.1)
+    missed_signals: List[str] = field(default_factory=list)
+    partial_success_patterns: List[str] = field(default_factory=list)
+
     # Suggestions (deterministic)
     suggestions: List[str] = field(default_factory=list)
 
@@ -173,6 +260,7 @@ class FailureAnalysis:
 # ---------------------------------------------------------------------------
 # 1. Failure detection
 # ---------------------------------------------------------------------------
+
 
 def detect_failure(
     agent_response: Optional[str],
@@ -211,6 +299,100 @@ def detect_failure(
 # ---------------------------------------------------------------------------
 # 2. Failure analysis (deterministic)
 # ---------------------------------------------------------------------------
+
+
+def _detect_missed_signals(tool_call_log: List[Dict[str, Any]]) -> List[str]:
+    """
+    Detect tool outputs containing actionable findings the agent never exploited.
+
+    For each call whose output matches an actionable pattern, checks whether a
+    relevant follow-up tool was called within the next 5 steps.  If not, the
+    finding is flagged as a "missed signal".
+
+    Returns at most 5 missed-signal strings.
+    """
+    missed: List[str] = []
+    for i, entry in enumerate(tool_call_log):
+        output = entry.get("output", "") or ""
+        tool_name = entry.get("tool", "")
+
+        for pattern, label, tools_filter, follow_up_tools in _ACTIONABLE_PATTERNS:
+            if tools_filter is not None and tool_name not in tools_filter:
+                continue
+            if not re.search(pattern, output, re.IGNORECASE):
+                continue
+
+            subsequent_tools = frozenset(
+                e.get("tool", "") for e in tool_call_log[i + 1 : i + 6]
+            )
+            if not (follow_up_tools & subsequent_tools):
+                follow_up_str = ", ".join(sorted(follow_up_tools))
+                missed.append(
+                    f"`{tool_name}` found {label} but no follow-up exploitation "
+                    f"({follow_up_str}) was attempted"
+                )
+                break  # one signal per tool-call entry
+
+    return missed[:5]
+
+
+def _detect_partial_successes(tool_call_log: List[Dict[str, Any]]) -> List[str]:
+    """
+    Detect sub-goals achieved within an overall-failed run (hindsight value).
+
+    Returns a list of achieved goal labels from _PARTIAL_SUCCESS_INDICATORS.
+    """
+    all_outputs = " ".join(e.get("output", "") or "" for e in tool_call_log)
+    return [
+        goal
+        for goal, pattern in _PARTIAL_SUCCESS_INDICATORS.items()
+        if re.search(pattern, all_outputs)
+    ]
+
+
+def find_prior_failure_doc(
+    challenge_url: str,
+    failure_docs_dir: str,
+    max_chars: int = 2000,
+) -> Optional[str]:
+    """
+    Return the most recent failure doc for *challenge_url*, truncated to *max_chars*.
+
+    Used to implement Reflexion-style retry injection: before running the agent on
+    a challenge it has previously failed, prepend the stored failure analysis to the
+    initial message so the agent avoids repeating the same mistakes.
+
+    Args:
+        challenge_url: URL to search for inside failure docs.
+        failure_docs_dir: Directory that holds ``failure_*.md`` files.
+        max_chars: Maximum characters to return (doc is truncated if longer).
+
+    Returns:
+        Truncated content string, or ``None`` if no matching doc is found.
+    """
+    if not challenge_url:
+        return None
+
+    docs_dir = Path(failure_docs_dir)
+    if not docs_dir.exists():
+        return None
+
+    matching: List[Tuple[float, str]] = []
+    for doc_path in docs_dir.glob("failure_*.md"):
+        try:
+            content = doc_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if challenge_url in content:
+            matching.append((doc_path.stat().st_mtime, content))
+
+    if not matching:
+        return None
+
+    matching.sort(key=lambda x: x[0], reverse=True)
+    _, most_recent = matching[0]
+    return most_recent[:max_chars]
+
 
 def analyze_failure(
     config_data: Dict[str, Any],
@@ -256,40 +438,98 @@ def analyze_failure(
     if category_scores:
         analysis.inferred_category = category_scores.most_common(1)[0][0]
 
-    # Extract payloads, URLs, and errors from tool call log
-    seen_payloads = set()
-    seen_urls = set()
-    seen_errors = set()
+    # Extract payloads, URLs, errors, snippets, and response patterns from tool call log
+    seen_payloads: set = set()
+    seen_urls: set = set()
+    seen_errors: set = set()
     repeated_inputs: Counter = Counter()
+    tool_snippets: Dict[str, List[str]] = {}
+    response_length_counts: Counter = Counter()
+
+    _SQL_TOOLS = frozenset(
+        (
+            "sqli_probe",
+            "blind_sqli_boolean",
+            "blind_sqli_time",
+            "sqli_data_dumper",
+            "sqli_column_counter",
+            "form_submit",
+            "http_fetch",
+        )
+    )
+    _SSTI_TOOLS = frozenset(("ssti_probe", "ssti_exploit_suggester"))
+    _XSS_TOOLS = frozenset(("xss_probe", "xss_payload_generator"))
+    _LFI_TOOLS = frozenset(("lfi_probe", "lfi_payload_generator"))
+
+    import json as _json
 
     for entry in tool_call_log:
         tool_input = entry.get("input", "")
         tool_output = entry.get("output", "")
         tool_name = entry.get("tool", "")
 
-        # Extract URLs from input
+        # -- URLs from input --
         url_matches = re.findall(r'https?://[^\s"\'}\]]+', tool_input)
         for url in url_matches:
             seen_urls.add(url)
 
-        # Extract payloads (SQL-related inputs)
-        if tool_name in ("sqli_probe", "blind_sqli_boolean", "blind_sqli_time",
-                         "sqli_data_dumper", "form_submit", "http_fetch"):
-            # Track repeated identical inputs (sign of being stuck)
-            input_key = f"{tool_name}:{tool_input[:200]}"
-            repeated_inputs[input_key] += 1
+        # -- Tool output snippets (first 2 non-trivial outputs per tool) --
+        output_stripped = (tool_output or "").strip()
+        if tool_name and len(output_stripped) >= 20:
+            if tool_name not in tool_snippets:
+                tool_snippets[tool_name] = []
+            if len(tool_snippets[tool_name]) < 2:
+                tool_snippets[tool_name].append(output_stripped[:300])
 
-            # Extract SQL-like payloads
+        # -- Response pattern detection (identical length = not injectable) --
+        if tool_name and tool_output:
+            response_length_counts[(tool_name, len(tool_output))] += 1
+
+        # -- Repeated-input tracking --
+        input_key = f"{tool_name}:{tool_input[:200]}"
+        repeated_inputs[input_key] += 1
+
+        # -- Generic: extract "payload" / "operation" key from any JSON input --
+        try:
+            input_data = _json.loads(tool_input) if tool_input else {}
+            for key in ("payload", "operation", "payload_type"):
+                val = input_data.get(key)
+                if val and isinstance(val, str) and len(val) <= 200:
+                    seen_payloads.add(f"[{tool_name}] {val}")
+                    break
+        except (_json.JSONDecodeError, AttributeError):
+            pass
+
+        # -- SQL-specific payload extraction --
+        if tool_name in _SQL_TOOLS:
             sql_matches = re.findall(
-                r"""['"]?\s*(?:OR|AND|UNION|SELECT|INSERT|UPDATE|DELETE|DROP|'|"|--|/\*|#|;).*?(?=['"\s}]|$)""",
-                tool_input, re.IGNORECASE
+                r"""['"]?\s*(?:OR|AND|UNION|SELECT|INSERT|UPDATE|DELETE|DROP|'|"|--|/\*|#|;)"""
+                r""".*?(?=['"\s}]|$)""",
+                tool_input,
+                re.IGNORECASE,
             )
             for p in sql_matches:
                 p_clean = p.strip()[:200]
-                if p_clean and p_clean not in seen_payloads:
+                if p_clean:
                     seen_payloads.add(p_clean)
 
-        # Extract errors from output
+        # -- SSTI: template syntax --
+        if tool_name in _SSTI_TOOLS:
+            for m in re.finditer(
+                r"(\{\{.+?\}\}|\$\{.+?\}|#\{.+?\}|\{\%.+?\%\})", tool_input
+            ):
+                seen_payloads.add(f"[ssti] {m.group(0)[:100]}")
+
+        # -- XSS: tag patterns --
+        if tool_name in _XSS_TOOLS:
+            for m in re.finditer(r"<[^>]{1,100}>", tool_input):
+                seen_payloads.add(f"[xss] {m.group(0)[:100]}")
+
+        # -- LFI: path traversal --
+        if tool_name in _LFI_TOOLS and "../" in tool_input:
+            seen_payloads.add(f"[lfi] path_traversal_attempted")
+
+        # -- Errors from output --
         for err_pattern in _ERROR_PATTERNS:
             err_matches = re.findall(err_pattern, tool_output)
             for err in err_matches:
@@ -299,6 +539,7 @@ def analyze_failure(
     analysis.payloads_tried = sorted(seen_payloads)[:50]
     analysis.urls_accessed = sorted(seen_urls)[:20]
     analysis.errors_encountered = sorted(seen_errors)[:30]
+    analysis.tool_output_snippets = tool_snippets
 
     # Identify repeated failures (same input tried 3+ times)
     analysis.repeated_failures = [
@@ -306,6 +547,18 @@ def analyze_failure(
         for inp, count in repeated_inputs.items()
         if count >= 3
     ][:10]
+
+    # Identify response patterns (same-length response 3+ times = likely not injectable)
+    analysis.response_patterns = [
+        f"`{tool}` returned identical-length response ({length} chars) "
+        f"{count} times — endpoint likely not injectable via this tool"
+        for (tool, length), count in response_length_counts.items()
+        if count >= 3
+    ][:10]
+
+    # Hindsight analysis: missed signals and partial successes (v2.1)
+    analysis.missed_signals = _detect_missed_signals(tool_call_log)
+    analysis.partial_success_patterns = _detect_partial_successes(tool_call_log)
 
     # Generate deterministic suggestions
     analysis.suggestions = _generate_suggestions(analysis, tool_call_log)
@@ -333,8 +586,10 @@ def _generate_suggestions(
                 "Try determining column count with sqli_column_counter before UNION attacks"
             )
         # Check if filter bypass might be needed
-        if any("blocked" in e or "filtered" in e or "forbidden" in e
-               for e in analysis.errors_encountered):
+        if any(
+            "blocked" in e or "filtered" in e or "forbidden" in e
+            for e in analysis.errors_encountered
+        ):
             suggestions.append(
                 "Input appears filtered — try alternative operators: "
                 "GLOB instead of LIKE/=, IS instead of =, || for concatenation, "
@@ -378,13 +633,18 @@ def _generate_suggestions(
             "attack vector early rather than trying everything"
         )
 
-    if not any(t in analysis.tools_used for t in ("robots_txt", "path_enumerator", "backup_file_finder")):
+    if not any(
+        t in analysis.tools_used
+        for t in ("robots_txt", "path_enumerator", "backup_file_finder")
+    ):
         suggestions.append(
             "No reconnaissance was performed — try robots.txt, path enumeration, "
             "or backup file discovery first"
         )
 
-    if not any(t in analysis.tools_used for t in ("javascript_source", "html_inspector")):
+    if not any(
+        t in analysis.tools_used for t in ("javascript_source", "html_inspector")
+    ):
         suggestions.append(
             "No client-side analysis done — check HTML source and JavaScript "
             "for hints, hidden fields, or client-side validation"
@@ -396,6 +656,7 @@ def _generate_suggestions(
 # ---------------------------------------------------------------------------
 # 3. Knowledge document generation
 # ---------------------------------------------------------------------------
+
 
 def generate_failure_knowledge_doc(
     analysis: FailureAnalysis,
@@ -414,7 +675,9 @@ def generate_failure_knowledge_doc(
     Returns:
         Markdown string ready to be saved
     """
-    category_label = _CATEGORY_LABELS.get(analysis.inferred_category, "General Web Exploitation")
+    category_label = _CATEGORY_LABELS.get(
+        analysis.inferred_category, "General Web Exploitation"
+    )
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
 
     lines = [
@@ -431,7 +694,9 @@ def generate_failure_knowledge_doc(
     # Section 1: Challenge context
     lines.append("## 1. Challenge Context")
     lines.append("")
-    lines.append(f"**Tags:** `failure-analysis, {analysis.inferred_category}, lessons-learned`")
+    lines.append(
+        f"**Tags:** `failure-analysis, {analysis.inferred_category}, lessons-learned`"
+    )
     lines.append("")
     if analysis.challenge_url:
         lines.append(f"- **URL:** `{analysis.challenge_url}`")
@@ -444,9 +709,13 @@ def generate_failure_knowledge_doc(
     # Section 2: What was tried (negative knowledge)
     lines.append("## 2. What Was Tried (Negative Knowledge)")
     lines.append("")
-    lines.append(f"**Tags:** `negative-knowledge, {analysis.inferred_category}, tools-used`")
+    lines.append(
+        f"**Tags:** `negative-knowledge, {analysis.inferred_category}, tools-used`"
+    )
     lines.append("")
-    lines.append("The following tools and techniques were attempted but did **not** lead to a solution:")
+    lines.append(
+        "The following tools and techniques were attempted but did **not** lead to a solution:"
+    )
     lines.append("")
 
     if analysis.tool_frequency:
@@ -472,9 +741,41 @@ def generate_failure_knowledge_doc(
             lines.append(f"- `{url}`")
         lines.append("")
 
-    # Section 3: Errors encountered
+    # Section 3: Tool response snippets
+    if analysis.tool_output_snippets:
+        lines.append("## 3. Tool Response Snippets")
+        lines.append("")
+        lines.append(
+            f"**Tags:** `response-snippets, {analysis.inferred_category}, tool-outputs`"
+        )
+        lines.append("")
+        lines.append(
+            "What each tool actually returned (first call). "
+            "Use this to avoid repeating approaches that clearly didn't work:"
+        )
+        lines.append("")
+        for tool, snippets in list(analysis.tool_output_snippets.items())[:8]:
+            lines.append(f"**{tool}:**")
+            lines.append("```")
+            lines.append(snippets[0][:300])
+            lines.append("```")
+            lines.append("")
+
+    # Section 4: Response patterns (stuck indicators)
+    if analysis.response_patterns:
+        lines.append("## 4. Response Patterns (Stuck Indicators)")
+        lines.append("")
+        lines.append(
+            f"**Tags:** `stuck-patterns, response-length, {analysis.inferred_category}`"
+        )
+        lines.append("")
+        for pat in analysis.response_patterns[:8]:
+            lines.append(f"- {pat}")
+        lines.append("")
+
+    # Section 5: Errors encountered
     if analysis.errors_encountered:
-        lines.append("## 3. Errors Encountered")
+        lines.append("## 5. Errors Encountered")
         lines.append("")
         lines.append(f"**Tags:** `errors, {analysis.inferred_category}, debugging`")
         lines.append("")
@@ -482,13 +783,17 @@ def generate_failure_knowledge_doc(
             lines.append(f"- {err}")
         lines.append("")
 
-    # Section 4: Repeated failures (stuck patterns)
+    # Section 6: Repeated failures (stuck patterns)
     if analysis.repeated_failures:
-        lines.append("## 4. Stuck Patterns (Repeated Failures)")
+        lines.append("## 6. Stuck Patterns (Repeated Inputs)")
         lines.append("")
-        lines.append(f"**Tags:** `stuck-patterns, loop-detection, {analysis.inferred_category}`")
+        lines.append(
+            f"**Tags:** `stuck-patterns, loop-detection, {analysis.inferred_category}`"
+        )
         lines.append("")
-        lines.append("The agent repeated the following inputs 3+ times, indicating it was stuck:")
+        lines.append(
+            "The agent repeated the following inputs 3+ times, indicating it was stuck:"
+        )
         lines.append("")
         lines.append("```")
         for rf in analysis.repeated_failures[:5]:
@@ -496,13 +801,15 @@ def generate_failure_knowledge_doc(
         lines.append("```")
         lines.append("")
 
-    # Section 5: Suggestions for next attempt
-    lines.append("## 5. Suggestions for Next Attempt")
+    # Section 7: Suggestions for next attempt
+    lines.append("## 7. Suggestions for Next Attempt")
     lines.append("")
     lines.append(f"**Tags:** `suggestions, {analysis.inferred_category}, strategy`")
     lines.append("")
-    lines.append("> **Agent Takeaway:** When encountering a similar challenge, avoid the approaches "
-                 "listed in Section 2 and try the suggestions below instead.")
+    lines.append(
+        "> **Agent Takeaway:** When encountering a similar challenge, avoid the approaches "
+        "listed in Section 2 and try the suggestions below instead."
+    )
     lines.append("")
     if analysis.suggestions:
         for i, suggestion in enumerate(analysis.suggestions, 1):
@@ -512,12 +819,48 @@ def generate_failure_knowledge_doc(
         lines.append("- Consult the knowledge base for alternative techniques")
     lines.append("")
 
+    # Section 8: Missed exploitation signals (v2.1)
+    if analysis.missed_signals:
+        lines.append("## 8. Missed Exploitation Signals")
+        lines.append("")
+        lines.append(
+            f"**Tags:** `missed-signals, hindsight, {analysis.inferred_category}, exploitation`"
+        )
+        lines.append("")
+        lines.append(
+            "> **Agent Takeaway:** The following findings were observed in tool outputs "
+            "but were NOT followed up with exploitation. On the next attempt, immediately "
+            "pivot to exploit these signals when they appear."
+        )
+        lines.append("")
+        for signal in analysis.missed_signals:
+            lines.append(f"- {signal}")
+        lines.append("")
+
+    # Section 9: Partial successes achieved (v2.1)
+    if analysis.partial_success_patterns:
+        lines.append("## 9. Partial Progress Achieved")
+        lines.append("")
+        lines.append(
+            f"**Tags:** `partial-success, sub-goal, {analysis.inferred_category}, progress`"
+        )
+        lines.append("")
+        lines.append(
+            "> Despite the overall failure, these intermediate goals were achieved "
+            "and can be built upon on the next attempt:"
+        )
+        lines.append("")
+        for goal in analysis.partial_success_patterns:
+            lines.append(f"- **{goal.replace('_', ' ').title()}** confirmed")
+        lines.append("")
+
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
 # 3b. Deduplication
 # ---------------------------------------------------------------------------
+
 
 def _is_duplicate(analysis: FailureAnalysis, docs_dir: Path) -> bool:
     """
@@ -583,8 +926,261 @@ def _is_duplicate(analysis: FailureAnalysis, docs_dir: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# 3c. Success knowledge documents
+# ---------------------------------------------------------------------------
+
+_SUCCESS_TAKEAWAYS: Dict[str, str] = {
+    "sql_injection": (
+        "Use `sqli_probe` on every parameter first, then `sqli_column_counter`, "
+        "then `sqli_data_dumper` for extraction. Check for JSON body endpoints."
+    ),
+    "wasm_re": (
+        "Deobfuscate the JS loader with `javascript_source` to find the WASM URL, "
+        "then `wasm_analyzer (analyze)`. If data is binary, follow with `wasm_analyzer (xor_decode)`."
+    ),
+    "ssti": (
+        "Test every input with `{{7*7}}` first. On success, use `ssti_exploit_suggester` "
+        "for RCE payloads targeting the detected engine."
+    ),
+    "jwt_attacks": (
+        "Decode with `jwt_tool analyze`, then try `alg:none`, "
+        "algorithm confusion (RS256→HS256), and `kid_inject`."
+    ),
+    "client_side": (
+        "Run `javascript_source` on every JS file linked from the page. "
+        "Credentials and tokens are often hard-coded or in local storage."
+    ),
+    "xxe": (
+        "Inject a DOCTYPE with an external entity into every XML input. "
+        "Try both `file:///etc/passwd` and `http://` SSRF variants."
+    ),
+    "file_upload": (
+        "Test double extensions (.php.jpg), content-type spoofing, "
+        "and `.htaccess` upload to enable execution."
+    ),
+    "lfi_rfi": (
+        "Try `../` path traversal on all URL parameters. "
+        "Combine with PHP wrappers (`php://filter/convert.base64-encode/resource=`) for source disclosure."
+    ),
+    "nosql_injection": (
+        'Inject `{"$gt": ""}` into JSON body fields. '
+        "Use `nosql_probe` on login endpoints first."
+    ),
+    "command_injection": (
+        "Test `;id`, `|id`, `` `id` `` in all parameters. "
+        "If filtered, try `$(id)` or encoded variants."
+    ),
+}
+
+
+def _infer_category_from_tools(tool_calls: Dict[str, int]) -> str:
+    """Infer challenge category from tool frequency (shared with failure analysis)."""
+    category_scores: Counter = Counter()
+    for tool_name, count in tool_calls.items():
+        cat = _TOOL_TO_CATEGORY.get(tool_name)
+        if cat:
+            category_scores[cat] += count
+    if category_scores:
+        return category_scores.most_common(1)[0][0]
+    return "unknown"
+
+
+def generate_success_knowledge_doc(
+    config_data: Dict[str, Any],
+    tracker_data: Dict[str, Any],
+    tool_call_log: List[Dict[str, Any]],
+    agent_response: Optional[str],
+    candidate_flags: List[str],
+) -> str:
+    """
+    Generate a success-pattern knowledge document.
+
+    Records what worked — tool sequence, key output snippets, and a human-readable
+    takeaway — so the RAG can surface positive exploitation patterns for similar
+    future challenges.
+
+    Args:
+        config_data: Dict with challenge_url, challenge_description.
+        tracker_data: Dict from RunTracker.to_dict().
+        tool_call_log: List of detailed tool call records.
+        agent_response: The agent's final response text.
+        candidate_flags: Flags found during the run.
+
+    Returns:
+        Markdown string ready to be saved.
+    """
+    tool_counts: Dict[str, int] = tracker_data.get("tool_calls", {})
+    inferred_category = _infer_category_from_tools(tool_counts)
+    category_label = _CATEGORY_LABELS.get(inferred_category, "General Web Exploitation")
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+
+    # Ordered tool sequence (by first appearance in log)
+    seen: list = []
+    for entry in tool_call_log:
+        t = entry.get("tool", "")
+        if t and t not in seen:
+            seen.append(t)
+    tool_sequence = seen[:10]
+
+    # Collect key output snippets that contain flag-like content or SUCCESS markers
+    flag_output_snippets: Dict[str, str] = {}
+    for entry in tool_call_log:
+        t = entry.get("tool", "")
+        out = (entry.get("output", "") or "").strip()
+        if not t or not out:
+            continue
+        if any(flag in out for flag in candidate_flags) or "FLAG" in out.upper():
+            if t not in flag_output_snippets:
+                flag_output_snippets[t] = out[:300]
+
+    flag_preview = candidate_flags[0][:60] if candidate_flags else "(unknown)"
+
+    lines = [
+        f"# Success Pattern: {category_label}",
+        "",
+        f"> **Auto-generated:** {timestamp}",
+        f"> **Category:** {category_label}",
+        f"> **Flag (preview):** `{flag_preview}`",
+        "",
+        "---",
+        "",
+        f"**Tags:** `success-pattern, {inferred_category}, solved`",
+        "",
+        "## 1. Challenge Context",
+        "",
+    ]
+
+    if config_data.get("challenge_url"):
+        lines.append(f"- **URL:** `{config_data['challenge_url']}`")
+    if config_data.get("challenge_description"):
+        lines.append(f"- **Description:** {config_data['challenge_description']}")
+    lines.append(f"- **Steps used:** {tracker_data.get('steps', 0)}")
+    lines.append(f"- **Duration:** {tracker_data.get('duration_seconds', 0.0):.1f}s")
+    lines.append("")
+
+    lines.append("## 2. Solution Path (What Worked)")
+    lines.append("")
+    lines.append(f"**Tags:** `success-pattern, {inferred_category}, tool-sequence`")
+    lines.append("")
+    lines.append("### Tools Used (in order of first call)")
+    lines.append("")
+    for i, t in enumerate(tool_sequence, 1):
+        count = tool_counts.get(t, 1)
+        lines.append(f"{i}. `{t}`: {count} call(s)")
+    lines.append("")
+
+    if flag_output_snippets:
+        lines.append("### Key Tool Outputs (flag-bearing)")
+        lines.append("")
+        for t, snippet in flag_output_snippets.items():
+            lines.append(f"**{t}:**")
+            lines.append("```")
+            lines.append(snippet)
+            lines.append("```")
+            lines.append("")
+
+    lines.append("## 3. Agent Takeaway")
+    lines.append("")
+    lines.append(f"**Tags:** `agent-takeaway, {inferred_category}, strategy`")
+    lines.append("")
+    chain = " → ".join(f"`{t}`" for t in tool_sequence[:5])
+    takeaway = _SUCCESS_TAKEAWAYS.get(
+        inferred_category, "Follow the tool chain that worked."
+    )
+    lines.append(f"> Tool chain: {chain}")
+    lines.append(">")
+    lines.append(f"> {takeaway}")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _is_success_duplicate(
+    challenge_url: str,
+    inferred_category: str,
+    docs_dir: Path,
+) -> bool:
+    """Return True if a success doc for this URL + category already exists."""
+    if not docs_dir.exists():
+        return False
+    expected_label = _CATEGORY_LABELS.get(inferred_category, "")
+    for doc_path in docs_dir.glob("success_*.md"):
+        try:
+            content = doc_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        url_match = re.search(r"\*\*URL:\*\*\s*`([^`]+)`", content)
+        doc_url = url_match.group(1) if url_match else ""
+        if challenge_url and doc_url != challenge_url:
+            continue
+        cat_match = re.search(r"\*\*Category:\*\*\s*(.+)", content)
+        doc_category = cat_match.group(1).strip() if cat_match else ""
+        if doc_category == expected_label:
+            return True
+    return False
+
+
+def run_success_knowledge_pipeline(
+    config_data: Dict[str, Any],
+    tracker_data: Dict[str, Any],
+    tool_call_log: List[Dict[str, Any]],
+    agent_response: Optional[str],
+    candidate_flags: List[str],
+    failure_docs_dir: str = "out/failure_knowledge",
+) -> Optional[str]:
+    """
+    Generate and save a success-pattern knowledge document.
+
+    Called after a successful run when the user opted into knowledge building
+    (RAGMode.AUGMENTED). Returns the path to the generated doc, or None if
+    no flags were found or the run is a duplicate.
+
+    Args:
+        config_data: Dict with challenge_url, challenge_description.
+        tracker_data: Dict from RunTracker.to_dict().
+        tool_call_log: List of tool call records.
+        agent_response: The agent's final response text.
+        candidate_flags: Flags found during the run.
+        failure_docs_dir: Directory to save knowledge docs (same dir as failure docs).
+
+    Returns:
+        Path to the generated doc, or None.
+    """
+    if not candidate_flags:
+        return None
+
+    tool_counts: Dict[str, int] = tracker_data.get("tool_calls", {})
+    inferred_category = _infer_category_from_tools(tool_counts)
+    challenge_url = config_data.get("challenge_url", "")
+
+    docs_dir = Path(failure_docs_dir)
+    docs_dir.mkdir(parents=True, exist_ok=True)
+
+    if _is_success_duplicate(challenge_url, inferred_category, docs_dir):
+        return None
+
+    doc_content = generate_success_knowledge_doc(
+        config_data=config_data,
+        tracker_data=tracker_data,
+        tool_call_log=tool_call_log,
+        agent_response=agent_response,
+        candidate_flags=candidate_flags,
+    )
+
+    existing = list(docs_dir.glob("success_*.md"))
+    next_index = len(existing) + 1
+    timestamp_slug = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+    category_slug = inferred_category.replace(" ", "_")
+    filename = f"success_{next_index:03d}_{category_slug}_{timestamp_slug}.md"
+    doc_path = docs_dir / filename
+    doc_path.write_text(doc_content, encoding="utf-8")
+    return str(doc_path)
+
+
+# ---------------------------------------------------------------------------
 # 4. Pipeline entry point
 # ---------------------------------------------------------------------------
+
 
 def run_failure_analysis_pipeline(
     config_data: Dict[str, Any],

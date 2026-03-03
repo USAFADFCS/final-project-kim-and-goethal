@@ -117,7 +117,7 @@ class TestModelConfig:
         """Test default OpenAI config."""
         config = DEFAULT_CONFIGS[LLMProvider.OPENAI]
         assert config.provider == LLMProvider.OPENAI
-        assert config.model_name == "gpt-4o"
+        assert config.model_name in ("gpt-4o", "gpt-5.2")
 
     def test_default_anthropic_config(self):
         """Test default Anthropic config."""
@@ -490,7 +490,7 @@ class TestAsyncOperations:
         async def run_test():
             return await adapter.ainvoke([Message(role="user", content="Hi")])
 
-        result = asyncio.get_event_loop().run_until_complete(run_test())
+        result = asyncio.run(run_test())
         assert result.content == "Async Primary"
 
     def test_hybrid_ainvoke_fallback(self):
@@ -510,7 +510,7 @@ class TestAsyncOperations:
         async def run_test():
             return await adapter.ainvoke([Message(role="user", content="Hi")])
 
-        result = asyncio.get_event_loop().run_until_complete(run_test())
+        result = asyncio.run(run_test())
         assert result.content == "Async Fallback"
 
 

@@ -2,14 +2,19 @@
 Race condition tools for CTF solving.
 
 Provides concurrent request capabilities to exploit race conditions
-(e.g., double-spend, TOCTOU vulnerabilities).
+(e.g., double-spend, TOCTOU vulnerabilities), including the single-packet
+race attack technique from PortSwigger's "Smashing the state machine"
+(Black Hat USA 2023).
 """
 
 import json
+import socket
+import ssl
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import requests
 
@@ -61,9 +66,10 @@ class RaceConditionTool:
         "exclusive with 'data'), 'headers' (optional dict), 'cookies' (optional "
         "dict), 'concurrency' (optional int, default 10, max 50), 'repeat' "
         "(optional int, number of rounds, default 1, max 5), 'timeout' (optional "
-        "int, default 15). Returns per-request status/length/timing/body, plus "
-        "analysis of status code distribution, response length distribution, "
-        "unique response bodies, and race condition indicators."
+        "int, default 15), 'mode' (optional: 'thread' or 'single_packet', default "
+        "'thread'). 'single_packet' mode uses the PortSwigger last-byte sync "
+        "technique for sub-1ms synchronization. Returns per-request results "
+        "and race condition analysis."
     )
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
@@ -133,6 +139,207 @@ class RaceConditionTool:
                 "elapsed_ms": round(elapsed_ms, 1),
                 "error": str(exc),
             }
+
+    # ------------------------------------------------------------------
+    # Single-packet race attack (PortSwigger "Smashing the state machine")
+    # ------------------------------------------------------------------
+
+    def _build_raw_http_request(
+        self,
+        host: str,
+        port: int,
+        path: str,
+        method: str,
+        data: Optional[Dict[str, Any]],
+        body: Optional[str],
+        headers: Dict[str, str],
+        cookies: Optional[Dict[str, str]],
+    ) -> bytes:
+        """Build a raw HTTP/1.1 request as bytes."""
+        # Build body
+        body_bytes = b""
+        content_type = ""
+        if body is not None:
+            body_bytes = body.encode("utf-8")
+            content_type = "application/json"
+        elif data is not None and method == "POST":
+            from urllib.parse import urlencode
+            body_bytes = urlencode(data).encode("utf-8")
+            content_type = "application/x-www-form-urlencoded"
+
+        # Build headers
+        req_headers: Dict[str, str] = {
+            "Host": host if port in (80, 443) else f"{host}:{port}",
+            "Connection": "keep-alive",
+        }
+        if content_type and "Content-Type" not in headers:
+            req_headers["Content-Type"] = content_type
+        if body_bytes:
+            req_headers["Content-Length"] = str(len(body_bytes))
+
+        # Add session cookies
+        cookie_parts = []
+        for k, v in (self.session.cookies.get_dict() or {}).items():
+            cookie_parts.append(f"{k}={v}")
+        if cookies:
+            for k, v in cookies.items():
+                cookie_parts.append(f"{k}={v}")
+        if cookie_parts:
+            req_headers["Cookie"] = "; ".join(cookie_parts)
+
+        req_headers.update(headers)
+
+        # Build request line + headers
+        lines = [f"{method} {path} HTTP/1.1"]
+        for k, v in req_headers.items():
+            lines.append(f"{k}: {v}")
+        request_str = "\r\n".join(lines) + "\r\n\r\n"
+        return request_str.encode("utf-8") + body_bytes
+
+    def _single_packet_attack(
+        self,
+        url: str,
+        method: str,
+        data: Optional[Dict[str, Any]],
+        body: Optional[str],
+        headers: Dict[str, str],
+        cookies: Optional[Dict[str, str]],
+        concurrency: int,
+        timeout: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Single-packet race attack using the last-byte synchronization technique.
+
+        Strategy:
+        1. Open N TCP connections to the target
+        2. Send all but the last byte of each HTTP request
+        3. Simultaneously send the final byte on all connections
+        4. Read all responses
+
+        This achieves sub-1ms synchronization across all requests.
+        """
+        parsed = urlparse(url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path += f"?{parsed.query}"
+        use_ssl = parsed.scheme == "https"
+
+        # Build the full HTTP request
+        raw_request = self._build_raw_http_request(
+            host, port, path, method, data, body, headers, cookies
+        )
+
+        # Split into prefix (all but last byte) and suffix (last byte)
+        prefix = raw_request[:-1]
+        suffix = raw_request[-1:]
+
+        results: List[Dict[str, Any]] = []
+
+        # Step 1: Open all connections and send the prefix
+        connections: List[Optional[socket.socket]] = []
+        for i in range(concurrency):
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(timeout)
+                sock.connect((host, port))
+
+                if use_ssl:
+                    ctx = ssl.create_default_context()
+                    sock = ctx.wrap_socket(sock, server_hostname=host)
+
+                # Send all but the last byte
+                sock.sendall(prefix)
+                connections.append(sock)
+            except Exception as exc:
+                connections.append(None)
+                results.append({
+                    "index": i + 1,
+                    "status": None,
+                    "length": 0,
+                    "body": "",
+                    "body_preview": "",
+                    "elapsed_ms": 0,
+                    "error": f"Connection failed: {exc}",
+                })
+
+        # Step 2: Send the last byte simultaneously on all connections
+        start = time.time()
+        for sock in connections:
+            if sock is not None:
+                try:
+                    sock.sendall(suffix)
+                except Exception:
+                    pass
+
+        # Step 3: Read all responses
+        for i, sock in enumerate(connections):
+            if sock is None:
+                continue
+            try:
+                # Read response
+                response_data = b""
+                sock.settimeout(timeout)
+                while True:
+                    try:
+                        chunk = sock.recv(4096)
+                        if not chunk:
+                            break
+                        response_data += chunk
+                        # Stop after reading headers + some body
+                        if len(response_data) > 16384:
+                            break
+                    except (socket.timeout, ssl.SSLError):
+                        break
+
+                elapsed_ms = (time.time() - start) * 1000
+                response_text = response_data.decode("utf-8", errors="replace")
+
+                # Parse status code from raw response
+                status = None
+                body_text = response_text
+                if response_text.startswith("HTTP/"):
+                    first_line = response_text.split("\r\n", 1)[0]
+                    parts = first_line.split(" ", 2)
+                    if len(parts) >= 2:
+                        try:
+                            status = int(parts[1])
+                        except ValueError:
+                            pass
+                    # Extract body after double CRLF
+                    body_sep = response_text.find("\r\n\r\n")
+                    if body_sep >= 0:
+                        body_text = response_text[body_sep + 4:]
+
+                results.append({
+                    "index": i + 1,
+                    "status": status,
+                    "length": len(body_text),
+                    "body": body_text,
+                    "body_preview": body_text[:200],
+                    "elapsed_ms": round(elapsed_ms, 1),
+                    "error": None,
+                })
+            except Exception as exc:
+                elapsed_ms = (time.time() - start) * 1000
+                results.append({
+                    "index": i + 1,
+                    "status": None,
+                    "length": 0,
+                    "body": "",
+                    "body_preview": "",
+                    "elapsed_ms": round(elapsed_ms, 1),
+                    "error": str(exc),
+                })
+            finally:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+
+        results.sort(key=lambda r: r["index"])
+        return results
 
     def _analyze_results(self, results: List[Dict[str, Any]]) -> List[str]:
         """Analyze a list of request results and return analysis lines."""
@@ -238,6 +445,7 @@ class RaceConditionTool:
         concurrency = data.get("concurrency", 10)
         repeat = data.get("repeat", 1)
         timeout = data.get("timeout", 15)
+        mode = (data.get("mode") or "thread").lower()
 
         # Validate mutual exclusivity
         if form_data is not None and body is not None:
@@ -266,12 +474,16 @@ class RaceConditionTool:
         except (ValueError, TypeError):
             timeout = 15
 
+        if mode not in ("thread", "single_packet"):
+            mode = "thread"
+
         # Build output header
         output_lines = [
             "[RaceConditionTool] Concurrent Request Results",
             "=" * 50,
             f"URL: {url}",
             f"Method: {method}",
+            f"Mode: {mode}",
             f"Concurrency: {concurrency}",
             f"Rounds: {repeat}",
             "",
@@ -282,36 +494,44 @@ class RaceConditionTool:
         for round_num in range(1, repeat + 1):
             output_lines.append(f"=== Round {round_num} Results ===")
 
-            # Fire all requests concurrently
             results: List[Dict[str, Any]] = []
-            with ThreadPoolExecutor(max_workers=concurrency) as executor:
-                futures = [
-                    executor.submit(
-                        self._send_request,
-                        i + 1,
-                        url,
-                        method,
-                        form_data,
-                        body,
-                        headers,
-                        cookies if cookies else None,
-                        timeout,
-                    )
-                    for i in range(concurrency)
-                ]
-                for future in as_completed(futures):
-                    try:
-                        results.append(future.result())
-                    except Exception as exc:
-                        results.append({
-                            "index": -1,
-                            "status": None,
-                            "length": 0,
-                            "body": "",
-                            "body_preview": "",
-                            "elapsed_ms": 0,
-                            "error": str(exc),
-                        })
+
+            if mode == "single_packet":
+                # Single-packet race attack (last-byte synchronization)
+                results = self._single_packet_attack(
+                    url, method, form_data, body, headers,
+                    cookies if cookies else None, concurrency, timeout,
+                )
+            else:
+                # Standard ThreadPoolExecutor approach
+                with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                    futures = [
+                        executor.submit(
+                            self._send_request,
+                            i + 1,
+                            url,
+                            method,
+                            form_data,
+                            body,
+                            headers,
+                            cookies if cookies else None,
+                            timeout,
+                        )
+                        for i in range(concurrency)
+                    ]
+                    for future in as_completed(futures):
+                        try:
+                            results.append(future.result())
+                        except Exception as exc:
+                            results.append({
+                                "index": -1,
+                                "status": None,
+                                "length": 0,
+                                "body": "",
+                                "body_preview": "",
+                                "elapsed_ms": 0,
+                                "error": str(exc),
+                            })
 
             # Sort results by index for consistent display
             results.sort(key=lambda r: r["index"])

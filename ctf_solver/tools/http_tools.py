@@ -5,9 +5,46 @@ Provides HTTP GET/HEAD requests and form submission capabilities.
 """
 
 import json
-from typing import Optional
+import re
+from typing import List, Optional
 
 import requests
+
+# Broad CTF flag pattern: PREFIX{content} — catches most CTF flag formats.
+# Used to scan full response bodies before truncation so flags beyond
+# the max_body limit are still surfaced to the agent.
+# The negative lookbehind prevents "AAAAACTF{...}" from matching the leading
+# non-prefix characters, and the prefix is limited to 20 chars max.
+_FLAG_SCAN_RE = re.compile(
+    r"(?<![A-Za-z0-9_])"
+    r"((?:picoCTF|HTB|THM|FLAG|CTF|MetaCTF|[A-Za-z0-9_]{1,20})\{[^}\n\r]{1,200}\})",
+    re.IGNORECASE,
+)
+
+
+def _scan_for_flags(full_text: str, truncation_point: int) -> List[str]:
+    """Return flags found in text beyond the truncation point."""
+    matches = _FLAG_SCAN_RE.findall(full_text)
+    # Only return flags that are partially or fully beyond truncation
+    result = []
+    for flag in matches:
+        pos = full_text.find(flag)
+        if pos >= truncation_point:
+            result.append(flag)
+    return list(dict.fromkeys(result))  # deduplicate preserving order
+
+
+def _scan_binary_for_flags(content: bytes) -> List[str]:
+    """
+    Scan raw binary content for CTF flag patterns.
+
+    Converts each byte to its printable ASCII character (or a space for
+    non-printable bytes) and runs the flag regex over the result.
+    This catches flags embedded in plaintext inside binary files (e.g.
+    WASM data sections, zip archives, PDF metadata).
+    """
+    text = "".join(chr(b) if 32 <= b < 127 else " " for b in content)
+    return list(dict.fromkeys(_FLAG_SCAN_RE.findall(text)))
 
 
 class HttpFetchTool:
@@ -76,7 +113,9 @@ class HttpFetchTool:
 
         url = data.get("url")
         if not url or not isinstance(url, str):
-            return "[HttpFetchTool] Error: 'url' (string) is required in the input JSON."
+            return (
+                "[HttpFetchTool] Error: 'url' (string) is required in the input JSON."
+            )
 
         method = (data.get("method") or "GET").upper()
         params = data.get("params") or {}
@@ -93,7 +132,9 @@ class HttpFetchTool:
         if not isinstance(headers, dict):
             return "[HttpFetchTool] Error: 'headers' must be a JSON object (dict)."
         if body is not None and raw_body is not None:
-            return "[HttpFetchTool] Error: 'body' and 'raw_body' are mutually exclusive."
+            return (
+                "[HttpFetchTool] Error: 'body' and 'raw_body' are mutually exclusive."
+            )
 
         allowed_methods = ("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE")
         if method not in allowed_methods:
@@ -126,12 +167,16 @@ class HttpFetchTool:
                 if body is not None:
                     request_kwargs["json"] = body
                 elif raw_body is not None:
-                    request_kwargs["data"] = raw_body if isinstance(raw_body, str) else str(raw_body)
+                    request_kwargs["data"] = (
+                        raw_body if isinstance(raw_body, str) else str(raw_body)
+                    )
                 response = request_fn(url, **request_kwargs)
             else:
                 response = self.session.get(url, **request_kwargs)
         except Exception as exc:
-            return f"[HttpFetchTool] Error during {method!r} request to {url!r}: {exc!r}"
+            return (
+                f"[HttpFetchTool] Error during {method!r} request to {url!r}: {exc!r}"
+            )
 
         # Build redirect chain info
         redirect_info = ""
@@ -145,7 +190,15 @@ class HttpFetchTool:
         # Extract Set-Cookie headers
         set_cookies = []
         for r in [*response.history, response]:
-            for sc in r.headers.getlist("Set-Cookie") if hasattr(r.headers, "getlist") else [v for k, v in r.raw.headers.items() if k.lower() == "set-cookie"] if hasattr(r, "raw") and hasattr(r.raw, "headers") else []:
+            for sc in (
+                r.headers.getlist("Set-Cookie")
+                if hasattr(r.headers, "getlist")
+                else (
+                    [v for k, v in r.raw.headers.items() if k.lower() == "set-cookie"]
+                    if hasattr(r, "raw") and hasattr(r.raw, "headers")
+                    else []
+                )
+            ):
                 set_cookies.append(sc)
         # Fallback: parse from response headers directly
         if not set_cookies:
@@ -155,7 +208,11 @@ class HttpFetchTool:
 
         set_cookie_section = ""
         if set_cookies:
-            set_cookie_section = "\n[SET-COOKIE HEADERS]\n" + "\n".join(f"  {sc}" for sc in set_cookies) + "\n"
+            set_cookie_section = (
+                "\n[SET-COOKIE HEADERS]\n"
+                + "\n".join(f"  {sc}" for sc in set_cookies)
+                + "\n"
+            )
 
         header_lines = [f"{k}: {v}" for k, v in response.headers.items()]
         headers_str = "\n".join(header_lines)
@@ -178,10 +235,23 @@ class HttpFetchTool:
 
             # Detect binary content
             content_type = response.headers.get("Content-Type", "")
-            is_binary = any(t in content_type.lower() for t in [
-                "octet-stream", "image/", "audio/", "video/",
-                "application/pdf", "application/zip", "application/gzip",
-            ])
+            is_binary = any(
+                t in content_type.lower()
+                for t in [
+                    "octet-stream",
+                    "image/",
+                    "audio/",
+                    "video/",
+                    "application/pdf",
+                    "application/zip",
+                    "application/gzip",
+                    "application/wasm",
+                ]
+            ) or (
+                # Detect by magic bytes: WASM (\x00asm) and common binary formats
+                bool(response.content)
+                and response.content[:4] in (b"\x00asm", b"\x7fELF", b"PK\x03\x04")
+            )
 
             if is_binary and response.content:
                 hex_preview = response.content[:512].hex()
@@ -195,6 +265,35 @@ class HttpFetchTool:
             else:
                 body_preview = text
 
+        # Scan full response for flags BEFORE truncation so flags beyond
+        # max_body are still surfaced to the agent and LoggingToolWrapper.
+        # Also scan binary responses (e.g. WASM) for plaintext flags embedded
+        # in data sections — regardless of max_body setting.
+        flag_section = ""
+        if method != "HEAD":
+            if is_binary and response.content:
+                # Scan raw binary bytes for flag patterns (e.g. plaintext flag in WASM data)
+                binary_flags = _scan_binary_for_flags(response.content)
+                if binary_flags:
+                    flag_lines = "\n".join(f"  {f}" for f in binary_flags)
+                    flag_section = (
+                        f"\n\n[FLAG PATTERN DETECTED in binary content]\n"
+                        f"{flag_lines}\n"
+                        "These flag-like strings were found in the raw binary response. "
+                        "If the flag is XOR-encoded, use the wasm_analyzer tool with "
+                        "operation='xor_decode'."
+                    )
+            elif not is_binary and max_body_int > 0 and len(text) > max_body_int:
+                hidden_flags = _scan_for_flags(text, max_body_int)
+                if hidden_flags:
+                    flag_lines = "\n".join(f"  {f}" for f in hidden_flags)
+                    flag_section = (
+                        f"\n\n[FLAG PATTERN DETECTED beyond truncation point]\n"
+                        f"{flag_lines}\n"
+                        "These flag-like strings were found in the full response body "
+                        "beyond the preview above."
+                    )
+
         summary = (
             f"[HttpFetchTool] Method: {method}\n"
             f"URL: {response.url}\n"
@@ -203,6 +302,7 @@ class HttpFetchTool:
             f"{set_cookie_section}\n"
             f"Headers:\n{headers_str}\n\n"
             f"Body (truncated to {max_body_int} chars):\n{body_preview}"
+            f"{flag_section}"
         )
         return summary
 
@@ -282,7 +382,9 @@ class FormSubmitTool:
 
         try:
             if method == "GET":
-                resp = self.session.get(url, params=form_data, headers=headers, timeout=10)
+                resp = self.session.get(
+                    url, params=form_data, headers=headers, timeout=10
+                )
             else:  # POST
                 # Detect JSON content type and send as JSON body instead of form data
                 content_type = ""
@@ -292,7 +394,9 @@ class FormSubmitTool:
                         break
 
                 if "application/json" in content_type:
-                    resp = self.session.post(url, json=form_data, headers=headers, timeout=10)
+                    resp = self.session.post(
+                        url, json=form_data, headers=headers, timeout=10
+                    )
                 elif multipart or files_input:
                     # Build multipart files dict
                     files_dict = {}
@@ -300,24 +404,42 @@ class FormSubmitTool:
                         if isinstance(file_info, dict):
                             filename = file_info.get("filename", "file")
                             content = file_info.get("content", "")
-                            ct = file_info.get("content_type", "application/octet-stream")
+                            ct = file_info.get(
+                                "content_type", "application/octet-stream"
+                            )
                             if isinstance(content, str):
                                 content = content.encode("utf-8")
                             files_dict[field_name] = (filename, content, ct)
                         elif isinstance(file_info, str):
-                            files_dict[field_name] = (field_name, file_info.encode("utf-8"), "application/octet-stream")
+                            files_dict[field_name] = (
+                                field_name,
+                                file_info.encode("utf-8"),
+                                "application/octet-stream",
+                            )
 
                     if files_dict:
-                        resp = self.session.post(url, data=form_data, files=files_dict, headers=headers, timeout=10)
+                        resp = self.session.post(
+                            url,
+                            data=form_data,
+                            files=files_dict,
+                            headers=headers,
+                            timeout=10,
+                        )
                     else:
                         # multipart=true but no files: send form_data as multipart
                         # requests sends multipart when files= is used, so we use a trick
                         mp_files = {k: (None, v) for k, v in form_data.items()}
-                        resp = self.session.post(url, files=mp_files, headers=headers, timeout=10)
+                        resp = self.session.post(
+                            url, files=mp_files, headers=headers, timeout=10
+                        )
                 else:
-                    resp = self.session.post(url, data=form_data, headers=headers, timeout=10)
+                    resp = self.session.post(
+                        url, data=form_data, headers=headers, timeout=10
+                    )
         except Exception as exc:
-            return f"[FormSubmitTool] Error during {method!r} request to {url!r}: {exc!r}"
+            return (
+                f"[FormSubmitTool] Error during {method!r} request to {url!r}: {exc!r}"
+            )
 
         header_lines = [f"{k}: {v}" for k, v in resp.headers.items()]
         headers_str = "\n".join(header_lines)
@@ -335,11 +457,25 @@ class FormSubmitTool:
         else:
             body_preview = text
 
+        # Scan full response for flags BEFORE truncation
+        flag_section = ""
+        if max_body_int > 0 and len(text) > max_body_int:
+            hidden_flags = _scan_for_flags(text, max_body_int)
+            if hidden_flags:
+                flag_lines = "\n".join(f"  {f}" for f in hidden_flags)
+                flag_section = (
+                    f"\n\n[FLAG PATTERN DETECTED beyond truncation point]\n"
+                    f"{flag_lines}\n"
+                    "These flag-like strings were found in the full response body "
+                    "beyond the preview above."
+                )
+
         summary = (
             f"[FormSubmitTool] Method: {method}\n"
             f"URL: {resp.url}\n"
             f"Status: {resp.status_code}\n"
             f"Headers:\n{headers_str}\n\n"
             f"Body (truncated to {max_body_int} chars):\n{body_preview}"
+            f"{flag_section}"
         )
         return summary

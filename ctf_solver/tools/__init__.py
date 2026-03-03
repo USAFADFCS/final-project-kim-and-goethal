@@ -46,6 +46,11 @@ from ctf_solver.tools.misc_probe_tools import (
 from ctf_solver.tools.css_tools import CssInjectionPayloadGenerator, CssExfiltrationBuilder
 from ctf_solver.tools.smuggling_tools import HttpSmugglingProbeTool
 from ctf_solver.tools.session_forgery_tools import FlaskSessionForgeryTool, DomClobberingPayloadGenerator
+from ctf_solver.tools.oauth_tools import OAuthProbeTool, OAuthPayloadGenerator
+from ctf_solver.tools.php_filter_tools import PhpFilterChainTool
+from ctf_solver.tools.parser_diff_tools import ParserDifferentialProbeTool
+from ctf_solver.tools.websocket_tools import WebSocketProbeTool
+from ctf_solver.tools.wasm_tools import WasmAnalyzerTool
 
 __all__ = [
     "HttpFetchTool",
@@ -143,4 +148,15 @@ __all__ = [
     # Session forgery tools
     "FlaskSessionForgeryTool",
     "DomClobberingPayloadGenerator",
+    # OAuth/OIDC tools
+    "OAuthProbeTool",
+    "OAuthPayloadGenerator",
+    # PHP filter chain tools
+    "PhpFilterChainTool",
+    # Parser differential tools
+    "ParserDifferentialProbeTool",
+    # WebSocket tools
+    "WebSocketProbeTool",
+    # WASM / Reverse Engineering tools
+    "WasmAnalyzerTool",
 ]

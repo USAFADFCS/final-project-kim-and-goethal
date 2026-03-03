@@ -99,6 +99,12 @@ from ctf_solver.tools import (
     HttpSmugglingProbeTool,
     FlaskSessionForgeryTool,
     DomClobberingPayloadGenerator,
+    OAuthProbeTool,
+    OAuthPayloadGenerator,
+    PhpFilterChainTool,
+    ParserDifferentialProbeTool,
+    WebSocketProbeTool,
+    WasmAnalyzerTool,
 )
 from ctf_solver.rag import initialize_knowledge_base, build_knowledge_tool, clear_cache
 from ctf_solver.prompts import (
@@ -107,6 +113,7 @@ from ctf_solver.prompts import (
     JS_ANALYSIS_EXAMPLE,
     SELF_REFLECTION_EXAMPLE,
     JSON_API_EXAMPLE,
+    COOKIE_BYPASS_EXAMPLE,
 )
 from ctf_solver.classifier import (
     ChallengeClassifier,
@@ -128,6 +135,74 @@ logger = logging.getLogger(__name__)
 # ── Markdown code-block stripping regex (compiled once) ──
 _MD_FENCE_OPEN = re.compile(r"^```(?:json|JSON)?\s*\n?")
 _MD_FENCE_CLOSE = re.compile(r"\n?```\s*$")
+
+# Keywords that suggest the agent found something exploitable but hasn't used it
+_EXPLOITABLE_KEYWORDS = re.compile(
+    r"\b(password|credential|token|secret|api.?key|prefix|hardcoded|found.+in.+javascript"
+    r"|found.+in.+JS|logged in|injection.+detected|vulnerability.+found"
+    r"|bypass|endpoint|admin|protected.+page)\b",
+    re.IGNORECASE,
+)
+
+# Recon-only tools (agent hasn't started exploitation yet)
+_RECON_TOOLS = frozenset(
+    {
+        "http_fetch",
+        "html_inspector",
+        "javascript_source",
+        "robots_txt",
+        "cookie_inspector",
+        "response_search",
+        "regex_search",
+        "path_enumerator",
+        "backup_file_finder",
+        "ctf_knowledge_query",
+        "attack_planner",
+    }
+)
+
+
+def _extract_json_object(text: str) -> Optional[str]:
+    """
+    Extract the first balanced JSON object ``{...}`` from mixed text.
+
+    Handles cases where the LLM prepends/appends conversational text around
+    valid JSON, e.g. "Sure, here's my response:\n{...}\nI chose this because..."
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape_next = False
+
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\":
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                candidate = text[start : i + 1]
+                # Quick sanity check: must parse as JSON
+                try:
+                    json.loads(candidate)
+                    return candidate
+                except json.JSONDecodeError:
+                    return None
+    return None
 
 
 class CTFAgent(SimpleAgent):
@@ -165,20 +240,104 @@ class CTFAgent(SimpleAgent):
 
     # ── Planner monkey-patch ────────────────────────────────────────
     def _patch_planner_parsing(self):
-        """Strip markdown code-block fences before JSON parsing."""
+        """
+        Override the planner's JSON parser to:
+        1. Strip markdown code-block fences
+        2. Extract embedded JSON from conversational responses
+        3. Signal format errors instead of silently treating non-JSON as FinalAnswer
+
+        The original fairlib parser treats *any* non-JSON response as a
+        FinalAnswer, which causes premature termination when the LLM returns
+        a conversational response (e.g. "I found the password, let me try
+        logging in...").  This patch intercepts that fallback path.
+        """
         if not hasattr(self.planner, "_parse_json_response"):
             return
         original_parse = self.planner._parse_json_response
+        agent = self  # capture reference for the closure
 
-        def _strip_and_parse(response_text: str):
+        def _robust_parse(response_text: str):
+            from fairlib.core.message import FinalAnswer as FA, Thought, Action
+
             text = response_text.strip()
+
+            # Step 1: Strip markdown fences
             if text.startswith("```"):
                 text = _MD_FENCE_OPEN.sub("", text)
                 text = _MD_FENCE_CLOSE.sub("", text)
                 text = text.strip()
-            return original_parse(text)
 
-        self.planner._parse_json_response = _strip_and_parse
+            # Step 2: Check if text is valid JSON before calling original_parse.
+            # We do our own check because original_parse catches JSONDecodeError
+            # internally and returns FinalAnswer (the problem we're fixing).
+            is_valid_json = False
+            try:
+                json.loads(text)
+                is_valid_json = True
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+            if is_valid_json:
+                # Valid JSON — use original parser directly (happy path)
+                return original_parse(text)
+
+            # Step 3: Not valid JSON — try to extract embedded JSON from text
+            # (handles "Sure, here's my response: {...}" patterns)
+            json_obj = _extract_json_object(text)
+            if json_obj is not None:
+                result = original_parse(json_obj)
+                # Accept if it parsed into a Thought+Action tuple
+                if not isinstance(result, FA):
+                    return result
+                # Also accept if it's an intentional final_answer tool call
+                try:
+                    data = json.loads(json_obj)
+                    if data.get("action", {}).get("tool_name") == "final_answer":
+                        return result
+                except (json.JSONDecodeError, AttributeError):
+                    pass
+
+            # Step 4: No valid JSON found anywhere. Instead of silently returning
+            # FinalAnswer (which the original parser would do), inject a format
+            # error so the agent loop can re-prompt the LLM.
+            agent._format_error_count = getattr(agent, "_format_error_count", 0) + 1
+            agent._log_fn(
+                f"[Parser] LLM returned non-JSON response "
+                f"(format error #{agent._format_error_count}). "
+                "Injecting format-error continuation instead of treating as FinalAnswer."
+            )
+
+            # After 3 format errors, fall back to original parser's behavior
+            # (FinalAnswer) to avoid infinite loops
+            if agent._format_error_count > 3:
+                agent._log_fn(
+                    "[Parser] Too many format errors. Falling back to original parser."
+                )
+                return original_parse(text)
+
+            # Return a thought + action that triggers a tool-not-found error,
+            # which naturally re-enters the loop with a corrective observation
+            return (
+                Thought(
+                    text=(
+                        "[FORMAT RECOVERY] My previous response was not valid JSON. "
+                        "I must respond with ONLY a JSON object containing 'thought' and 'action' keys."
+                    )
+                ),
+                Action(
+                    tool_name="__format_error__",
+                    tool_input=(
+                        "YOUR RESPONSE WAS NOT VALID JSON. "
+                        "You MUST respond with a raw JSON object like: "
+                        '{"thought": "...", "action": {"tool_name": "...", "tool_input": "..."}}. '
+                        "Do NOT include any text outside the JSON. "
+                        "Do NOT use markdown code blocks. "
+                        "Continue solving the challenge."
+                    ),
+                ),
+            )
+
+        self.planner._parse_json_response = _robust_parse
 
     # ── Flag detection ──────────────────────────────────────────────
     def _has_flag(self, text: str = "") -> bool:
@@ -189,9 +348,97 @@ class CTFAgent(SimpleAgent):
             return True
         return False
 
+    # ── Exploitable-finding detection ──────────────────────────────
+    def _has_unexploited_findings(self, text: str) -> bool:
+        """
+        Detect when a FinalAnswer describes exploitable findings
+        (credentials, vulnerabilities, endpoints) without a flag.
+
+        This catches the common failure mode where the agent says
+        "I found the password in the JS" but never actually used it.
+        """
+        return bool(_EXPLOITABLE_KEYWORDS.search(text))
+
+    def _get_tools_used(self) -> List[str]:
+        """Return the list of tool names used so far from the tracker."""
+        if self._tracker and hasattr(self._tracker, "tool_call_log"):
+            return [entry.get("tool_name", "") for entry in self._tracker.tool_call_log]
+        return []
+
+    def _only_recon_so_far(self) -> bool:
+        """Return True if the agent has only used recon tools (no exploitation)."""
+        tools_used = set(self._get_tools_used())
+        return tools_used.issubset(_RECON_TOOLS) and len(tools_used) > 0
+
+    def _build_guard_message(self, attempt: int, final_text: str) -> str:
+        """
+        Build an escalating continuation message based on the attempt number.
+
+        Each retry is more specific about what to do next, based on what the
+        agent has tried so far and what its attempted final answer contained.
+        """
+        base = (
+            "Observation: [GUARD] You attempted to give a final answer, "
+            "but NO FLAG has been found yet. "
+            f"The flag must match the pattern: {self._flag_regex}\n\n"
+        )
+
+        tools_used = self._get_tools_used()
+        tools_summary = ", ".join(set(tools_used[-10:])) if tools_used else "none"
+
+        if attempt == 1:
+            # First block: general guidance
+            specific = (
+                "REMEMBER: Finding information is NOT the same as solving the challenge.\n"
+                "- If you found credentials/tokens in JavaScript, you MUST USE them to authenticate\n"
+                "- If you found a protected URL, you MUST VISIT it\n"
+                "- If you found a vulnerability, you MUST EXPLOIT it to extract data\n"
+                f"\nTools you've used so far: {tools_summary}\n"
+                "Continue investigating — the flag is at the END of the exploitation chain."
+            )
+        elif attempt == 2:
+            # Second block: more urgent, include what was attempted
+            has_findings = self._has_unexploited_findings(final_text)
+            if has_findings:
+                specific = (
+                    "URGENT: Your answer mentions findings (credentials, endpoints, or vulnerabilities) "
+                    "but you have NOT actually exploited them yet.\n"
+                    f'Your attempted answer was: "{final_text[:300]}..."\n\n'
+                    "You MUST:\n"
+                    "1. If you found a credential/token → POST to the login endpoint with http_fetch\n"
+                    "2. If login succeeds → visit the protected page to find the flag\n"
+                    "3. If you found a vuln → use the appropriate exploit tool to extract data\n"
+                    "Do NOT report findings as your answer. EXPLOIT them."
+                )
+            else:
+                specific = (
+                    "Your previous approach did not yield a flag. Try a COMPLETELY different approach:\n"
+                    "- Check cookies, robots.txt, hidden fields, JavaScript source\n"
+                    "- Try attack tools: sqli_probe, ssti_probe, lfi_probe, xpath_probe, nosql_probe, cmdi_probe\n"
+                    "- Use 'attack_planner' for a structured plan\n"
+                    "- Use 'ctf_knowledge_query' for technique suggestions\n"
+                    f"\nTools already tried: {tools_summary}\n"
+                    "Do NOT repeat what you already tried."
+                )
+        else:
+            # Third+ block: last chance, very directive
+            specific = (
+                "FINAL WARNING: This is your last chance before the agent stops.\n"
+                f'Your attempted answer was: "{final_text[:200]}..."\n'
+                f"Tools used so far: {tools_summary}\n\n"
+                "You MUST take a concrete exploitation action NOW:\n"
+                "1. Use http_fetch to POST credentials you found to a login endpoint\n"
+                "2. Use http_fetch to visit any protected URLs you discovered\n"
+                "3. Use cookie_set to modify access-control cookies and re-fetch\n"
+                "4. Use an injection tool to extract data from a confirmed vulnerability\n"
+                "Pick ONE of these and do it immediately."
+            )
+
+        return base + specific
+
     # ── Overridden run loop ─────────────────────────────────────────
     async def arun(self, user_input: str) -> str:  # noqa: C901
-        """ReAct loop with premature-FinalAnswer guard."""
+        """ReAct loop with premature-FinalAnswer guard and progress checks."""
         if self.stateless:
             self.memory.clear()
 
@@ -201,37 +448,61 @@ class CTFAgent(SimpleAgent):
         for step in range(self.max_steps):
             print(f"--- Step {step + 1}/{self.max_steps} ---")
 
+            # ── Periodic progress check (every 5 steps) ──
+            if step > 0 and step % 5 == 0 and not self._has_flag():
+                tools_used = self._get_tools_used()
+                tools_summary = (
+                    ", ".join(set(tools_used[-10:])) if tools_used else "none"
+                )
+                progress_msg = Message(
+                    role="system",
+                    content=(
+                        f"[PROGRESS CHECK — Step {step + 1}/{self.max_steps}]\n"
+                        f"Tools used recently: {tools_summary}\n"
+                        f"Flag found: NO\n"
+                        "ASK YOURSELF:\n"
+                        "  1. Am I making progress toward finding the flag?\n"
+                        "  2. Have I followed up on ALL discoveries (credentials, endpoints, vulnerabilities)?\n"
+                        "  3. Did I find something useful but forget to USE it?\n"
+                        "  4. Should I try a completely different approach?\n"
+                        "Remember: finding information ≠ solving the challenge. "
+                        "You must EXPLOIT findings to get the flag."
+                    ),
+                )
+                turn_messages.append(progress_msg)
+
             history = self.memory.get_history()
             plan_result = await self.planner.aplan(history, current_request)
 
-            # ── FinalAnswer handling with guard ──
+            # ── FinalAnswer handling with escalating guard ──
             if isinstance(plan_result, FinalAnswer):
                 final_answer_text = plan_result.text
 
+                # Dynamic retry cap: allow more retries if early in the run
+                budget_ratio = (step + 1) / self.max_steps
+                max_retries = self.MAX_PREMATURE_RETRIES
+                if budget_ratio < 0.4:
+                    max_retries = self.MAX_PREMATURE_RETRIES + 2  # 5 retries if early
+                elif budget_ratio > 0.8:
+                    max_retries = max(
+                        1, self.MAX_PREMATURE_RETRIES - 1
+                    )  # 2 retries if late
+
                 if (
                     not self._has_flag(final_answer_text)
-                    and self._premature_fa_count < self.MAX_PREMATURE_RETRIES
+                    and self._premature_fa_count < max_retries
                 ):
                     self._premature_fa_count += 1
                     self._log_fn(
                         f"[Guard] Blocked premature Final Answer "
-                        f"(attempt {self._premature_fa_count}/{self.MAX_PREMATURE_RETRIES}). "
+                        f"(attempt {self._premature_fa_count}/{max_retries}, "
+                        f"step {step + 1}/{self.max_steps}). "
                         "No flag found yet — injecting continuation."
                     )
-                    continuation = Message(
-                        role="system",
-                        content=(
-                            "Observation: [GUARD] You attempted to give a final answer, "
-                            "but NO FLAG has been found yet. "
-                            f"The flag must match the pattern: {self._flag_regex}\n"
-                            "You MUST continue investigating. Try a different approach:\n"
-                            "- Check cookies, robots.txt, hidden fields, JavaScript source\n"
-                            "- Try attack tools: sqli_probe, ssti_probe, lfi_probe, xpath_probe, nosql_probe, cmdi_probe\n"
-                            "- Use 'attack_planner' for a structured plan\n"
-                            "- Use 'ctf_knowledge_query' for technique suggestions\n"
-                            "Do NOT repeat what you already tried."
-                        ),
+                    guard_text = self._build_guard_message(
+                        self._premature_fa_count, final_answer_text
                     )
+                    continuation = Message(role="system", content=guard_text)
                     turn_messages.append(continuation)
                     for msg in turn_messages:
                         self.memory.add_message(msg)
@@ -283,9 +554,7 @@ class CTFAgent(SimpleAgent):
                     indent=4,
                 )
 
-            turn_messages.append(
-                Message(role="assistant", content=assistant_content)
-            )
+            turn_messages.append(Message(role="assistant", content=assistant_content))
 
             try:
                 observation_output = self.tool_executor.execute(
@@ -310,9 +579,7 @@ class CTFAgent(SimpleAgent):
             current_request = ""
 
         final_response = "Agent stopped after reaching max steps."
-        self.memory.add_message(
-            Message(role="assistant", content=final_response)
-        )
+        self.memory.add_message(Message(role="assistant", content=final_response))
         return final_response
 
 
@@ -342,8 +609,7 @@ def classify_challenge(
 
     if result.secondary_categories:
         secondary = ", ".join(
-            f"{cat.value}({conf:.2f})"
-            for cat, conf in result.secondary_categories[:3]
+            f"{cat.value}({conf:.2f})" for cat, conf in result.secondary_categories[:3]
         )
         log_fn(f"[Classifier] Also possible: {secondary}")
 
@@ -389,17 +655,18 @@ def _build_rag_config(config: SolverConfig, mode: RAGMode) -> SolverConfig:
 
     - ORIGINAL: uses config.docs_dirs and config.vector_store_dir (default behavior)
     - AUGMENTED: adds failure_docs_dir to docs_dirs and uses a separate vector store
+    - AUGMENTED_READONLY: same index as AUGMENTED (reads experience DB) but never writes
     """
     if mode == RAGMode.ORIGINAL:
         return config
 
-    # AUGMENTED mode: include failure knowledge docs
+    # AUGMENTED / AUGMENTED_READONLY: include experience knowledge docs
     augmented_docs_dirs = list(config.docs_dirs)
     failure_dir = config.failure_docs_dir
     if failure_dir not in augmented_docs_dirs:
         augmented_docs_dirs.append(failure_dir)
 
-    # Use a separate vector store to avoid cross-contamination
+    # Use a separate vector store to avoid cross-contamination with original
     augmented_vector_store = config.vector_store_dir + "_augmented"
 
     return config.merge_with_args(
@@ -460,7 +727,9 @@ def build_agent(
         try:
             llm = create_adapter_from_config(config)
             caps = llm.get_model_capabilities()
-            log_fn(f"[Agent] Using {caps.get('provider', 'unknown')} adapter with model: {caps.get('model', 'unknown')}")
+            log_fn(
+                f"[Agent] Using {caps.get('provider', 'unknown')} adapter with model: {caps.get('model', 'unknown')}"
+            )
         except ImportError as e:
             # Fall back to OpenAI if the requested provider is not available
             log_fn(f"[Agent] Warning: {e}. Falling back to OpenAI.")
@@ -608,6 +877,22 @@ def build_agent(
     flask_session_forgery_tool = FlaskSessionForgeryTool()
     dom_clobbering_payload_generator = DomClobberingPayloadGenerator()
 
+    # OAuth/OIDC tools
+    oauth_probe_tool = OAuthProbeTool(session=shared_session)
+    oauth_payload_generator = OAuthPayloadGenerator()
+
+    # PHP filter chain tools (pure logic, no session)
+    php_filter_chain_tool = PhpFilterChainTool()
+
+    # Parser differential tools
+    parser_differential_probe_tool = ParserDifferentialProbeTool(session=shared_session)
+
+    # WebSocket tools (no session — uses websocket-client library)
+    websocket_probe_tool = WebSocketProbeTool()
+
+    # WASM / Reverse Engineering tools (session-based for fetch)
+    wasm_analyzer_tool = WasmAnalyzerTool(session=shared_session)
+
     # All tools to register
     tools = [
         http_tool,
@@ -677,6 +962,12 @@ def build_agent(
         http_smuggling_probe_tool,
         flask_session_forgery_tool,
         dom_clobbering_payload_generator,
+        oauth_probe_tool,
+        oauth_payload_generator,
+        php_filter_chain_tool,
+        parser_differential_probe_tool,
+        websocket_probe_tool,
+        wasm_analyzer_tool,
     ]
 
     # Wrap them with LoggingToolWrapper and register
@@ -721,9 +1012,13 @@ def build_agent(
                 tracker=tracker,
             )
             tool_registry.register_tool(wrapped_rag)
-            log_fn(f"[Agent] Registered 'ctf_knowledge_query' RAG tool (mode: {rag_mode.value})")
+            log_fn(
+                f"[Agent] Registered 'ctf_knowledge_query' RAG tool (mode: {rag_mode.value})"
+            )
         else:
-            log_fn("[Agent] WARNING: RAG knowledge base not available; 'ctf_knowledge_query' tool disabled")
+            log_fn(
+                "[Agent] WARNING: RAG knowledge base not available; 'ctf_knowledge_query' tool disabled"
+            )
 
     # Planner (ReAct) with PromptBuilder customization
     planner = ReActPlanner(llm, tool_registry)
@@ -739,11 +1034,14 @@ def build_agent(
     pb.role_definition = RoleDefinition(role_text)
 
     # 2. Few-shot ReAct-style examples (generic CTF scenarios)
+    # Order: self-reflection first (primary failure mode), exploitation chains in middle,
+    # most common success pattern last (primacy/recency bias)
     pb.examples.clear()
+    pb.examples.append(SELF_REFLECTION_EXAMPLE)
     pb.examples.append(ROBOTS_EXAMPLE)
     pb.examples.append(JS_ANALYSIS_EXAMPLE)
-    pb.examples.append(SELF_REFLECTION_EXAMPLE)
     pb.examples.append(JSON_API_EXAMPLE)
+    pb.examples.append(COOKIE_BYPASS_EXAMPLE)
 
     # === Tool executor, memory, and agent ===
     executor = ToolExecutor(tool_registry)
@@ -768,6 +1066,8 @@ def build_agent(
         "returns the discovered flag using the 'final_answer' tool."
     )
 
-    log_fn(f"[Agent] Built successfully with {len(tools) + (1 if ctf_knowledge_tool else 0)} tools")
+    log_fn(
+        f"[Agent] Built successfully with {len(tools) + (1 if ctf_knowledge_tool else 0)} tools"
+    )
 
     return agent

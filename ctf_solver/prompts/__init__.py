@@ -15,6 +15,7 @@ from ctf_solver.prompts.templates import (
     JS_ANALYSIS_EXAMPLE,
     SELF_REFLECTION_EXAMPLE,
     JSON_API_EXAMPLE,
+    COOKIE_BYPASS_EXAMPLE,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "JS_ANALYSIS_EXAMPLE",
     "SELF_REFLECTION_EXAMPLE",
     "JSON_API_EXAMPLE",
+    "COOKIE_BYPASS_EXAMPLE",
 ]

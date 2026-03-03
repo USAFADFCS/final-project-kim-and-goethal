@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 class ChallengeCategory(Enum):
     """Main categories of CTF web challenges."""
+
     SQL_INJECTION = "sql_injection"
     XSS = "xss"
     SSTI = "ssti"
@@ -32,6 +33,9 @@ class ChallengeCategory(Enum):
     NOSQL_INJECTION = "nosql_injection"
     CSS_INJECTION = "css_injection"
     HTTP_SMUGGLING = "http_smuggling"
+    OAUTH_OIDC = "oauth_oidc"
+    PARSER_DIFFERENTIAL = "parser_differential"
+    WASM_RE = "wasm_re"
     RECONNAISSANCE = "reconnaissance"
     UNKNOWN = "unknown"
 
@@ -39,9 +43,12 @@ class ChallengeCategory(Enum):
 @dataclass
 class ClassificationResult:
     """Result of challenge classification."""
+
     primary_category: ChallengeCategory
     confidence: float  # 0.0 to 1.0
-    secondary_categories: List[Tuple[ChallengeCategory, float]] = field(default_factory=list)
+    secondary_categories: List[Tuple[ChallengeCategory, float]] = field(
+        default_factory=list
+    )
     matched_keywords: List[str] = field(default_factory=list)
     matched_patterns: List[str] = field(default_factory=list)
     suggested_tools: List[str] = field(default_factory=list)
@@ -70,230 +77,514 @@ CATEGORY_KEYWORDS: Dict[ChallengeCategory, List[str]] = {
     ChallengeCategory.SQL_INJECTION: [
         r"\bsql\s*injection\b",  # Strong indicator
         r"\bsqli\b",  # Strong indicator
-        r"\bsql\b", r"\binjection\b", r"\bdatabase\b",
-        r"\bquery\b", r"\bselect\b", r"\bunion\b", r"\bor\s*1\s*=\s*1\b",
-        r"\b'\s*or\b", r"\bblind\b", r"\bextract\b", r"\bdump\b",
-        r"\bmysql\b", r"\bsqlite\b", r"\bpostgres\b", r"\bmssql\b",
-        r"\blogin\b.*\bbypass\b", r"\bauthentication\b.*\bbypass\b",
+        r"\bsql\b",
+        r"\binjection\b",
+        r"\bdatabase\b",
+        r"\bquery\b",
+        r"\bselect\b",
+        r"\bunion\b",
+        r"\bor\s*1\s*=\s*1\b",
+        r"\b'\s*or\b",
+        r"\bblind\b",
+        r"\bextract\b",
+        r"\bdump\b",
+        r"\bmysql\b",
+        r"\bsqlite\b",
+        r"\bpostgres\b",
+        r"\bmssql\b",
+        r"\blogin\b.*\bbypass\b",
+        r"\bauthentication\b.*\bbypass\b",
     ],
     ChallengeCategory.XSS: [
         r"\bxss\b",  # Strong indicator
         r"\bcross.?site\s*scripting\b",  # Strong indicator
-        r"\bcross.?site\b", r"\bscript\b", r"\balert\b",
-        r"\breflected\b", r"\bstored\b", r"\bdom\b", r"\bcookie\b.*\bsteal\b",
-        r"\bhtml\s*injection\b", r"\bjavascript\b.*\binjection\b",
+        r"\bcross.?site\b",
+        r"\bscript\b",
+        r"\balert\b",
+        r"\breflected\b",
+        r"\bstored\b",
+        r"\bdom\b",
+        r"\bcookie\b.*\bsteal\b",
+        r"\bhtml\s*injection\b",
+        r"\bjavascript\b.*\binjection\b",
     ],
     ChallengeCategory.SSTI: [
         r"\bssti\b",  # Strong indicator
         r"\btemplate\s*injection\b",  # Strong indicator
         r"\bjinja2?\b",  # Strong indicator - Jinja or Jinja2
-        r"\btemplate\b", r"\btwig\b",
-        r"\bfreemarker\b", r"\berb\b", r"\bsmarty\b", r"\bvelocity\b",
-        r"\bmako\b", r"\bthymeleaf\b", r"\bpebble\b",
-        r"\{\{.*\}\}", r"\{%.*%\}",
+        r"\btemplate\b",
+        r"\btwig\b",
+        r"\bfreemarker\b",
+        r"\berb\b",
+        r"\bsmarty\b",
+        r"\bvelocity\b",
+        r"\bmako\b",
+        r"\bthymeleaf\b",
+        r"\bpebble\b",
+        r"\{\{.*\}\}",
+        r"\{%.*%\}",
     ],
     ChallengeCategory.XXE: [
         r"\bxxe\b",  # Strong indicator
         r"\bxml\s*external\s*entity\b",  # Strong indicator
         r"\bxml\b",  # Basic indicator
         r"\bexternal\s*entity\b",
-        r"\bdtd\b", r"\bdoctype\b", r"\bxml\s*injection\b",
-        r"\bxml\s*parser\b", r"\bparse\s*xml\b",
+        r"\bdtd\b",
+        r"\bdoctype\b",
+        r"\bxml\s*injection\b",
+        r"\bxml\s*parser\b",
+        r"\bparse\s*xml\b",
         r"\bfile\s*read\b.*\bxml\b",
     ],
     ChallengeCategory.FILE_UPLOAD: [
         r"\bfile\s*upload\b",  # Strong indicator
         r"\bwebshell\b",  # Strong indicator
-        r"\bupload\b", r"\bimage\s*upload\b",
-        r"\bshell\b", r"\bphp\b.*\bupload\b",
-        r"\bbypass\b.*\bextension\b", r"\bmime\b.*\btype\b",
-        r"\bmagic\s*bytes\b", r"\bpolyglot\b",
+        r"\bupload\b",
+        r"\bimage\s*upload\b",
+        r"\bshell\b",
+        r"\bphp\b.*\bupload\b",
+        r"\bbypass\b.*\bextension\b",
+        r"\bmime\b.*\btype\b",
+        r"\bmagic\s*bytes\b",
+        r"\bpolyglot\b",
     ],
     ChallengeCategory.FILE_INCLUSION: [
         r"\blfi\b",  # Strong indicator
         r"\brfi\b",  # Strong indicator
         r"\bfile\s*inclusion\b",  # Strong indicator
-        r"\bpath\s*traversal\b", r"\bdirectory\s*traversal\b",
-        r"\.\./", r"\.\.\\", r"\binclude\b.*\bfile\b",
-        r"\bwrapper\b", r"php://", r"data://",
+        r"\bpath\s*traversal\b",
+        r"\bdirectory\s*traversal\b",
+        r"\.\./",
+        r"\.\.\\",
+        r"\binclude\b.*\bfile\b",
+        r"\bwrapper\b",
+        r"php://",
+        r"data://",
     ],
     ChallengeCategory.AUTHENTICATION: [
-        r"\blogin\b", r"\bauthentication\b", r"\bpassword\b",
-        r"\bcredentials\b", r"\bsession\b", r"\bauth\b",
-        r"\bbrute\s*force\b", r"\bdefault\b.*\bpassword\b",
-        r"\badmin\b.*\baccess\b", r"\bprivilege\b",
+        r"\blogin\b",
+        r"\bauthentication\b",
+        r"\bpassword\b",
+        r"\bcredentials\b",
+        r"\bsession\b",
+        r"\bauth\b",
+        r"\bbrute\s*force\b",
+        r"\bdefault\b.*\bpassword\b",
+        r"\badmin\b.*\baccess\b",
+        r"\bprivilege\b",
+        # Client-side lock / combination / PIN challenges
+        r"\bcombination\s*lock\b",
+        r"\block\b.*\bpage\b",
+        r"\bpasscode\b",
+        r"\bpin\b.*\bcode\b",
+        r"\block\b.*\bbypass\b",
+        r"\bclient.?side\b",
+        r"\bhack\b.*\bpage\b",
+        r"\baccess\b.*\bearly\b",
+        r"\bunlock\b",
     ],
     ChallengeCategory.JWT: [
         r"\bjwt\b",  # Strong indicator
         r"\bjson\s*web\s*token\b",  # Strong indicator
-        r"\btoken\b", r"\balgorithm\b.*\bnone\b",
-        r"\bhs256\b", r"\brs256\b",
-        r"\bsignature\b", r"\bclaim\b", r"\bbearer\b",
+        r"\btoken\b",
+        r"\balgorithm\b.*\bnone\b",
+        r"\bhs256\b",
+        r"\brs256\b",
+        r"\bsignature\b",
+        r"\bclaim\b",
+        r"\bbearer\b",
     ],
     ChallengeCategory.COMMAND_INJECTION: [
         r"\bcommand\s*injection\b",  # Strong indicator
         r"\bos\s*command\b",  # Strong indicator
-        r"\brce\b", r"\bremote\s*code\s*execution\b",
+        r"\brce\b",
+        r"\bremote\s*code\s*execution\b",
         r"\bshell\b.*\bcommand\b",
-        r"\bexec\b", r"\bsystem\b", r"\bping\b", r"\bcurl\b.*\binjection\b",
-        r";\s*ls\b", r"\|\s*cat\b", r"`[^`]+`",
+        r"\bexec\b",
+        r"\bsystem\b",
+        r"\bping\b",
+        r"\bcurl\b.*\binjection\b",
+        r";\s*ls\b",
+        r"\|\s*cat\b",
+        r"`[^`]+`",
     ],
     ChallengeCategory.SSRF: [
         r"\bssrf\b",  # Strong indicator
         r"\bserver.?side\s*request\s*forgery\b",  # Strong indicator
         r"\bserver.?side\s*request\b",
-        r"\burl\s*fetch\b", r"\binternal\b.*\bnetwork\b",
-        r"\blocalhost\b", r"\b127\.0\.0\.1\b", r"\bmetadata\b",
-        r"\bcloud\b.*\bmetadata\b", r"\baws\b.*\bmetadata\b",
+        r"\burl\s*fetch\b",
+        r"\binternal\b.*\bnetwork\b",
+        r"\blocalhost\b",
+        r"\b127\.0\.0\.1\b",
+        r"\bmetadata\b",
+        r"\bcloud\b.*\bmetadata\b",
+        r"\baws\b.*\bmetadata\b",
     ],
     ChallengeCategory.DESERIALIZATION: [
-        r"\bdeserialization\b", r"\bunserialize\b", r"\bpickle\b",
-        r"\bobject\s*injection\b", r"\bphp\s*object\b",
-        r"\byaml\b.*\binjection\b", r"\bjava\b.*\bobject\b",
+        r"\bdeserialization\b",
+        r"\bunserialize\b",
+        r"\bpickle\b",
+        r"\bobject\s*injection\b",
+        r"\bphp\s*object\b",
+        r"\byaml\b.*\binjection\b",
+        r"\bjava\b.*\bobject\b",
     ],
     ChallengeCategory.NOSQL_INJECTION: [
         r"\bnosql\b",  # Strong indicator
         r"\bnosql\s*injection\b",  # Strong indicator
         r"\bmongodb\b",  # Strong indicator
-        r"\bmongo\b", r"\bdocument\s*database\b",
-        r"\bmean\s*stack\b", r"\bnode\.?js\b.*\binjection\b",
-        r"\b\$ne\b", r"\b\$gt\b", r"\b\$regex\b", r"\b\$where\b",
+        r"\bmongo\b",
+        r"\bdocument\s*database\b",
+        r"\bmean\s*stack\b",
+        r"\bnode\.?js\b.*\binjection\b",
+        r"\b\$ne\b",
+        r"\b\$gt\b",
+        r"\b\$regex\b",
+        r"\b\$where\b",
         r"\boperator\s*injection\b",
     ],
     ChallengeCategory.RACE_CONDITION: [
-        r"\brace\s*condition\b", r"\btoctou\b", r"\btime.?of.?check\b",
-        r"\bconcurrent\b", r"\bparallel\b.*\brequest\b",
-        r"\bdouble\s*spend\b", r"\batomic\b",
+        r"\brace\s*condition\b",
+        r"\btoctou\b",
+        r"\btime.?of.?check\b",
+        r"\bconcurrent\b",
+        r"\bparallel\b.*\brequest\b",
+        r"\bdouble\s*spend\b",
+        r"\batomic\b",
     ],
     ChallengeCategory.CRYPTO: [
-        r"\bcrypto\b", r"\bencrypt\b", r"\bdecrypt\b", r"\bcipher\b",
-        r"\bhash\b", r"\bmd5\b", r"\bsha\b", r"\baes\b", r"\brsa\b",
-        r"\bbase64\b", r"\bxor\b", r"\brot13\b", r"\bpkcs\b",
+        r"\bcrypto\b",
+        r"\bencrypt\b",
+        r"\bdecrypt\b",
+        r"\bcipher\b",
+        r"\bhash\b",
+        r"\bmd5\b",
+        r"\bsha\b",
+        r"\baes\b",
+        r"\brsa\b",
+        r"\bbase64\b",
+        r"\bxor\b",
+        r"\brot13\b",
+        r"\bpkcs\b",
     ],
     ChallengeCategory.CSS_INJECTION: [
         r"\bcss\s*injection\b",  # Strong indicator
         r"\bcss\s*exfiltration\b",  # Strong indicator
-        r"\badmin\s*bot\b", r"\bstyle\s*injection\b",
-        r"\bcss\b.*\bleak\b", r"\battr.*selector\b",
-        r"\bfont.?face\b", r"\b@import\b.*\bexfil\b",
+        r"\badmin\s*bot\b",
+        r"\bstyle\s*injection\b",
+        r"\bcss\b.*\bleak\b",
+        r"\battr.*selector\b",
+        r"\bfont.?face\b",
+        r"\b@import\b.*\bexfil\b",
     ],
     ChallengeCategory.HTTP_SMUGGLING: [
         r"\bhttp\s*smuggling\b",  # Strong indicator
         r"\brequest\s*smuggling\b",  # Strong indicator
-        r"\bcl\.te\b", r"\bte\.cl\b", r"\bte\.te\b",
+        r"\bcl\.te\b",
+        r"\bte\.cl\b",
+        r"\bte\.te\b",
         r"\btransfer.?encoding\b.*\bchunked\b",
-        r"\bh2c\b.*\bsmuggl\b", r"\bdesync\b",
+        r"\bh2c\b.*\bsmuggl\b",
+        r"\bdesync\b",
+    ],
+    ChallengeCategory.OAUTH_OIDC: [
+        r"\boauth\b",  # Strong indicator
+        r"\boidc\b",  # Strong indicator
+        r"\bopenid\s*connect\b",  # Strong indicator
+        r"\bredirect_uri\b",
+        r"\bredirect.?uri\b",
+        r"\bauthorization.?code\b",
+        r"\baccess.?token\b",
+        r"\bbearer\b.*\btoken\b",
+        r"\bclient.?id\b",
+        r"\bscope\b.*\bescalat\b",
+        r"\bstate\b.*\bcsrf\b",
+        r"\bpkce\b",
+        r"\bcode.?challenge\b",
+    ],
+    ChallengeCategory.PARSER_DIFFERENTIAL: [
+        r"\bparser\s*differential\b",  # Strong indicator
+        r"\bparameter\s*pollution\b",  # Strong indicator
+        r"\bhpp\b",  # Strong indicator
+        r"\bqs\s*module\b",
+        r"\bexpress\b.*\bpars\b",
+        r"\bgunicorn\b",
+        r"\bnginx\b.*\bbypass\b",
+        r"\bdesync\b.*\bpars\b",
+        r"\bcontent.?type\b.*\bconfus\b",
+        r"\bduplicate\b.*\bparam\b",
+        r"\bdouble\b.*\bencod\b",
+    ],
+    ChallengeCategory.WASM_RE: [
+        r"\bwasm\b",  # Strong indicator
+        r"\bwebassembly\b",  # Strong indicator
+        r"\.wasm\b",  # Strong indicator — file extension
+        r"\bsome\s*assembly\s*required\b",  # picoCTF challenge name
+        r"\bbinary\b.*\bvalidat\b",
+        r"\bflag\s*check\b",
+        r"\breverse\b.*\bbinary\b",
+        r"\bcheck.flag\b",
+        r"\bcopy.char\b",
+        r"\bwasm2wat\b",
+        r"\bwat2wasm\b",
+        r"\bxor\b.*\bbinary\b",
+        r"\bbinary\b.*\bxor\b",
     ],
     ChallengeCategory.RECONNAISSANCE: [
-        r"\brecon\b", r"\benumerate\b", r"\bdiscover\b", r"\bfind\b",
-        r"\bhidden\b", r"\bsecret\b", r"\brobots\.txt\b",
-        r"\bdirectory\b.*\blist\b", r"\bbrute\s*force\b.*\bpath\b",
+        r"\brecon\b",
+        r"\benumerate\b",
+        r"\bdiscover\b",
+        r"\bfind\b",
+        r"\bhidden\b",
+        r"\bsecret\b",
+        r"\brobots\.txt\b",
+        r"\bdirectory\b.*\blist\b",
+        r"\bbrute\s*force\b.*\bpath\b",
     ],
 }
 
 # URL patterns that indicate specific vulnerability types
 URL_PATTERNS: Dict[ChallengeCategory, List[str]] = {
     ChallengeCategory.SQL_INJECTION: [
-        r"\?.*id=\d+", r"\?.*user=", r"\?.*name=", r"\?.*search=",
-        r"\?.*query=", r"\?.*q=", r"/login", r"/admin",
+        r"\?.*id=\d+",
+        r"\?.*user=",
+        r"\?.*name=",
+        r"\?.*search=",
+        r"\?.*query=",
+        r"\?.*q=",
+        r"/login",
+        r"/admin",
     ],
     ChallengeCategory.FILE_INCLUSION: [
-        r"\?.*file=", r"\?.*page=", r"\?.*path=", r"\?.*include=",
-        r"\?.*template=", r"\?.*lang=", r"\?.*doc=",
+        r"\?.*file=",
+        r"\?.*page=",
+        r"\?.*path=",
+        r"\?.*include=",
+        r"\?.*template=",
+        r"\?.*lang=",
+        r"\?.*doc=",
     ],
     ChallengeCategory.SSRF: [
-        r"\?.*url=", r"\?.*redirect=", r"\?.*link=", r"\?.*fetch=",
-        r"\?.*proxy=", r"\?.*callback=", r"\?.*image=",
+        r"\?.*url=",
+        r"\?.*redirect=",
+        r"\?.*link=",
+        r"\?.*fetch=",
+        r"\?.*proxy=",
+        r"\?.*callback=",
+        r"\?.*image=",
     ],
     ChallengeCategory.FILE_UPLOAD: [
-        r"/upload", r"/file", r"/image", r"/avatar", r"/profile",
-        r"/attachment", r"/media",
+        r"/upload",
+        r"/file",
+        r"/image",
+        r"/avatar",
+        r"/profile",
+        r"/attachment",
+        r"/media",
     ],
     ChallengeCategory.AUTHENTICATION: [
-        r"/login", r"/signin", r"/auth", r"/admin", r"/dashboard",
-        r"/panel", r"/account", r"/user",
+        r"/login",
+        r"/signin",
+        r"/auth",
+        r"/admin",
+        r"/dashboard",
+        r"/panel",
+        r"/account",
+        r"/user",
     ],
     ChallengeCategory.NOSQL_INJECTION: [
-        r"/login", r"/api/", r"\?.*username=", r"\?.*user=",
+        r"/login",
+        r"/api/",
+        r"\?.*username=",
+        r"\?.*user=",
+    ],
+    ChallengeCategory.OAUTH_OIDC: [
+        r"/oauth",
+        r"/authorize",
+        r"/callback",
+        r"/token",
+        r"\?.*redirect_uri=",
+        r"\?.*client_id=",
+        r"\?.*response_type=",
+        r"/.well-known/openid-configuration",
     ],
 }
 
 # Tool priority mapping for each category
 TOOL_PRIORITIES: Dict[ChallengeCategory, List[str]] = {
     ChallengeCategory.SQL_INJECTION: [
-        "sqli_probe", "sqli_column_counter", "blind_sqli_boolean",
-        "blind_sqli_time", "sqli_data_dumper", "response_diff",
-        "http_fetch", "form_submit",
+        "sqli_probe",
+        "sqli_column_counter",
+        "blind_sqli_boolean",
+        "blind_sqli_time",
+        "sqli_data_dumper",
+        "response_diff",
+        "http_fetch",
+        "form_submit",
     ],
     ChallengeCategory.XSS: [
-        "xss_probe", "xss_payload_generator", "csp_analyzer",
-        "http_fetch", "html_inspector", "javascript_source",
-        "response_search", "cookie_inspector", "form_submit",
+        "xss_probe",
+        "xss_payload_generator",
+        "csp_analyzer",
+        "http_fetch",
+        "html_inspector",
+        "javascript_source",
+        "response_search",
+        "cookie_inspector",
+        "form_submit",
     ],
     ChallengeCategory.SSTI: [
-        "ssti_probe", "ssti_exploit_suggester", "http_fetch",
-        "form_submit", "response_search",
+        "ssti_probe",
+        "ssti_exploit_suggester",
+        "http_fetch",
+        "form_submit",
+        "response_search",
     ],
     ChallengeCategory.XXE: [
-        "xxe_probe", "xxe_payload_generator", "xxe_doctype_builder",
-        "http_fetch", "form_submit",
+        "xxe_probe",
+        "xxe_payload_generator",
+        "xxe_doctype_builder",
+        "http_fetch",
+        "form_submit",
     ],
     ChallengeCategory.FILE_UPLOAD: [
-        "file_upload", "upload_location_finder", "path_enumerator",
-        "http_fetch", "html_inspector",
+        "file_upload",
+        "upload_location_finder",
+        "path_enumerator",
+        "http_fetch",
+        "html_inspector",
     ],
     ChallengeCategory.FILE_INCLUSION: [
-        "lfi_probe", "lfi_payload_generator", "http_fetch",
-        "path_enumerator", "response_search", "encoding",
+        "lfi_probe",
+        "lfi_payload_generator",
+        "http_fetch",
+        "path_enumerator",
+        "response_search",
+        "encoding",
     ],
     ChallengeCategory.AUTHENTICATION: [
-        "http_fetch", "form_submit", "cookie_inspector", "cookie_set",
-        "jwt", "response_diff", "timing_compare", "request_repeater",
-        "php_type_juggling", "idor_enumerator",
+        "http_fetch",
+        "javascript_source",
+        "html_inspector",
+        "form_submit",
+        "cookie_inspector",
+        "cookie_set",
+        "jwt",
+        "response_diff",
+        "timing_compare",
+        "request_repeater",
+        "php_type_juggling",
+        "idor_enumerator",
     ],
     ChallengeCategory.JWT: [
-        "jwt", "http_fetch", "cookie_inspector", "encoding",
+        "jwt",
+        "http_fetch",
+        "cookie_inspector",
+        "encoding",
         "response_search",
     ],
     ChallengeCategory.COMMAND_INJECTION: [
-        "cmdi_probe", "cmdi_payload_generator", "http_fetch",
-        "form_submit", "response_search", "timing_compare",
+        "cmdi_probe",
+        "cmdi_payload_generator",
+        "http_fetch",
+        "form_submit",
+        "response_search",
+        "timing_compare",
     ],
     ChallengeCategory.SSRF: [
-        "ssrf_probe", "ssrf_payload_generator", "http_fetch",
-        "form_submit", "response_search", "response_diff",
+        "ssrf_probe",
+        "ssrf_payload_generator",
+        "http_fetch",
+        "form_submit",
+        "response_search",
+        "response_diff",
     ],
     ChallengeCategory.DESERIALIZATION: [
-        "deserialization_probe", "deserialization_payload_generator",
-        "http_fetch", "encoding", "form_submit", "response_search",
+        "deserialization_probe",
+        "deserialization_payload_generator",
+        "http_fetch",
+        "encoding",
+        "form_submit",
+        "response_search",
     ],
     ChallengeCategory.RACE_CONDITION: [
-        "race_condition", "http_fetch", "form_submit", "timing_compare",
-        "response_diff", "cookie_inspector",
+        "race_condition",
+        "http_fetch",
+        "form_submit",
+        "timing_compare",
+        "response_diff",
+        "cookie_inspector",
     ],
     ChallengeCategory.CRYPTO: [
-        "crypto_probe", "crypto_analyzer", "crypto_payload_generator",
-        "encoding", "hash_identifier", "http_fetch", "response_search",
+        "crypto_probe",
+        "crypto_analyzer",
+        "crypto_payload_generator",
+        "encoding",
+        "hash_identifier",
+        "http_fetch",
+        "response_search",
     ],
     ChallengeCategory.NOSQL_INJECTION: [
-        "nosql_probe", "nosql_payload_generator", "http_fetch",
-        "form_submit", "response_search", "response_diff",
+        "nosql_probe",
+        "nosql_payload_generator",
+        "http_fetch",
+        "form_submit",
+        "response_search",
+        "response_diff",
     ],
     ChallengeCategory.CSS_INJECTION: [
-        "css_injection_payload_generator", "css_exfiltration_builder",
-        "csp_analyzer", "http_fetch", "html_inspector", "javascript_source",
+        "css_injection_payload_generator",
+        "css_exfiltration_builder",
+        "csp_analyzer",
+        "http_fetch",
+        "html_inspector",
+        "javascript_source",
     ],
     ChallengeCategory.HTTP_SMUGGLING: [
-        "http_smuggling_probe", "http_fetch", "response_diff",
-        "timing_compare", "response_search",
+        "http_smuggling_probe",
+        "http_fetch",
+        "response_diff",
+        "timing_compare",
+        "response_search",
     ],
     ChallengeCategory.RECONNAISSANCE: [
-        "robots_txt", "path_enumerator", "backup_file_finder",
-        "http_fetch", "html_inspector", "javascript_source",
+        "robots_txt",
+        "path_enumerator",
+        "backup_file_finder",
+        "http_fetch",
+        "html_inspector",
+        "javascript_source",
+    ],
+    ChallengeCategory.OAUTH_OIDC: [
+        "oauth_probe",
+        "oauth_payload_generator",
+        "http_fetch",
+        "html_inspector",
+        "cookie_inspector",
+        "response_search",
+    ],
+    ChallengeCategory.PARSER_DIFFERENTIAL: [
+        "parser_differential_probe",
+        "http_fetch",
+        "form_submit",
+        "response_diff",
+        "timing_compare",
+        "response_search",
+    ],
+    ChallengeCategory.WASM_RE: [
+        "wasm_analyzer",
+        "javascript_source",
+        "http_fetch",
+        "shell_execute",
     ],
     ChallengeCategory.UNKNOWN: [
-        "http_fetch", "html_inspector", "robots_txt",
-        "path_enumerator", "response_search", "ctf_knowledge_query",
+        "http_fetch",
+        "javascript_source",
+        "html_inspector",
+        "robots_txt",
+        "path_enumerator",
+        "response_search",
+        "ctf_knowledge_query",
     ],
 }
 
@@ -404,6 +695,27 @@ APPROACH_SUGGESTIONS: Dict[ChallengeCategory, str] = {
         "4. Smuggle requests to /admin or internal endpoints\n"
         "5. Try H2C upgrade smuggling if HTTP/2 is available"
     ),
+    ChallengeCategory.OAUTH_OIDC: (
+        "1. Discover OAuth endpoints (/.well-known/openid-configuration)\n"
+        "2. Test redirect_uri validation with manipulation payloads\n"
+        "3. Check for missing state parameter (CSRF)\n"
+        "4. Test scope escalation and PKCE bypass\n"
+        "5. Chain with open redirect for token theft"
+    ),
+    ChallengeCategory.PARSER_DIFFERENTIAL: (
+        "1. Test HTTP Parameter Pollution (duplicate params)\n"
+        "2. Check Content-Type confusion (JSON body with form CT)\n"
+        "3. Test URL path parsing differences (;, \\, encoded chars)\n"
+        "4. Try double/mixed encoding for filter bypass\n"
+        "5. Exploit front-end/back-end parsing disagreements"
+    ),
+    ChallengeCategory.WASM_RE: (
+        "1. http_fetch the page → find <script src=...> loading obfuscated JS\n"
+        "2. javascript_source → deobfuscate to find WASM module path (e.g. ./JIFxzHyW8W)\n"
+        "3. wasm_analyzer (analyze) → parse sections, check for plaintext flag in data segments\n"
+        "4. If flag is binary/non-ASCII: wasm_analyzer (xor_decode) → auto-detect 'key' export\n"
+        "5. If no key export: wasm_analyzer (xor_decode) with brute-force, or scan_flags"
+    ),
     ChallengeCategory.RECONNAISSANCE: (
         "1. Check robots.txt and sitemap\n"
         "2. Enumerate directories and files\n"
@@ -438,18 +750,33 @@ class PatternMatcher:
 
     # Strong indicator patterns that should give higher weight
     STRONG_INDICATORS = {
-        r"\bsql\s*injection\b", r"\bsqli\b",
-        r"\bxss\b", r"\bcross.?site\s*scripting\b",
-        r"\bssti\b", r"\btemplate\s*injection\b", r"\bjinja2?\b",
-        r"\bxxe\b", r"\bxml\s*external\s*entity\b",
-        r"\bfile\s*upload\b", r"\bwebshell\b",
-        r"\blfi\b", r"\brfi\b", r"\bfile\s*inclusion\b",
-        r"\bjwt\b", r"\bjson\s*web\s*token\b",
-        r"\bcommand\s*injection\b", r"\bos\s*command\b",
-        r"\bssrf\b", r"\bserver.?side\s*request\s*forgery\b",
-        r"\bnosql\b", r"\bnosql\s*injection\b", r"\bmongodb\b",
-        r"\bcss\s*injection\b", r"\bcss\s*exfiltration\b",
-        r"\bhttp\s*smuggling\b", r"\brequest\s*smuggling\b",
+        r"\bsql\s*injection\b",
+        r"\bsqli\b",
+        r"\bxss\b",
+        r"\bcross.?site\s*scripting\b",
+        r"\bssti\b",
+        r"\btemplate\s*injection\b",
+        r"\bjinja2?\b",
+        r"\bxxe\b",
+        r"\bxml\s*external\s*entity\b",
+        r"\bfile\s*upload\b",
+        r"\bwebshell\b",
+        r"\blfi\b",
+        r"\brfi\b",
+        r"\bfile\s*inclusion\b",
+        r"\bjwt\b",
+        r"\bjson\s*web\s*token\b",
+        r"\bcommand\s*injection\b",
+        r"\bos\s*command\b",
+        r"\bssrf\b",
+        r"\bserver.?side\s*request\s*forgery\b",
+        r"\bnosql\b",
+        r"\bnosql\s*injection\b",
+        r"\bmongodb\b",
+        r"\bcss\s*injection\b",
+        r"\bcss\s*exfiltration\b",
+        r"\bhttp\s*smuggling\b",
+        r"\brequest\s*smuggling\b",
     }
 
     def __init__(self):
@@ -585,9 +912,21 @@ class PatternMatcher:
 
                     # Check for interesting parameter names
                     interesting_keys = [
-                        "id", "user", "name", "file", "page", "path",
-                        "url", "redirect", "query", "search", "cmd",
-                        "exec", "template", "include", "lang",
+                        "id",
+                        "user",
+                        "name",
+                        "file",
+                        "page",
+                        "path",
+                        "url",
+                        "redirect",
+                        "query",
+                        "search",
+                        "cmd",
+                        "exec",
+                        "template",
+                        "include",
+                        "lang",
                     ]
                     if any(k in key.lower() for k in interesting_keys):
                         analysis["interesting_params"].append(key)
@@ -595,8 +934,16 @@ class PatternMatcher:
         # Analyze path
         path_parts = parsed.path.lower().split("/")
         interesting_paths = [
-            "admin", "login", "upload", "api", "debug", "test",
-            "backup", "config", "internal", "private",
+            "admin",
+            "login",
+            "upload",
+            "api",
+            "debug",
+            "test",
+            "backup",
+            "config",
+            "internal",
+            "private",
         ]
         for part in path_parts:
             if any(ip in part for ip in interesting_paths):
@@ -681,17 +1028,17 @@ class ChallengeClassifier:
             if url_analysis.get("interesting_params"):
                 # Boost SQL injection for ID-like parameters
                 if any("id" in p.lower() for p in url_analysis["interesting_params"]):
-                    scores[ChallengeCategory.SQL_INJECTION] = scores.get(
-                        ChallengeCategory.SQL_INJECTION, 0
-                    ) + 0.1
+                    scores[ChallengeCategory.SQL_INJECTION] = (
+                        scores.get(ChallengeCategory.SQL_INJECTION, 0) + 0.1
+                    )
                 # Boost file inclusion for file-like parameters
                 if any(
                     p.lower() in ("file", "page", "path", "include")
                     for p in url_analysis["interesting_params"]
                 ):
-                    scores[ChallengeCategory.FILE_INCLUSION] = scores.get(
-                        ChallengeCategory.FILE_INCLUSION, 0
-                    ) + 0.1
+                    scores[ChallengeCategory.FILE_INCLUSION] = (
+                        scores.get(ChallengeCategory.FILE_INCLUSION, 0) + 0.1
+                    )
 
         # Determine primary category
         if not scores:

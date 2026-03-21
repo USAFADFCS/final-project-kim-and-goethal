@@ -174,9 +174,42 @@ async def run_agent_async(config: SolverConfig) -> str:
             fallback_failure_docs_dir=str(config.failure_docs_dir),
         )
         if prior_reflection:
-            initial_message = "## Prior Attempt Analysis\n\n" + prior_reflection + "\n\n---\n\n" + initial_message
+            initial_message = (
+                "## Prior Attempt Analysis\n\n"
+                + prior_reflection
+                + "\n\n---\n\n"
+                + initial_message
+            )
             tracker.prior_reflection_injected = True
             log_callback("[Reflexion] Prior lesson injected into prompt.")
+
+    # Proactive RAG injection: query knowledge base upfront so the agent always
+    # sees relevant prior knowledge before its first action.
+    if config.rag_mode in RAG_EXPERIENCE_MODES:
+        active_tool = get_active_knowledge_tool()
+        if active_tool is not None:
+            query = (
+                config.challenge_description
+                or config.challenge_name
+                or "web CTF exploitation techniques"
+            )
+            log_callback(
+                f"[RAG] Proactive knowledge injection attempted (query: {query!r:.80})."
+            )
+            proactive_results = active_tool.use(query)
+            if proactive_results and "No relevant information" not in proactive_results:
+                log_callback(
+                    "[RAG] Proactive knowledge injection succeeded — results injected."
+                )
+                initial_message += (
+                    "\n\n## Relevant Background Knowledge\n"
+                    "> Retrieved from the knowledge base before the run. "
+                    "Apply these lessons to your approach.\n\n" + proactive_results
+                )
+            else:
+                log_callback(
+                    "[RAG] Proactive knowledge injection: no relevant results found."
+                )
 
     st.session_state.execution_trace.append(
         {
@@ -236,13 +269,17 @@ async def run_agent_async(config: SolverConfig) -> str:
                 log_callback(f"[Lessons DB] {len(written)} rule doc(s) saved.")
                 consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
                 if consolidated:
-                    log_callback(f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated.")
+                    log_callback(
+                        f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated."
+                    )
                 active_tool = get_active_knowledge_tool()
                 if active_tool is not None:
                     active_tool.refresh_index()
                     log_callback("[RAG] Index rebuilt with new lesson docs.")
             else:
-                log_callback("[Lessons DB] No new rule docs (duplicate or no rules extracted).")
+                log_callback(
+                    "[Lessons DB] No new rule docs (duplicate or no rules extracted)."
+                )
         else:
             # Legacy AUGMENTED mode
             if not tracker.run_succeeded:
@@ -259,7 +296,9 @@ async def run_agent_async(config: SolverConfig) -> str:
                 )
                 if failure_doc_path:
                     tracker.failure_doc_generated = True
-                    log_callback(f"[Experience DB] Failure doc saved: {failure_doc_path}")
+                    log_callback(
+                        f"[Experience DB] Failure doc saved: {failure_doc_path}"
+                    )
                 else:
                     log_callback("[Experience DB] Duplicate failure doc skipped")
             else:
@@ -272,7 +311,9 @@ async def run_agent_async(config: SolverConfig) -> str:
                     failure_docs_dir=config.failure_docs_dir,
                 )
                 if success_doc_path:
-                    log_callback(f"[Experience DB] Success doc saved: {success_doc_path}")
+                    log_callback(
+                        f"[Experience DB] Success doc saved: {success_doc_path}"
+                    )
                 else:
                     log_callback("[Experience DB] Duplicate success doc skipped")
 
@@ -491,7 +532,10 @@ def render_sidebar():
     rag_mode_labels = list(rag_mode_options.keys())
     current_mode = st.session_state.get("rag_mode", "original")
     # Map legacy mode names to new UI options
-    _LEGACY_MAP = {"augmented": "lessons_write", "augmented_readonly": "lessons_readonly"}
+    _LEGACY_MAP = {
+        "augmented": "lessons_write",
+        "augmented_readonly": "lessons_readonly",
+    }
     current_mode = _LEGACY_MAP.get(current_mode, current_mode)
     current_idx = (
         list(rag_mode_options.values()).index(current_mode)
@@ -520,7 +564,8 @@ def render_sidebar():
 
     # auto_analyze_failures: derived from rag_mode (kept for backward compat)
     st.session_state.auto_analyze_failures = st.session_state.rag_mode in (
-        "lessons_write", "lessons_buildonly"
+        "lessons_write",
+        "lessons_buildonly",
     )
 
     # LLM-enhanced lesson generation (only meaningful in write modes)
@@ -537,13 +582,23 @@ def render_sidebar():
         st.session_state.use_llm_for_lessons = False
 
     # Show lessons database stats for modes that use it (read or write)
-    if st.session_state.rag_mode in ("lessons_write", "lessons_buildonly", "lessons_readonly"):
+    if st.session_state.rag_mode in (
+        "lessons_write",
+        "lessons_buildonly",
+        "lessons_readonly",
+    ):
         project_root = Path(st.session_state.get("project_root", get_project_root()))
         lessons_dir = project_root / "out" / "lessons_knowledge"
         failure_dir = project_root / "out" / "failure_knowledge"
-        lessons_count = len(list(lessons_dir.glob("lessons_*.md"))) if lessons_dir.exists() else 0
-        failure_count = len(list(failure_dir.glob("failure_*.md"))) if failure_dir.exists() else 0
-        success_count = len(list(failure_dir.glob("success_*.md"))) if failure_dir.exists() else 0
+        lessons_count = (
+            len(list(lessons_dir.glob("lessons_*.md"))) if lessons_dir.exists() else 0
+        )
+        failure_count = (
+            len(list(failure_dir.glob("failure_*.md"))) if failure_dir.exists() else 0
+        )
+        success_count = (
+            len(list(failure_dir.glob("success_*.md"))) if failure_dir.exists() else 0
+        )
         total_legacy = failure_count + success_count
         msg = f"Lessons DB: {lessons_count} rule doc(s)"
         if total_legacy:
@@ -573,15 +628,19 @@ def _render_run_statistics():
     # RAG mode and outcome
     rag_mode_display = stats.get("rag_mode", "unknown")
     outcome = stats.get("outcome", "pending")
-    outcome_text = {"success": "Success ✅", "partial": "Partial 🔶", "failure": "Failed ❌"}.get(
-        outcome, outcome.capitalize()
-    )
+    outcome_text = {
+        "success": "Success ✅",
+        "partial": "Partial 🔶",
+        "failure": "Failed ❌",
+    }.get(outcome, outcome.capitalize())
 
     rc1, rc2, rc3, rc4 = st.columns(4)
     rc1.metric("RAG Mode", rag_mode_display.capitalize())
     rc2.metric("Outcome", outcome_text)
     rc3.metric("RAG Queries", stats.get("rag_queries_made", 0))
-    rc4.metric("Prior Reflection", "Yes" if stats.get("prior_reflection_injected") else "No")
+    rc4.metric(
+        "Prior Reflection", "Yes" if stats.get("prior_reflection_injected") else "No"
+    )
 
     rc5, rc6 = st.columns(2)
     rc5.metric("Unique Tools Used", stats.get("unique_tools_used", 0))
@@ -643,10 +702,37 @@ def _process_uploaded_files(uploaded_files) -> Dict[str, str]:
     result: Dict[str, str] = {}
 
     _TEXT_EXTENSIONS = {
-        ".py", ".php", ".js", ".ts", ".java", ".go", ".rb", ".c", ".h",
-        ".cpp", ".cs", ".sql", ".yaml", ".yml", ".json", ".html", ".xml",
-        ".sh", ".env", ".conf", ".cfg", ".ini", ".toml", ".txt", ".md",
-        ".htm", ".jsx", ".tsx", ".rs", ".swift", ".kt",
+        ".py",
+        ".php",
+        ".js",
+        ".ts",
+        ".java",
+        ".go",
+        ".rb",
+        ".c",
+        ".h",
+        ".cpp",
+        ".cs",
+        ".sql",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".html",
+        ".xml",
+        ".sh",
+        ".env",
+        ".conf",
+        ".cfg",
+        ".ini",
+        ".toml",
+        ".txt",
+        ".md",
+        ".htm",
+        ".jsx",
+        ".tsx",
+        ".rs",
+        ".swift",
+        ".kt",
     }
 
     def _add_bytes(filename: str, data: bytes) -> None:
@@ -738,10 +824,35 @@ def render_main_panel():
             "Source Code Files (optional)",
             accept_multiple_files=True,
             type=[
-                "py", "php", "js", "ts", "java", "go", "rb", "c", "h",
-                "cpp", "cs", "sql", "yaml", "yml", "json", "html", "xml",
-                "sh", "txt", "md", "zip", "env", "conf", "cfg", "ini",
-                "toml", "jsx", "tsx", "rs",
+                "py",
+                "php",
+                "js",
+                "ts",
+                "java",
+                "go",
+                "rb",
+                "c",
+                "h",
+                "cpp",
+                "cs",
+                "sql",
+                "yaml",
+                "yml",
+                "json",
+                "html",
+                "xml",
+                "sh",
+                "txt",
+                "md",
+                "zip",
+                "env",
+                "conf",
+                "cfg",
+                "ini",
+                "toml",
+                "jsx",
+                "tsx",
+                "rs",
             ],
             help=(
                 "Drop source files provided by the challenge here. "

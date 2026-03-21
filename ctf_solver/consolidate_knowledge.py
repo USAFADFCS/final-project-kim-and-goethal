@@ -297,7 +297,7 @@ def _extract_takeaways_from_lessons_doc(content: str) -> List[str]:
 def _extract_quick_path_from_lessons_doc(content: str) -> str:
     """Extract the Quick Exploitation Path section from a lessons_*.md doc."""
     m = re.search(r"## Quick Exploitation Path\n\n(.+?)(?:\n\n##|\Z)", content, re.DOTALL)
-    return m.group(1).strip()[:600] if m else ""
+    return m.group(1).strip() if m else ""
 
 
 def _extract_exploit_inputs_from_lessons_doc(content: str) -> List[str]:

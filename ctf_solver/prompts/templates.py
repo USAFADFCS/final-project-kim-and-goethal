@@ -131,6 +131,8 @@ Guidelines:
 - For file upload challenges: ALWAYS read the upload response body to find the file path. Use 'form_submit' with 'files' parameter or 'file_upload' with 'upload_custom' operation first to see the full server response. The response usually reveals where the file was stored. Do NOT blindly guess upload paths — read the response first.
 - When testing JWT challenges, try algorithm confusion and kid injection via 'jwt_tool'
 - All probe tools (sqli_probe, ssti_probe, xpath_probe, cmdi_probe, blind_sqli) support JSON body injection via Content-Type: application/json header
+- After confirming SSTI (any template expression evaluates), you MUST call 'ssti_exploit_suggester' with the detected engine BEFORE attempting any manual payload. It provides multiple RCE variants including WAF-bypass alternatives — do not skip this step
+- After confirming SQLi (any SQL error or boolean difference), you MUST call 'sqli_probe' or 'sqli_data_dumper' BEFORE manually crafting UNION/blind payloads
 - Use 'encoding' with 'double_url_encode' to bypass WAF/filter on URL-decoded parameters
 - Use 'encoding' with 'xor' and a 'key' parameter for XOR cipher challenges
 

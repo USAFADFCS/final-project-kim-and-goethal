@@ -69,6 +69,11 @@ TOOL_CALL_LOG_SUCCESS = [
         "output": "Disallow: /admin\nDisallow: /secret",
     },
     {
+        "tool": "javascript_source",
+        "input": '{"url": "http://ctf.test/app.js"}',
+        "output": "// no secrets here",
+    },
+    {
         "tool": "http_fetch",
         "input": '{"url": "http://ctf.test/secret"}',
         "output": "Welcome! Your flag is: flag{found_the_secret_42}",
@@ -107,8 +112,8 @@ TRACKER_FAILURE = {
 }
 
 TRACKER_SUCCESS = {
-    "steps": 2,
-    "tool_calls": {"robots_txt": 1, "http_fetch": 1},
+    "steps": 3,
+    "tool_calls": {"robots_txt": 1, "javascript_source": 1, "http_fetch": 1},
     "duration_seconds": 4.1,
 }
 

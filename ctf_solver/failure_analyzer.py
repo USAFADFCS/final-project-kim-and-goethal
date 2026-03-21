@@ -109,6 +109,7 @@ _TOOL_TO_CATEGORY = {
     "parser_differential_probe": "parser_differential",
     "websocket_probe": "websocket",
     "wasm_analyzer": "wasm_re",
+    "encoding": "encoding_obfuscation",
 }
 
 _CATEGORY_LABELS = {
@@ -145,6 +146,7 @@ _CATEGORY_LABELS = {
     "parser_differential": "Parser Differential",
     "websocket": "WebSocket Exploitation",
     "wasm_re": "WASM / Reverse Engineering",
+    "encoding_obfuscation": "Encoding / Obfuscation",
     "unknown": "General Web Exploitation",
 }
 
@@ -225,7 +227,7 @@ _ACTIONABLE_PATTERNS: List[Tuple[str, str, Optional[frozenset], frozenset]] = [
 # Patterns indicating sub-goal achievement within a failed run
 _PARTIAL_SUCCESS_INDICATORS: Dict[str, str] = {
     "sqli_confirmed": r"(?i)(?:you have an error in your sql|sql.*syntax.*error)",
-    "ssti_confirmed": r"\b49\b",
+    "ssti_confirmed": r"\b(?:49|36|64|81|7777777)\b",  # 7*7, 6*6, 8*8, 9*9, 7*'7'
     "credential_found": r"(?i)(?:password|passwd)\s*[:=]\s*\S+",
     "auth_bypassed": r"(?i)(?:welcome.*admin|logged in as admin|admin.*dashboard|admin.*panel.*access)",
     "source_disclosed": r"(?i)(?:<\?php|def\s+check_flag|def\s+\w+.*flag)",
@@ -243,6 +245,70 @@ _PARTIAL_SUCCESS_CATEGORY_OVERRIDE: Dict[str, str] = {
     "source_disclosed": "file_inclusion",
     "auth_bypassed": "cookies_auth",
 }
+
+# For each signal, at least ONE of these keys must appear in the (possibly augmented)
+# tool_counts before the override is applied.  This prevents broad output patterns
+# (e.g. \b49\b) from mislabeling unrelated challenges.
+# "_ssti_template_probe" is a virtual key added by _augment_tool_counts when any
+# tool input contained an SSTI arithmetic probe like {{7*7}}.
+# Signals without an entry here have no tool guard (auth_bypassed is observable
+# from HTTP alone).
+_PARTIAL_SUCCESS_REQUIRED_TOOLS: Dict[str, Set[str]] = {
+    "ssti_confirmed": {"ssti_probe", "ssti_exploit_suggester", "_ssti_template_probe"},
+    "sqli_confirmed": {"sqli_probe", "blind_sqli_boolean", "blind_sqli_time",
+                       "sqli_column_counter", "sqli_data_dumper"},
+    "schema_extracted": {"sqli_probe", "blind_sqli_boolean", "blind_sqli_time",
+                         "sqli_column_counter", "sqli_data_dumper"},
+    "source_disclosed": {"lfi_probe", "lfi_payload_generator"},
+}
+
+# Matches SSTI arithmetic probes submitted in tool inputs: {{7*7}}, {{7*'7'}}, etc.
+# Used to detect intentional SSTI testing even when generic tools (form_submit) are used.
+_SSTI_ARITHMETIC_PROBE_RE = re.compile(r"\{\{[0-9]+\*'?[0-9]+'?\}\}")
+
+
+def _augment_tool_counts(
+    tool_counts: Dict[str, int],
+    tool_call_log: List[Dict[str, Any]],
+) -> Dict[str, int]:
+    """Return a copy of tool_counts augmented with virtual probe-evidence keys.
+
+    Adds "_ssti_template_probe" if any tool input contained an SSTI arithmetic
+    probe (e.g. {{7*7}}).  This lets _guarded_category_override distinguish
+    intentional SSTI testing via form_submit from innocuous "49" in output.
+    """
+    augmented = dict(tool_counts)
+    for entry in tool_call_log:
+        raw_input = entry.get("input", "") or ""
+        if _SSTI_ARITHMETIC_PROBE_RE.search(raw_input):
+            augmented["_ssti_template_probe"] = 1
+            break
+    return augmented
+
+
+def _guarded_category_override(
+    partial_successes: List[str],
+    tool_counts: Dict[str, int],
+    current_category: str,
+) -> str:
+    """Return the override category only when the required specialist evidence is present.
+
+    Prevents broad output patterns (e.g. \\b49\\b for ssti_confirmed) from
+    mislabeling challenges that happen to produce the same numeric output via
+    unrelated tools (path_enumerator finding 49 paths, HTTP body sizes, etc.).
+
+    tool_counts should already be augmented via _augment_tool_counts so that
+    virtual keys like "_ssti_template_probe" are present when applicable.
+    """
+    for ps in partial_successes:
+        if ps not in _PARTIAL_SUCCESS_CATEGORY_OVERRIDE:
+            continue
+        required = _PARTIAL_SUCCESS_REQUIRED_TOOLS.get(ps)
+        if required is not None and not required.intersection(tool_counts):
+            # Signal fired but no confirming evidence — ignore the override
+            continue
+        return _PARTIAL_SUCCESS_CATEGORY_OVERRIDE[ps]
+    return current_category
 
 # Specialized attack tools — distinct from generic recon tools.
 # Used by _detect_failed_approaches to identify meaningful failed probes.
@@ -283,7 +349,9 @@ _TEMPLATE_ENGINE_OUTPUT_MARKERS: List[Tuple[str, str]] = [
     (r"<class\s+'", "Jinja2"),          # Python class repr leaks
     (r"url_for\b|config\.items\(\)|request\.cookies", "Flask/Jinja2"),
     (r"FreeMarker template error", "FreeMarker"),
-    (r"Thymeleaf\b|th:", "Thymeleaf"),
+    # Require full Thymeleaf attribute names to avoid false positives
+    # (bare "th:" matches too broadly — e.g. CSS class names, "width:", "with:")
+    (r"Thymeleaf template|th:(?:text|href|action|value|if|each|field|object|method|inline)\b", "Thymeleaf"),
 ]
 
 # Short human-readable description for each tool — used in Quick Exploitation Path.
@@ -1098,12 +1166,12 @@ def generate_success_knowledge_doc(
     """
     tool_counts: Dict[str, int] = tracker_data.get("tool_calls", {})
     inferred_category = _infer_category_from_tools(tool_counts)
-    # Override with confirmed exploitation signal from partial_successes
+    # Override with confirmed exploitation signal — only when specialist evidence is present
     partial_successes_here = _detect_partial_successes(tool_call_log)
-    for ps in partial_successes_here:
-        if ps in _PARTIAL_SUCCESS_CATEGORY_OVERRIDE:
-            inferred_category = _PARTIAL_SUCCESS_CATEGORY_OVERRIDE[ps]
-            break
+    augmented_counts = _augment_tool_counts(tool_counts, tool_call_log)
+    inferred_category = _guarded_category_override(
+        partial_successes_here, augmented_counts, inferred_category
+    )
     category_label = _CATEGORY_LABELS.get(inferred_category, "General Web Exploitation")
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
 
@@ -1766,12 +1834,10 @@ def analyze_run(
         if cat:
             category_scores[cat] += count
     category = category_scores.most_common(1)[0][0] if category_scores else "unknown"
-    # Override with confirmed exploitation signal — generic tools always outnumber
-    # specialist tools so frequency alone mislabels challenges like SSTI.
-    for ps in partial_successes:
-        if ps in _PARTIAL_SUCCESS_CATEGORY_OVERRIDE:
-            category = _PARTIAL_SUCCESS_CATEGORY_OVERRIDE[ps]
-            break
+    # Override with confirmed exploitation signal — only when specialist evidence is present.
+    # Guard prevents broad patterns (e.g. \b49\b) from mislabeling unrelated challenges.
+    augmented_counts = _augment_tool_counts(tool_counts, tool_call_log)
+    category = _guarded_category_override(partial_successes, augmented_counts, category)
 
     # Causal diagnosis from response patterns
     causal_diagnosis = _apply_causal_patterns(tool_call_log)
@@ -2069,15 +2135,20 @@ def generate_atomic_rule_doc(
     # Gives the agent a numbered, step-by-step action plan instead of a bare list.
     if doc.outcome == "success" and doc.tool_sequence and rule_index == 1:
         lines += ["", "## Quick Exploitation Path", ""]
+        lines.append("> **Note:** Replace `<TARGET_URL>` with the current challenge URL.")
+        lines.append("")
         for step_num, tool in enumerate(doc.tool_sequence[:6], 1):
             desc = _TOOL_STEP_DESCRIPTION.get(tool, f"Use `{tool}`")
-            # Inject the exact winning parameters at the step that found the flag
+            # Inject the exact winning parameters at the step that found the flag.
+            # Generalize the challenge URL so agents don't copy stale hostnames.
             winning_step = next(
                 (wi for wi in doc.winning_inputs if f"`{tool}`" in wi), None
             )
             if winning_step:
                 params = winning_step.split("input:", 1)[-1].strip()
-                lines.append(f"{step_num}. **`{tool}`**: {desc} — use: `{params[:200]}`")
+                if doc.challenge_url:
+                    params = params.replace(doc.challenge_url, "<TARGET_URL>")
+                lines.append(f"{step_num}. **`{tool}`**: {desc} — use: `{params[:600]}`")
             else:
                 lines.append(f"{step_num}. **`{tool}`**: {desc}")
         # Append escalation advice from SUCCESS_TAKEAWAYS if available
@@ -2292,6 +2363,11 @@ def run_lessons_learned_pipeline(
         lessons_llm_model=lessons_llm_model,
     )
 
+    # Quality gate: single/two-step runs have no transferable signal.
+    # A fluke success (agent guessed on step 1) is not a lesson worth storing.
+    if doc.total_steps < 3:
+        return []
+
     # Dedup: skip if same URL+category+outcome+tool_approach already stored
     seq_hash = _tool_sequence_hash(tool_call_log)
     if _is_lessons_duplicate(doc.challenge_url, doc.category, doc.outcome, seq_hash, docs_dir):
@@ -2301,11 +2377,25 @@ def run_lessons_learned_pipeline(
     timestamp_slug = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
     written: List[str] = []
 
+    # Per-category cap: prevent one overrepresented category from flooding RAG.
+    # Count existing atomic rule docs for this category (not consolidations).
+    _MAX_LESSONS_PER_CATEGORY = 12
+    category_doc_count = sum(
+        1 for p in docs_dir.glob("lessons_*.md")
+        if f"**Category:** {_CATEGORY_LABELS.get(doc.category, doc.category)}" in p.read_text(encoding="utf-8", errors="ignore")
+    )
+    category_full = category_doc_count >= _MAX_LESSONS_PER_CATEGORY
+
     for i, rule in enumerate(doc.atomic_rules, 1):
         # Cross-run confidence merging: bump similar existing rule instead of writing new
         similar = _find_similar_rule_doc(rule.triggering_condition, doc.category, docs_dir)
         if similar is not None:
             _bump_confidence(similar)
+            continue
+
+        # Skip writing new docs when the category is at capacity — confidence
+        # merging above still fires, but we stop adding more noise to RAG.
+        if category_full:
             continue
 
         rule_content = generate_atomic_rule_doc(

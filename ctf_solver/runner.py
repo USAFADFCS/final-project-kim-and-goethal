@@ -146,9 +146,13 @@ Examples:
     parser.add_argument(
         "--rag-mode",
         choices=[
-            "none", "original",
-            "augmented_readonly", "augmented",                  # legacy names
-            "lessons_readonly", "lessons_write", "lessons_buildonly",  # new names
+            "none",
+            "original",
+            "augmented_readonly",
+            "augmented",  # legacy names
+            "lessons_readonly",
+            "lessons_write",
+            "lessons_buildonly",  # new names
         ],
         default=None,
         help=(
@@ -229,9 +233,7 @@ def _load_source_files(paths: List[str]) -> Dict[str, str]:
             try:
                 result[p.name] = p.read_text(encoding="latin-1")
             except Exception as exc:
-                print(
-                    f"[WARNING] Could not read {raw_path}: {exc}", file=sys.stderr
-                )
+                print(f"[WARNING] Could not read {raw_path}: {exc}", file=sys.stderr)
         except Exception as exc:
             print(f"[WARNING] Could not read {raw_path}: {exc}", file=sys.stderr)
     return result
@@ -296,7 +298,9 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         verbose=args.verbose if args.verbose else None,
         rag_mode=args.rag_mode if args.rag_mode else None,
         use_llm_for_lessons=True if args.llm_lessons else None,
-        lessons_llm_model=args.lessons_model if args.lessons_model != "gpt-4o-mini" else None,
+        lessons_llm_model=(
+            args.lessons_model if args.lessons_model != "gpt-4o-mini" else None
+        ),
     )
 
 
@@ -369,6 +373,34 @@ async def run_agent(config: SolverConfig) -> str:
                 "Use the lesson below to avoid repeating past mistakes.\n\n"
                 + prior_reflection
             )
+
+    # Proactive RAG injection: even when no challenge-specific prior lesson exists,
+    # query the knowledge base with the challenge description upfront so the agent
+    # always sees relevant prior knowledge before its first action — not just when
+    # it happens to call ctf_knowledge_query mid-run.
+    if config.rag_mode in RAG_EXPERIENCE_MODES:
+        active_tool = get_active_knowledge_tool()
+        if active_tool is not None:
+            query = (
+                config.challenge_description
+                or config.challenge_name
+                or "web CTF exploitation techniques"
+            )
+            print(
+                f"[RAG] Proactive knowledge injection attempted (query: {query!r:.80})."
+            )
+            proactive_results = active_tool.use(query)
+            if proactive_results and "No relevant information" not in proactive_results:
+                print(
+                    "[RAG] Proactive knowledge injection succeeded — results injected."
+                )
+                initial_message += (
+                    "\n\n## Relevant Background Knowledge\n"
+                    "> Retrieved from the knowledge base before the run. "
+                    "Apply these lessons to your approach.\n\n" + proactive_results
+                )
+            else:
+                print("[RAG] Proactive knowledge injection: no relevant results found.")
 
     print("\n=== Agent Input ===")
     print(initial_message)
@@ -445,13 +477,17 @@ async def run_agent(config: SolverConfig) -> str:
                 # Consolidate lessons by category (fires when ≥2 docs per category)
                 consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
                 if consolidated:
-                    print(f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated.")
+                    print(
+                        f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated."
+                    )
                 # Rebuild index so new docs are queryable in the same session
                 active_tool = get_active_knowledge_tool()
                 if active_tool is not None:
                     active_tool.refresh_index()
             else:
-                print("[Lessons DB] No new rule docs (duplicate run or confidence bumped).")
+                print(
+                    "[Lessons DB] No new rule docs (duplicate run or confidence bumped)."
+                )
         else:
             # Legacy AUGMENTED mode: separate failure/success pipeline
             if not candidate_flags:

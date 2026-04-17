@@ -55,10 +55,14 @@ class TestPhpFilterChainTool:
         assert "base64" in result.lower()
 
     def test_file_read_custom_file(self):
-        result = self.tool.use(json.dumps({
-            "operation": "file_read",
-            "file": "/flag.txt",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "file_read",
+                    "file": "/flag.txt",
+                }
+            )
+        )
         assert "/flag.txt" in result
 
     def test_file_read_contains_multiple_chains(self):
@@ -74,10 +78,14 @@ class TestPhpFilterChainTool:
         assert "system" in result or "Synacktiv" in result
 
     def test_rce_custom_payload(self):
-        result = self.tool.use(json.dumps({
-            "operation": "rce",
-            "payload": "phpinfo();",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "rce",
+                    "payload": "phpinfo();",
+                }
+            )
+        )
         assert "phpinfo" in result
 
     def test_rce_mentions_techniques(self):
@@ -94,10 +102,14 @@ class TestPhpFilterChainTool:
         assert "oracle" in result.lower() or "error" in result.lower()
 
     def test_oracle_custom_file(self):
-        result = self.tool.use(json.dumps({
-            "operation": "oracle",
-            "file": "/etc/shadow",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "oracle",
+                    "file": "/etc/shadow",
+                }
+            )
+        )
         assert "/etc/shadow" in result
 
     # -- reference ----------------------------------------------------------
@@ -119,7 +131,7 @@ class TestPhpFilterChainTool:
             result = self.tool.use(json.dumps({"operation": op}))
             # Check it doesn't start with a JSON parse error (the oracle output
             # legitimately contains the word "Error" in "Error-based oracle")
-            assert not result.startswith("[PhpFilterChainTool] Error:"), (
-                f"Operation {op} returned error"
-            )
+            assert not result.startswith(
+                "[PhpFilterChainTool] Error:"
+            ), f"Operation {op} returned error"
             assert len(result) > 50, f"Operation {op} output too short"

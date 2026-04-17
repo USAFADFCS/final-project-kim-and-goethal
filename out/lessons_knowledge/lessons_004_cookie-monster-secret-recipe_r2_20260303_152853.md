@@ -6,7 +6,7 @@
 **Challenge URL:** http://verbal-sleep.picoctf.net:50876
 **Auto-generated:** 2026-03-03
 **Tags:** encoding_obfuscation, success, experience, do
-**Confidence:** medium
+**Confidence:** high
 **Site fingerprint:** title:Cookie Monster's Secret Recipe|h1:Cookie Monster's Secret Recipe|form:login.php
 
 **Applies when:** When you achieve 'recon_complete' during a Encoding / Obfuscation challenge

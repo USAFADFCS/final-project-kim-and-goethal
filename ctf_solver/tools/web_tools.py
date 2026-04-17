@@ -67,7 +67,16 @@ class RobotsTxtTool:
                 "There may be no explicit crawling rules."
             )
 
+        # Detect catch-all rewrites: if robots.txt returns HTML instead of
+        # plain text, the server is likely serving the homepage for all paths.
+        content_type = resp.headers.get("content-type", "").lower()
         text = resp.text or ""
+        if "text/html" in content_type or text.strip().startswith("<!doctype"):
+            return (
+                f"[RobotsTxtTool] robots.txt not found at {robots_url} "
+                "(server returned HTML instead of text — likely a catch-all "
+                "rewrite). There may be no explicit crawling rules."
+            )
         lines = text.splitlines()
 
         allow_rules: List[str] = []
@@ -162,7 +171,9 @@ class CookieInspectorTool:
         domain = data.get("domain")
 
         if base_url and not isinstance(base_url, str):
-            return "[CookieInspectorTool] Error: 'base_url' must be a string if provided."
+            return (
+                "[CookieInspectorTool] Error: 'base_url' must be a string if provided."
+            )
         if domain and not isinstance(domain, str):
             return "[CookieInspectorTool] Error: 'domain' must be a string if provided."
 
@@ -270,7 +281,9 @@ class CookieSetTool:
 
         # Set operation
         if not isinstance(value, str) or not value:
-            return "[CookieSetTool] Error: 'value' must be a non-empty string (for set)."
+            return (
+                "[CookieSetTool] Error: 'value' must be a non-empty string (for set)."
+            )
 
         try:
             self.session.cookies.set(name=name, value=value, domain=domain, path=path)

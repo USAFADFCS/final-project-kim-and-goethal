@@ -13,10 +13,10 @@ from ctf_solver.tools.crypto_tools import (
     CryptoPayloadGenerator,
 )
 
-
 # ---------------------------------------------------------------------------
 # CryptoProbeTool tests
 # ---------------------------------------------------------------------------
+
 
 class TestCryptoProbeTool:
     """Tests for CryptoProbeTool."""
@@ -27,13 +27,17 @@ class TestCryptoProbeTool:
 
     def test_missing_url(self):
         """Test that url is required."""
-        result = self.tool.use(json.dumps({"param": "token", "crypto_type": "ecb_detect"}))
+        result = self.tool.use(
+            json.dumps({"param": "token", "crypto_type": "ecb_detect"})
+        )
         assert "[CryptoProbeTool] Error" in result
         assert "url" in result.lower()
 
     def test_missing_param(self):
         """Test that param is required."""
-        result = self.tool.use(json.dumps({"url": "http://test.com", "crypto_type": "ecb_detect"}))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com", "crypto_type": "ecb_detect"})
+        )
         assert "[CryptoProbeTool] Error" in result
         assert "param" in result.lower()
 
@@ -51,11 +55,15 @@ class TestCryptoProbeTool:
 
     def test_invalid_crypto_type(self):
         """Test handling of unknown crypto_type."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "param": "token",
-            "crypto_type": "nonexistent_type",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "param": "token",
+                    "crypto_type": "nonexistent_type",
+                }
+            )
+        )
         assert "[CryptoProbeTool] Error" in result
         assert "Unknown crypto_type" in result
 
@@ -99,13 +107,17 @@ class TestCryptoProbeTool:
 
         self.mock_session.get.side_effect = mock_get
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/decrypt",
-            "param": "token",
-            "crypto_type": "padding_oracle",
-            "ciphertext": ciphertext,
-            "block_size": 16,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/decrypt",
+                    "param": "token",
+                    "crypto_type": "padding_oracle",
+                    "ciphertext": ciphertext,
+                    "block_size": 16,
+                }
+            )
+        )
 
         assert "PADDING ORACLE DETECTED" in result
         assert "2" in result  # 2 response groups
@@ -122,15 +134,22 @@ class TestCryptoProbeTool:
 
         self.mock_session.get.side_effect = mock_get
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/decrypt",
-            "param": "token",
-            "crypto_type": "padding_oracle",
-            "ciphertext": ciphertext,
-            "block_size": 16,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/decrypt",
+                    "param": "token",
+                    "crypto_type": "padding_oracle",
+                    "ciphertext": ciphertext,
+                    "block_size": 16,
+                }
+            )
+        )
 
-        assert "No padding oracle detected" in result or "Response groups found: 1" in result
+        assert (
+            "No padding oracle detected" in result
+            or "Response groups found: 1" in result
+        )
 
     def test_ecb_detect_repeated_blocks(self):
         """Test ECB detection when response contains repeated ciphertext blocks."""
@@ -149,12 +168,16 @@ class TestCryptoProbeTool:
 
         self.mock_session.get.side_effect = mock_get
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/encrypt",
-            "param": "token",
-            "crypto_type": "ecb_detect",
-            "block_size": 16,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/encrypt",
+                    "param": "token",
+                    "crypto_type": "ecb_detect",
+                    "block_size": 16,
+                }
+            )
+        )
 
         assert "ECB MODE DETECTED" in result
 
@@ -179,12 +202,16 @@ class TestCryptoProbeTool:
 
         self.mock_session.get.side_effect = mock_get
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/encrypt",
-            "param": "token",
-            "crypto_type": "ecb_detect",
-            "block_size": 16,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/encrypt",
+                    "param": "token",
+                    "crypto_type": "ecb_detect",
+                    "block_size": 16,
+                }
+            )
+        )
 
         assert "No repeated blocks" in result or "ECB MODE DETECTED" not in result
 
@@ -205,19 +232,26 @@ class TestCryptoProbeTool:
 
         self.mock_session.get.side_effect = mock_get
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "token",
-            "crypto_type": "token_analysis",
-            "num_samples": 5,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/login",
+                    "param": "token",
+                    "crypto_type": "token_analysis",
+                    "num_samples": 5,
+                }
+            )
+        )
 
         assert "Token Analysis" in result
-        assert "Sequential" in result or "sequential" in result or "incrementing" in result
+        assert (
+            "Sequential" in result or "sequential" in result or "incrementing" in result
+        )
 
     def test_token_analysis_random(self):
         """Test token analysis with random-looking tokens."""
         import hashlib
+
         counter = {"val": 0}
 
         def mock_get(url, **kwargs):
@@ -225,7 +259,9 @@ class TestCryptoProbeTool:
             resp.status_code = 200
             counter["val"] += 1
             # Return a random-looking hash token
-            token = hashlib.sha256(f"random_seed_{counter['val']}_{id(resp)}".encode()).hexdigest()
+            token = hashlib.sha256(
+                f"random_seed_{counter['val']}_{id(resp)}".encode()
+            ).hexdigest()
             resp.text = f'{{"token": "{token}"}}'
             resp.cookies = MagicMock()
             resp.cookies.__iter__ = MagicMock(return_value=iter([]))
@@ -234,12 +270,16 @@ class TestCryptoProbeTool:
 
         self.mock_session.get.side_effect = mock_get
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "token",
-            "crypto_type": "token_analysis",
-            "num_samples": 5,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/login",
+                    "param": "token",
+                    "crypto_type": "token_analysis",
+                    "num_samples": 5,
+                }
+            )
+        )
 
         assert "Token Analysis" in result
         # Should not report sequential patterns for hash-based tokens
@@ -249,12 +289,16 @@ class TestCryptoProbeTool:
         """Test handling when baseline request fails."""
         self.mock_session.get.side_effect = Exception("Connection refused")
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/decrypt",
-            "param": "token",
-            "crypto_type": "padding_oracle",
-            "ciphertext": "aa" * 32,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/decrypt",
+                    "param": "token",
+                    "crypto_type": "padding_oracle",
+                    "ciphertext": "aa" * 32,
+                }
+            )
+        )
 
         assert "Error" in result
 
@@ -262,6 +306,7 @@ class TestCryptoProbeTool:
 # ---------------------------------------------------------------------------
 # CryptoAnalyzerTool tests
 # ---------------------------------------------------------------------------
+
 
 class TestCryptoAnalyzerTool:
     """Tests for CryptoAnalyzerTool."""
@@ -291,10 +336,14 @@ class TestCryptoAnalyzerTool:
         """Test identification of base64-encoded text."""
         # "Hello World" in base64
         text = base64.b64encode(b"Hello World").decode("ascii")
-        result = self.tool.use(json.dumps({
-            "operation": "identify_encoding",
-            "text": text,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "identify_encoding",
+                    "text": text,
+                }
+            )
+        )
 
         assert "base64" in result.lower()
         assert "Hello World" in result
@@ -302,20 +351,28 @@ class TestCryptoAnalyzerTool:
     def test_identify_hex(self):
         """Test identification of hex-encoded text."""
         text = "48656c6c6f"  # "Hello" in hex
-        result = self.tool.use(json.dumps({
-            "operation": "identify_encoding",
-            "text": text,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "identify_encoding",
+                    "text": text,
+                }
+            )
+        )
 
         assert "hex" in result.lower()
 
     def test_identify_base32(self):
         """Test identification of base32-encoded text."""
         text = base64.b32encode(b"Hello World").decode("ascii")
-        result = self.tool.use(json.dumps({
-            "operation": "identify_encoding",
-            "text": text,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "identify_encoding",
+                    "text": text,
+                }
+            )
+        )
 
         assert "base32" in result.lower()
 
@@ -325,10 +382,14 @@ class TestCryptoAnalyzerTool:
         block = "aa" * 16
         ciphertext = block * 4  # 4 identical blocks
 
-        result = self.tool.use(json.dumps({
-            "operation": "detect_cipher_mode",
-            "ciphertext": ciphertext,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "detect_cipher_mode",
+                    "ciphertext": ciphertext,
+                }
+            )
+        )
 
         assert "ECB" in result
         assert "REPEATED" in result or "repeated" in result.lower()
@@ -338,10 +399,14 @@ class TestCryptoAnalyzerTool:
         # All different blocks
         ciphertext = "".join(f"{i:02x}" * 16 for i in range(4))
 
-        result = self.tool.use(json.dumps({
-            "operation": "detect_cipher_mode",
-            "ciphertext": ciphertext,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "detect_cipher_mode",
+                    "ciphertext": ciphertext,
+                }
+            )
+        )
 
         assert "No ECB indicators" in result or "No repeated blocks" in result
 
@@ -352,10 +417,14 @@ class TestCryptoAnalyzerTool:
         key_byte = 0x42
         ciphertext = bytes([b ^ key_byte for b in plaintext])
 
-        result = self.tool.use(json.dumps({
-            "operation": "xor_analysis",
-            "ciphertext": ciphertext.hex(),
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "xor_analysis",
+                    "ciphertext": ciphertext.hex(),
+                }
+            )
+        )
 
         # The correct key (0x42 = 66) should be in top candidates
         assert "0x42" in result or "66" in result
@@ -367,20 +436,28 @@ class TestCryptoAnalyzerTool:
             "the quick brown fox jumps over the lazy dog and the cat sat on the mat "
             "while the rain in spain falls mainly on the plain"
         )
-        result = self.tool.use(json.dumps({
-            "operation": "frequency_analysis",
-            "text": english_text,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "frequency_analysis",
+                    "text": english_text,
+                }
+            )
+        )
 
         assert "Frequency Analysis" in result
         assert "chi-squared" in result.lower() or "Chi-squared" in result
 
     def test_analyze_weak_key(self):
         """Test key analysis detects weak all-zero key."""
-        result = self.tool.use(json.dumps({
-            "operation": "analyze_key",
-            "key": "\x00" * 16,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "analyze_key",
+                    "key": "\x00" * 16,
+                }
+            )
+        )
 
         assert "all zeros" in result.lower() or "CRITICAL" in result
 
@@ -388,10 +465,14 @@ class TestCryptoAnalyzerTool:
         """Test key analysis on a reasonably strong key."""
         # 32-byte key with good variety
         strong_key = "aK9#mP2$xL5@nQ8&bR4!wJ7*yF3^hD6"
-        result = self.tool.use(json.dumps({
-            "operation": "analyze_key",
-            "key": strong_key,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "analyze_key",
+                    "key": strong_key,
+                }
+            )
+        )
 
         # Strong key may still have "ASCII-only" noted; verify no critical weaknesses
         assert "Key Analysis" in result
@@ -402,6 +483,7 @@ class TestCryptoAnalyzerTool:
 # ---------------------------------------------------------------------------
 # CryptoPayloadGenerator tests
 # ---------------------------------------------------------------------------
+
 
 class TestCryptoPayloadGenerator:
     """Tests for CryptoPayloadGenerator."""
@@ -450,7 +532,11 @@ class TestCryptoPayloadGenerator:
         """Test CBC bit-flipping methodology generation."""
         result = self.tool.use(json.dumps({"operation": "bit_flip"}))
 
-        assert "Bit-Flip" in result or "bit_flip" in result.lower() or "bit flip" in result.lower()
+        assert (
+            "Bit-Flip" in result
+            or "bit_flip" in result.lower()
+            or "bit flip" in result.lower()
+        )
         assert "CBC" in result or "cbc" in result.lower()
         assert "XOR" in result or "xor" in result.lower()
         assert "C[i-1]" in result or "ciphertext" in result.lower()
@@ -470,5 +556,9 @@ class TestCryptoPayloadGenerator:
             result = self.tool.use(json.dumps({"operation": operation}))
 
             # Each methodology should return substantial content
-            assert len(result) > 200, f"Operation '{operation}' returned too little content ({len(result)} chars)"
-            assert "Error" not in result, f"Operation '{operation}' returned an error: {result[:100]}"
+            assert (
+                len(result) > 200
+            ), f"Operation '{operation}' returned too little content ({len(result)} chars)"
+            assert (
+                "Error" not in result
+            ), f"Operation '{operation}' returned an error: {result[:100]}"

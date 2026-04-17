@@ -68,11 +68,15 @@ class TestFileUploadExtensionBypass:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "Extension Bypass Test" in result
         # Should have tested multiple extensions
@@ -88,12 +92,16 @@ class TestFileUploadExtensionBypass:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-            "language": "php"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                    "language": "php",
+                }
+            )
+        )
 
         assert "SUCCESS" in result
 
@@ -107,11 +115,15 @@ class TestFileUploadExtensionBypass:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         # Should report failures or no successes
         assert "Extension Bypass Test" in result
@@ -137,11 +149,15 @@ class TestFileUploadMimeBypass:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_mime",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_mime",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "MIME Type Bypass Test" in result
         # Should test image MIME types
@@ -163,11 +179,9 @@ class TestFileUploadContentGeneration:
     def test_test_content_custom_magic(self):
         """Test content generation with custom magic bytes."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "test_content",
-            "magic": "png",
-            "language": "php"
-        }))
+        result = tool.use(
+            json.dumps({"operation": "test_content", "magic": "png", "language": "php"})
+        )
 
         assert "png" in result.lower()
         assert "php" in result.lower()
@@ -175,11 +189,9 @@ class TestFileUploadContentGeneration:
     def test_test_content_generates_hex(self):
         """Test that hex representation is generated."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "test_content",
-            "magic": "gif",
-            "language": "php"
-        }))
+        result = tool.use(
+            json.dumps({"operation": "test_content", "magic": "gif", "language": "php"})
+        )
 
         assert "hex" in result.lower()
         # GIF magic bytes start with 474946 (GIF)
@@ -192,9 +204,7 @@ class TestFileUploadWebshellGeneration:
     def test_generate_webshell_default(self):
         """Test webshell generation with defaults."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_webshell"
-        }))
+        result = tool.use(json.dumps({"operation": "generate_webshell"}))
 
         assert "Webshell Generator" in result
         assert "php" in result.lower()
@@ -203,10 +213,9 @@ class TestFileUploadWebshellGeneration:
     def test_generate_webshell_php(self):
         """Test PHP webshell generation."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_webshell",
-            "language": "php"
-        }))
+        result = tool.use(
+            json.dumps({"operation": "generate_webshell", "language": "php"})
+        )
 
         assert "<?php" in result
         assert "system" in result or "exec" in result
@@ -214,20 +223,18 @@ class TestFileUploadWebshellGeneration:
     def test_generate_webshell_asp(self):
         """Test ASP webshell generation."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_webshell",
-            "language": "asp"
-        }))
+        result = tool.use(
+            json.dumps({"operation": "generate_webshell", "language": "asp"})
+        )
 
         assert "<%eval" in result.lower() or "<%execute" in result.lower()
 
     def test_generate_webshell_jsp(self):
         """Test JSP webshell generation."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_webshell",
-            "language": "jsp"
-        }))
+        result = tool.use(
+            json.dumps({"operation": "generate_webshell", "language": "jsp"})
+        )
 
         assert "Runtime" in result
         assert "getRuntime" in result
@@ -235,10 +242,9 @@ class TestFileUploadWebshellGeneration:
     def test_generate_webshell_unknown_language(self):
         """Test handling of unknown language."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_webshell",
-            "language": "unknown_lang"
-        }))
+        result = tool.use(
+            json.dumps({"operation": "generate_webshell", "language": "unknown_lang"})
+        )
 
         assert "Error" in result
         assert "Unknown language" in result
@@ -246,21 +252,20 @@ class TestFileUploadWebshellGeneration:
     def test_generate_webshell_custom_command(self):
         """Test webshell with custom command parameter."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_webshell",
-            "language": "php",
-            "command": "x"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"operation": "generate_webshell", "language": "php", "command": "x"}
+            )
+        )
 
         assert "x" in result
 
     def test_generate_webshell_includes_polyglot(self):
         """Test that polyglot examples are included."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_webshell",
-            "language": "php"
-        }))
+        result = tool.use(
+            json.dumps({"operation": "generate_webshell", "language": "php"})
+        )
 
         assert "Polyglot" in result or "GIF89a" in result
 
@@ -285,11 +290,15 @@ class TestFileUploadFullTest:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "full_test",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "full_test",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "Phase 1" in result
         assert "Phase 2" in result
@@ -306,11 +315,15 @@ class TestFileUploadFullTest:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "full_test",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "full_test",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "Next Steps" in result or "Successful" in result
 
@@ -365,10 +378,9 @@ class TestUploadLocationFinderSearch:
         mock_session.head.side_effect = mock_head
 
         tool = UploadLocationFinder(session=mock_session)
-        result = tool.use(json.dumps({
-            "base_url": "http://test.com",
-            "filename": "shell.php"
-        }))
+        result = tool.use(
+            json.dumps({"base_url": "http://test.com", "filename": "shell.php"})
+        )
 
         assert "FOUND" in result
         assert "/uploads/shell.php" in result
@@ -381,10 +393,9 @@ class TestUploadLocationFinderSearch:
         mock_session.head.return_value = mock_response
 
         tool = UploadLocationFinder(session=mock_session)
-        result = tool.use(json.dumps({
-            "base_url": "http://test.com",
-            "filename": "shell.php"
-        }))
+        result = tool.use(
+            json.dumps({"base_url": "http://test.com", "filename": "shell.php"})
+        )
 
         assert "not found" in result.lower() or "Suggestions" in result
 
@@ -404,10 +415,9 @@ class TestUploadLocationFinderSearch:
         mock_session.head.side_effect = mock_head
 
         tool = UploadLocationFinder(session=mock_session)
-        result = tool.use(json.dumps({
-            "base_url": "http://test.com",
-            "filename": "shell.php"
-        }))
+        result = tool.use(
+            json.dumps({"base_url": "http://test.com", "filename": "shell.php"})
+        )
 
         assert "Redirect" in result or "not found" in result.lower()
 
@@ -426,11 +436,15 @@ class TestUploadLocationFinderSearch:
         mock_session.head.side_effect = mock_head
 
         tool = UploadLocationFinder(session=mock_session)
-        result = tool.use(json.dumps({
-            "base_url": "http://test.com",
-            "filename": "shell.php",
-            "custom_paths": ["/custom/uploads/"]
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "base_url": "http://test.com",
+                    "filename": "shell.php",
+                    "custom_paths": ["/custom/uploads/"],
+                }
+            )
+        )
 
         assert "FOUND" in result
         assert "/custom/uploads/" in result
@@ -465,12 +479,16 @@ class TestFileUploadToolCTFScenarios:
         mock_session.post.side_effect = mock_post
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-            "language": "php"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                    "language": "php",
+                }
+            )
+        )
 
         # Should detect .phtml as successful
         assert "SUCCESS" in result
@@ -499,11 +517,15 @@ class TestFileUploadToolCTFScenarios:
         mock_session.post.side_effect = mock_post
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_mime",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_mime",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "SUCCESS" in result
         assert "image/" in result
@@ -518,11 +540,15 @@ class TestFileUploadToolEdgeCases:
         mock_session.post.side_effect = Exception("Connection refused")
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "Error" in result or "Connection" in result
 
@@ -536,11 +562,15 @@ class TestFileUploadToolEdgeCases:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         # Should handle gracefully
         assert "Extension Bypass Test" in result
@@ -552,12 +582,16 @@ class TestUploadCustomOperation:
     def test_upload_custom_requires_filename(self):
         """Test that filename is required for upload_custom."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "upload_custom",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-            "content": "test content"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_custom",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                    "content": "test content",
+                }
+            )
+        )
         assert "Error" in result
         assert "filename" in result.lower()
 
@@ -571,17 +605,21 @@ class TestUploadCustomOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "upload_custom",
-            "url": "http://test.com/upload",
-            "file_param": "image",
-            "filename": ".htaccess",
-            "content": "AddType application/x-httpd-php .jpg"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_custom",
+                    "url": "http://test.com/upload",
+                    "file_param": "image",
+                    "filename": ".htaccess",
+                    "content": "AddType application/x-httpd-php .jpg",
+                }
+            )
+        )
 
         # Verify the file was uploaded with exact filename
         call_args = mock_session.post.call_args
-        files = call_args.kwargs.get('files') or call_args[1].get('files')
+        files = call_args.kwargs.get("files") or call_args[1].get("files")
         assert files is not None
         assert "image" in files
         assert files["image"][0] == ".htaccess"
@@ -597,13 +635,17 @@ class TestUploadCustomOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "upload_custom",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-            "filename": "shell.jpg",
-            "content": "<?php system($_GET['cmd']); ?>"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_custom",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                    "filename": "shell.jpg",
+                    "content": "<?php system($_GET['cmd']); ?>",
+                }
+            )
+        )
 
         assert "Detected upload path" in result or "/uploads/shell.jpg" in result
 
@@ -621,11 +663,15 @@ class TestUploadHtaccessOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "upload_htaccess",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_htaccess",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert ".htaccess Upload Attack" in result
         assert "SUCCESS" in result or "payload" in result.lower()
@@ -640,16 +686,20 @@ class TestUploadHtaccessOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        tool.use(json.dumps({
-            "operation": "upload_htaccess",
-            "url": "http://test.com/upload",
-            "file_param": "image",
-            "target_ext": ".gif"
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_htaccess",
+                    "url": "http://test.com/upload",
+                    "file_param": "image",
+                    "target_ext": ".gif",
+                }
+            )
+        )
 
         # Check that filename is exactly ".htaccess"
         for call in mock_session.post.call_args_list:
-            files = call.kwargs.get('files') or call[1].get('files', {})
+            files = call.kwargs.get("files") or call[1].get("files", {})
             if files:
                 file_tuple = files.get("image")
                 if file_tuple:
@@ -665,12 +715,16 @@ class TestUploadHtaccessOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "upload_htaccess",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-            "target_ext": ".png"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_htaccess",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                    "target_ext": ".png",
+                }
+            )
+        )
 
         assert ".png" in result
 
@@ -688,11 +742,15 @@ class TestUploadUseriniOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "upload_userini",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_userini",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert ".user.ini Upload Attack" in result
         assert "PHP-FPM" in result
@@ -707,15 +765,19 @@ class TestUploadUseriniOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        tool.use(json.dumps({
-            "operation": "upload_userini",
-            "url": "http://test.com/upload",
-            "file_param": "image"
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_userini",
+                    "url": "http://test.com/upload",
+                    "file_param": "image",
+                }
+            )
+        )
 
         # Check that filename is exactly ".user.ini"
         for call in mock_session.post.call_args_list:
-            files = call.kwargs.get('files') or call[1].get('files', {})
+            files = call.kwargs.get("files") or call[1].get("files", {})
             if files:
                 file_tuple = files.get("image")
                 if file_tuple:
@@ -731,12 +793,16 @@ class TestUploadUseriniOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "upload_userini",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-            "shell_file": "backdoor.gif"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_userini",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                    "shell_file": "backdoor.gif",
+                }
+            )
+        )
 
         assert "backdoor.gif" in result
 
@@ -754,11 +820,15 @@ class TestTraversalOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_traversal",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_traversal",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "Path Traversal Test" in result
         # Should test multiple payloads
@@ -774,11 +844,15 @@ class TestTraversalOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_traversal",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_traversal",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "ACCEPTED" in result
 
@@ -792,11 +866,15 @@ class TestTraversalOperation:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_traversal",
-            "url": "http://test.com/upload",
-            "file_param": "file"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_traversal",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "BLOCKED" in result
 
@@ -807,9 +885,7 @@ class TestGenerateHtaccessOperation:
     def test_generate_htaccess_default(self):
         """Test .htaccess payload generation with defaults."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_htaccess"
-        }))
+        result = tool.use(json.dumps({"operation": "generate_htaccess"}))
 
         assert ".htaccess Payload Generator" in result
         assert "AddType" in result
@@ -818,10 +894,9 @@ class TestGenerateHtaccessOperation:
     def test_generate_htaccess_custom_extension(self):
         """Test .htaccess generation with custom extension."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_htaccess",
-            "target_ext": ".gif"
-        }))
+        result = tool.use(
+            json.dumps({"operation": "generate_htaccess", "target_ext": ".gif"})
+        )
 
         assert ".gif" in result
         assert "AddType application/x-httpd-php .gif" in result
@@ -829,9 +904,7 @@ class TestGenerateHtaccessOperation:
     def test_generate_htaccess_includes_userini(self):
         """Test that .user.ini alternative is included."""
         tool = FileUploadTool()
-        result = tool.use(json.dumps({
-            "operation": "generate_htaccess"
-        }))
+        result = tool.use(json.dumps({"operation": "generate_htaccess"}))
 
         assert ".user.ini" in result
         assert "auto_prepend_file" in result
@@ -850,7 +923,7 @@ class TestExtractUploadPath:
     def test_extract_text_path(self):
         """Test extracting path from text response."""
         tool = FileUploadTool()
-        response = 'File uploaded to: /images/test.jpg successfully'
+        response = "File uploaded to: /images/test.jpg successfully"
         result = tool._extract_upload_path(response)
         assert result is not None
         assert ".jpg" in result
@@ -866,7 +939,7 @@ class TestExtractUploadPath:
     def test_no_path_found(self):
         """Test when no path is found."""
         tool = FileUploadTool()
-        response = 'Upload complete!'
+        response = "Upload complete!"
         result = tool._extract_upload_path(response)
         assert result is None
 
@@ -884,11 +957,15 @@ class TestExtensionPathDiscovery:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "First Successful Response" in result
         assert "/uploads/shell.php" in result
@@ -903,11 +980,15 @@ class TestExtensionPathDiscovery:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "Discovered Upload Paths" in result
         assert "/files/shell.php" in result
@@ -923,20 +1004,24 @@ class TestExtensionPathDiscovery:
             call_count[0] += 1
             if call_count[0] == 1:
                 # Baseline response
-                resp.text = 'File saved to /data/uploads/test.txt'
+                resp.text = "File saved to /data/uploads/test.txt"
             else:
-                resp.text = 'Upload complete'
+                resp.text = "Upload complete"
             resp.content = resp.text.encode()
             return resp
 
         mock_session.post.side_effect = make_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "Discovered Upload Paths" in result
         assert "baseline" in result
@@ -951,11 +1036,15 @@ class TestExtensionPathDiscovery:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         assert "Discovered Upload Paths" not in result
         # But should still show first success response
@@ -972,11 +1061,15 @@ class TestExtensionPathDiscovery:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "file",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
 
         # Discovered Upload Paths section should have the path only once
         # (even though many extensions all return the same path)
@@ -996,11 +1089,15 @@ class TestExtensionPathDiscovery:
         mock_session.post.return_value = mock_response
 
         tool = FileUploadTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "operation": "test_extensions",
-            "url": "http://test.com/upload",
-            "file_param": "cv",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "test_extensions",
+                    "url": "http://test.com/upload",
+                    "file_param": "cv",
+                }
+            )
+        )
 
         # Agent should see the response body that reveals the path
         assert "cv_uploads" in result
@@ -1013,6 +1110,7 @@ class TestFileUploadToolIntegration:
     def test_import_from_tools(self):
         """Test that upload tools are importable from tools package."""
         from ctf_solver.tools import FileUploadTool, UploadLocationFinder
+
         upload = FileUploadTool()
         finder = UploadLocationFinder()
         assert upload.name == "file_upload"
@@ -1033,12 +1131,13 @@ class TestFileUploadToolIntegration:
             assert isinstance(tool.description, str)
 
             # use returns string
-            result = tool.use('{}')
+            result = tool.use("{}")
             assert isinstance(result, str)
 
     def test_tools_share_session(self):
         """Test that tools use shared session."""
         import requests
+
         session = requests.Session()
         session.headers["X-Custom"] = "test"
 

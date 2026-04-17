@@ -105,8 +105,12 @@ CATEGORY_KEYWORDS: Dict[ChallengeCategory, List[str]] = {
         r"\bstored\b",
         r"\bdom\b",
         r"\bcookie\b.*\bsteal\b",
+        r"\bsteal\b.*\bcookie\b",
         r"\bhtml\s*injection\b",
         r"\bjavascript\b.*\binjection\b",
+        r"\badmin\s*bot\b",
+        r"\breport\b.*\burl\b",
+        r"\bbot\b.*\bvisit\b",
     ],
     ChallengeCategory.SSTI: [
         r"\bssti\b",  # Strong indicator
@@ -121,8 +125,6 @@ CATEGORY_KEYWORDS: Dict[ChallengeCategory, List[str]] = {
         r"\bmako\b",
         r"\bthymeleaf\b",
         r"\bpebble\b",
-        r"\{\{.*\}\}",
-        r"\{%.*%\}",
     ],
     ChallengeCategory.XXE: [
         r"\bxxe\b",  # Strong indicator
@@ -602,7 +604,10 @@ APPROACH_SUGGESTIONS: Dict[ChallengeCategory, str] = {
         "2. Test for reflected/stored XSS\n"
         "3. Check for DOM-based XSS in JavaScript\n"
         "4. Bypass filters with encoding or alternative payloads\n"
-        "5. Exfiltrate cookies or access restricted content"
+        "5. If admin bot / report URL exists: query knowledge base for "
+        "'XSS admin bot exfiltration' to get pre-built payloads, "
+        "then submit crafted URL to the report endpoint\n"
+        "6. Exfiltrate cookies, localStorage, or page content to webhook"
     ),
     ChallengeCategory.SSTI: (
         "1. Identify template engine (test {{7*7}}, ${7*7}, etc.)\n"

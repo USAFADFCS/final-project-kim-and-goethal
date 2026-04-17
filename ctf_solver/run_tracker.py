@@ -115,12 +115,14 @@ class RunTracker:
         Also extracts site fingerprint from the first http_fetch / form_submit
         output so contamination filtering can use content rather than URL.
         """
-        self.tool_call_log.append({
-            "tool": tool_name,
-            "input": tool_input[:2000],
-            "output": tool_output[:2000],
-            "timestamp": time.time(),
-        })
+        self.tool_call_log.append(
+            {
+                "tool": tool_name,
+                "input": tool_input[:2000],
+                "output": tool_output[:2000],
+                "timestamp": time.time(),
+            }
+        )
         # Lazily extract fingerprint from first eligible tool output
         if not self.site_fingerprint:
             fp = _extract_site_fingerprint(tool_name, tool_output)
@@ -183,13 +185,22 @@ class TokenTrackingAdapter(AbstractChatModel):
         return result
 
     def stream(self, messages: List[Message], **kwargs: Any) -> Iterator[Message]:
-        yield from self.inner.stream(messages, **kwargs)
+        prompt_chars = sum(len(m.content or "") for m in messages)
+        completion_chars = 0
+        for msg in self.inner.stream(messages, **kwargs):
+            completion_chars += len(msg.content or "")
+            yield msg
+        self.tracker.record_llm_call(prompt_chars, completion_chars)
 
     async def astream(
         self, messages: List[Message], **kwargs: Any
     ) -> AsyncIterator[Message]:
+        prompt_chars = sum(len(m.content or "") for m in messages)
+        completion_chars = 0
         async for msg in self.inner.astream(messages, **kwargs):
+            completion_chars += len(msg.content or "")
             yield msg
+        self.tracker.record_llm_call(prompt_chars, completion_chars)
 
     def get_model_capabilities(self) -> Dict[str, Any]:
         return self.inner.get_model_capabilities()

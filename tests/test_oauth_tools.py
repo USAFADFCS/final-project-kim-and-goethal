@@ -15,7 +15,6 @@ import requests
 
 from ctf_solver.tools.oauth_tools import OAuthProbeTool, OAuthPayloadGenerator
 
-
 # ==============================================================================
 # OAuthProbeTool Tests
 # ==============================================================================
@@ -54,14 +53,20 @@ class TestOAuthProbeTool:
 
     def test_default_tests_all(self):
         """Without tests param, all 4 tests are run."""
-        with patch.object(self.tool, "_test_redirect_uri", return_value=[]) as m1, \
-             patch.object(self.tool, "_test_state_param", return_value=[]) as m2, \
-             patch.object(self.tool, "_test_scope_escalation", return_value=[]) as m3, \
-             patch.object(self.tool, "_test_open_redirect", return_value=[]) as m4:
-            self.tool.use(json.dumps({
-                "url": "http://example.com/auth",
-                "redirect_uri": "http://example.com/cb",
-            }))
+        with (
+            patch.object(self.tool, "_test_redirect_uri", return_value=[]) as m1,
+            patch.object(self.tool, "_test_state_param", return_value=[]) as m2,
+            patch.object(self.tool, "_test_scope_escalation", return_value=[]) as m3,
+            patch.object(self.tool, "_test_open_redirect", return_value=[]) as m4,
+        ):
+            self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/auth",
+                        "redirect_uri": "http://example.com/cb",
+                    }
+                )
+            )
             m1.assert_called_once()
             m2.assert_called_once()
             m3.assert_called_once()
@@ -69,13 +74,19 @@ class TestOAuthProbeTool:
 
     def test_selective_tests(self):
         """Only specified tests run."""
-        with patch.object(self.tool, "_test_redirect_uri", return_value=[]) as m1, \
-             patch.object(self.tool, "_test_state_param", return_value=[]) as m2:
-            self.tool.use(json.dumps({
-                "url": "http://example.com/auth",
-                "redirect_uri": "http://example.com/cb",
-                "tests": ["redirect_uri"],
-            }))
+        with (
+            patch.object(self.tool, "_test_redirect_uri", return_value=[]) as m1,
+            patch.object(self.tool, "_test_state_param", return_value=[]) as m2,
+        ):
+            self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/auth",
+                        "redirect_uri": "http://example.com/cb",
+                        "tests": ["redirect_uri"],
+                    }
+                )
+            )
             m1.assert_called_once()
             m2.assert_not_called()
 
@@ -90,10 +101,14 @@ class TestOAuthProbeTool:
     def test_output_format(self):
         """Output contains header and summary."""
         with patch.object(self.tool, "_test_redirect_uri", return_value=[]):
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com/auth",
-                "tests": ["redirect_uri"],
-            }))
+            result = self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/auth",
+                        "tests": ["redirect_uri"],
+                    }
+                )
+            )
             assert "OAuthProbeTool" in result
 
     def test_flag_extraction(self):
@@ -139,10 +154,14 @@ class TestOAuthPayloadGenerator:
         assert "Unknown operation" in result
 
     def test_redirect_uri_bypass(self):
-        result = self.tool.use(json.dumps({
-            "operation": "redirect_uri_bypass",
-            "redirect_uri": "https://example.com/callback",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "redirect_uri_bypass",
+                    "redirect_uri": "https://example.com/callback",
+                }
+            )
+        )
         assert "Redirect URI" in result
         assert "evil" in result.lower()
 

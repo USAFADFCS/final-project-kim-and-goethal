@@ -10,7 +10,6 @@ import requests
 
 from ctf_solver.tools.lfi_tools import LfiProbeTool, LfiPayloadGenerator
 
-
 # ===========================================================================
 # Tests for LfiProbeTool
 # ===========================================================================
@@ -43,11 +42,15 @@ class TestLfiProbeToolValidation:
 
     def test_invalid_method(self):
         """Error when method is not GET or POST."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-            "method": "PATCH",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                    "method": "PATCH",
+                }
+            )
+        )
         assert "[LfiProbeTool] Error" in result
         assert "method" in result.lower()
 
@@ -73,10 +76,14 @@ class TestLfiProbeToolHTTP:
         """Graceful error when the baseline request fails."""
         self.session.get.side_effect = Exception("Connection refused")
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                }
+            )
+        )
         assert "[LfiProbeTool] Error" in result
         assert "baseline" in result.lower() or "Connection refused" in result
 
@@ -89,11 +96,15 @@ class TestLfiProbeToolHTTP:
         # baseline first, then every payload gets the lfi response
         self.session.get.side_effect = [baseline] + [lfi_resp] * 300
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-            "os_target": "linux",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                    "os_target": "linux",
+                }
+            )
+        )
         assert "VULNERABLE PAYLOADS" in result
         assert "passwd" in result.lower() or "/bin/bash" in result
 
@@ -105,11 +116,15 @@ class TestLfiProbeToolHTTP:
         )
         self.session.get.side_effect = [baseline] + [win_resp] * 300
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-            "os_target": "windows",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                    "os_target": "windows",
+                }
+            )
+        )
         assert "VULNERABLE PAYLOADS" in result
         assert "[fonts]" in result or "win.ini" in result
 
@@ -118,10 +133,14 @@ class TestLfiProbeToolHTTP:
         same = self._make_response("Same boring page")
         self.session.get.return_value = same
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                }
+            )
+        )
         assert "No LFI vulnerabilities detected" in result
 
     def test_flag_detection(self):
@@ -132,10 +151,14 @@ class TestLfiProbeToolHTTP:
         )
         self.session.get.side_effect = [baseline] + [flag_resp] * 300
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                }
+            )
+        )
         assert "FLAGS FOUND" in result
         assert "picoCTF{lfi_m4st3r_2026}" in result
 
@@ -144,10 +167,14 @@ class TestLfiProbeToolHTTP:
         baseline = self._make_response("OK")
         self.session.get.return_value = baseline
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                }
+            )
+        )
         assert "encoding_bypass" in result
 
     def test_get_method(self):
@@ -155,11 +182,15 @@ class TestLfiProbeToolHTTP:
         baseline = self._make_response("OK")
         self.session.get.return_value = baseline
 
-        self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-            "method": "GET",
-        }))
+        self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                    "method": "GET",
+                }
+            )
+        )
         self.session.get.assert_called()
 
     def test_post_method(self):
@@ -167,11 +198,15 @@ class TestLfiProbeToolHTTP:
         baseline = self._make_response("OK")
         self.session.post.return_value = baseline
 
-        self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-            "method": "POST",
-        }))
+        self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                    "method": "POST",
+                }
+            )
+        )
         self.session.post.assert_called()
 
     def test_null_byte_payloads_included(self):
@@ -179,10 +214,14 @@ class TestLfiProbeToolHTTP:
         baseline = self._make_response("OK")
         self.session.get.return_value = baseline
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                }
+            )
+        )
         assert "null_byte" in result
 
     def test_absolute_path_payloads_included(self):
@@ -190,10 +229,14 @@ class TestLfiProbeToolHTTP:
         baseline = self._make_response("OK")
         self.session.get.return_value = baseline
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                }
+            )
+        )
         assert "absolute_path" in result
 
     def test_env_detection(self):
@@ -204,10 +247,14 @@ class TestLfiProbeToolHTTP:
         )
         self.session.get.side_effect = [baseline] + [env_resp] * 300
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/page",
-            "param": "file",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/page",
+                    "param": "file",
+                }
+            )
+        )
         assert "VULNERABLE PAYLOADS" in result
 
 
@@ -266,10 +313,14 @@ class TestLfiPayloadGeneratorTraversal:
 
     def test_traversal_with_target_file(self):
         """Custom target_file appears in generated payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "traversal",
-            "target_file": "flag.txt",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "traversal",
+                    "target_file": "flag.txt",
+                }
+            )
+        )
         assert "flag.txt" in result
 
 
@@ -342,5 +393,9 @@ class TestLfiPayloadGeneratorAllOperations:
         """Every valid operation returns a non-empty, non-error result."""
         for op in LfiPayloadGenerator.VALID_OPERATIONS:
             result = self.tool.use(json.dumps({"operation": op}))
-            assert "[LfiPayloadGenerator] Error" not in result, f"operation={op} returned error"
-            assert len(result) > 50, f"operation={op} returned suspiciously short output"
+            assert (
+                "[LfiPayloadGenerator] Error" not in result
+            ), f"operation={op} returned error"
+            assert (
+                len(result) > 50
+            ), f"operation={op} returned suspiciously short output"

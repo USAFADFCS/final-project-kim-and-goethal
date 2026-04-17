@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup, Comment
 # Optional JS beautifier (if installed)
 try:
     import jsbeautifier  # type: ignore
+
     HAS_JSBEAUTIFIER = True
 except Exception:
     HAS_JSBEAUTIFIER = False
@@ -100,6 +101,8 @@ class HtmlInspectorTool:
         for a in soup.find_all("a", href=True):
             text = (a.get_text() or "").strip()
             href = a["href"]
+            if url:
+                href = urljoin(url, href)
             if text:
                 links.append(f"- text={text!r}, href={href!r}")
             else:
@@ -122,7 +125,9 @@ class HtmlInspectorTool:
             preview = js_code[:200].replace("\n", " ").strip()
             if len(js_code) > 200:
                 preview += " ...[truncated]"
-            inline_scripts.append(f"- [INLINE #{idx}] ({len(js_code)} chars): {preview}")
+            inline_scripts.append(
+                f"- [INLINE #{idx}] ({len(js_code)} chars): {preview}"
+            )
 
         # Extract stylesheets
         stylesheets: List[str] = []
@@ -196,6 +201,8 @@ class HtmlInspectorTool:
         forms: List[str] = []
         for form in soup.find_all("form"):
             action = form.get("action", "(none)")
+            if url and action != "(none)":
+                action = urljoin(url, action)
             method = form.get("method", "GET").upper()
             enctype = form.get("enctype", "")
             form_id = form.get("id", "")
@@ -342,7 +349,9 @@ class JavaScriptSourceTool:
         if html and not isinstance(html, str):
             return "[JavaScriptSourceTool] Error: 'html' must be a string if provided."
         if base_url and not isinstance(base_url, str):
-            return "[JavaScriptSourceTool] Error: 'base_url' must be a string if provided."
+            return (
+                "[JavaScriptSourceTool] Error: 'base_url' must be a string if provided."
+            )
 
         if not html and not url:
             return (

@@ -66,7 +66,9 @@ class TestShellExecuteTool:
 
     def test_simple_command_with_pipe(self):
         """Test command with pipe."""
-        result = self.tool.use(json.dumps({"command": "echo 'abc123' | grep -o '[0-9]*'"}))
+        result = self.tool.use(
+            json.dumps({"command": "echo 'abc123' | grep -o '[0-9]*'"})
+        )
         assert "123" in result
         assert "Exit code: 0" in result
 
@@ -84,17 +86,15 @@ class TestShellExecuteTool:
 
     def test_both_stdout_and_stderr(self):
         """Test command that produces both stdout and stderr."""
-        result = self.tool.use(json.dumps({
-            "command": "echo out && echo err >&2"
-        }))
+        result = self.tool.use(json.dumps({"command": "echo out && echo err >&2"}))
         assert "STDOUT" in result
         assert "out" in result
 
     def test_multiline_output(self):
         """Test command with multiline output."""
-        result = self.tool.use(json.dumps({
-            "command": "printf 'line1\\nline2\\nline3'"
-        }))
+        result = self.tool.use(
+            json.dumps({"command": "printf 'line1\\nline2\\nline3'"})
+        )
         assert "line1" in result
         assert "line2" in result
         assert "line3" in result
@@ -109,28 +109,25 @@ class TestShellExecuteTool:
 
     def test_stdin_data(self):
         """Test piping data to stdin."""
-        result = self.tool.use(json.dumps({
-            "command": "cat",
-            "stdin_data": "hello from stdin"
-        }))
+        result = self.tool.use(
+            json.dumps({"command": "cat", "stdin_data": "hello from stdin"})
+        )
         assert "hello from stdin" in result
 
     def test_stdin_with_grep(self):
         """Test stdin with grep."""
-        result = self.tool.use(json.dumps({
-            "command": "grep flag",
-            "stdin_data": "line1\nflag{test}\nline3"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"command": "grep flag", "stdin_data": "line1\nflag{test}\nline3"}
+            )
+        )
         assert "flag{test}" in result
 
     # === Timeout Tests ===
 
     def test_timeout_kills_command(self):
         """Test that long-running commands are killed after timeout."""
-        result = self.tool.use(json.dumps({
-            "command": "sleep 60",
-            "timeout": 2
-        }))
+        result = self.tool.use(json.dumps({"command": "sleep 60", "timeout": 2}))
         assert "timed out" in result.lower()
         assert "2 seconds" in result
 
@@ -142,37 +139,31 @@ class TestShellExecuteTool:
     def test_max_timeout_clamped(self):
         """Test that timeout is clamped to max_timeout."""
         tool = ShellExecuteTool(max_timeout=10)
-        result = tool.use(json.dumps({
-            "command": "sleep 60",
-            "timeout": 999
-        }))
+        result = tool.use(json.dumps({"command": "sleep 60", "timeout": 999}))
         # Should use max of 10, not 999
         assert "timed out" in result.lower()
 
     def test_timeout_invalid_value_uses_default(self):
         """Test that invalid timeout falls back to default."""
-        result = self.tool.use(json.dumps({
-            "command": "echo ok",
-            "timeout": "not_a_number"
-        }))
+        result = self.tool.use(
+            json.dumps({"command": "echo ok", "timeout": "not_a_number"})
+        )
         assert "Exit code: 0" in result
 
     # === Working Directory Tests ===
 
     def test_working_dir(self):
         """Test executing command in a specific directory."""
-        result = self.tool.use(json.dumps({
-            "command": "pwd",
-            "working_dir": "/tmp"
-        }))
-        assert "/tmp" in result or "/private/tmp" in result  # macOS /tmp -> /private/tmp
+        result = self.tool.use(json.dumps({"command": "pwd", "working_dir": "/tmp"}))
+        assert (
+            "/tmp" in result or "/private/tmp" in result
+        )  # macOS /tmp -> /private/tmp
 
     def test_invalid_working_dir(self):
         """Test error on non-existent working directory."""
-        result = self.tool.use(json.dumps({
-            "command": "pwd",
-            "working_dir": "/nonexistent/directory/xyz"
-        }))
+        result = self.tool.use(
+            json.dumps({"command": "pwd", "working_dir": "/nonexistent/directory/xyz"})
+        )
         assert "Error" in result
         assert "working_dir" in result
 
@@ -186,34 +177,35 @@ class TestShellExecuteTool:
 
     def test_large_output_truncated(self):
         """Test that large output is truncated."""
-        result = self.tool.use(json.dumps({
-            "command": "python3 -c \"print('x' * 20000)\"",
-            "max_output": 1000
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"command": "python3 -c \"print('x' * 20000)\"", "max_output": 1000}
+            )
+        )
         assert "truncated" in result.lower()
 
     def test_small_output_not_truncated(self):
         """Test that small output is not truncated."""
-        result = self.tool.use(json.dumps({
-            "command": "echo short",
-            "max_output": 8000
-        }))
+        result = self.tool.use(
+            json.dumps({"command": "echo short", "max_output": 8000})
+        )
         assert "truncated" not in result.lower()
 
     def test_max_output_invalid_uses_default(self):
         """Test that invalid max_output uses default."""
-        result = self.tool.use(json.dumps({
-            "command": "echo ok",
-            "max_output": "bad"
-        }))
+        result = self.tool.use(json.dumps({"command": "echo ok", "max_output": "bad"}))
         assert "Exit code: 0" in result
 
     def test_truncation_preserves_head_and_tail(self):
         """Test that truncation keeps both head and tail content."""
-        result = self.tool.use(json.dumps({
-            "command": "python3 -c \"for i in range(1000): print(f'line_{i}')\"",
-            "max_output": 500
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "command": "python3 -c \"for i in range(1000): print(f'line_{i}')\"",
+                    "max_output": 500,
+                }
+            )
+        )
         assert "line_0" in result  # head preserved
         assert "truncated" in result.lower()
 
@@ -318,57 +310,47 @@ class TestShellExecuteTool:
 
     def test_file_command(self):
         """Test running the 'file' command (common in CTF)."""
-        result = self.tool.use(json.dumps({
-            "command": "file /bin/ls"
-        }))
+        result = self.tool.use(json.dumps({"command": "file /bin/ls"}))
         assert "Exit code: 0" in result
         # Should identify it as an executable
         assert "Mach-O" in result or "ELF" in result or "executable" in result.lower()
 
     def test_strings_command(self):
         """Test running the 'strings' command (common in CTF)."""
-        result = self.tool.use(json.dumps({
-            "command": "echo 'test123' | strings"
-        }))
+        result = self.tool.use(json.dumps({"command": "echo 'test123' | strings"}))
         assert "test123" in result
 
     def test_which_command(self):
         """Test checking if a tool exists."""
-        result = self.tool.use(json.dumps({
-            "command": "which python3"
-        }))
+        result = self.tool.use(json.dumps({"command": "which python3"}))
         assert "python3" in result
         assert "Exit code: 0" in result
 
     def test_python_one_liner(self):
         """Test running a Python one-liner."""
-        result = self.tool.use(json.dumps({
-            "command": "python3 -c \"print(2**10)\""
-        }))
+        result = self.tool.use(json.dumps({"command": 'python3 -c "print(2**10)"'}))
         assert "1024" in result
 
     def test_base64_decode(self):
         """Test base64 decoding via shell (common CTF operation)."""
-        result = self.tool.use(json.dumps({
-            "command": "echo 'SGVsbG8gV29ybGQ=' | base64 --decode"  # macOS syntax
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"command": "echo 'SGVsbG8gV29ybGQ=' | base64 --decode"}  # macOS syntax
+            )
+        )
         # On macOS it's --decode, on Linux it's -d
         if "Exit code: 0" in result:
             assert "Hello World" in result
 
     def test_command_not_found(self):
         """Test running a command that doesn't exist."""
-        result = self.tool.use(json.dumps({
-            "command": "nonexistent_command_xyz_123"
-        }))
+        result = self.tool.use(json.dumps({"command": "nonexistent_command_xyz_123"}))
         assert "Exit code:" in result
         assert "Exit code: 0" not in result
 
     def test_env_variable_expansion(self):
         """Test that shell environment variables work."""
-        result = self.tool.use(json.dumps({
-            "command": "echo $HOME"
-        }))
+        result = self.tool.use(json.dumps({"command": "echo $HOME"}))
         assert "Exit code: 0" in result
         # HOME should be set
         assert "/" in result
@@ -377,16 +359,14 @@ class TestShellExecuteTool:
 
     def test_special_characters_in_command(self):
         """Test command with special characters."""
-        result = self.tool.use(json.dumps({
-            "command": "echo 'hello \"world\" & <test>'"
-        }))
+        result = self.tool.use(
+            json.dumps({"command": "echo 'hello \"world\" & <test>'"})
+        )
         assert "Exit code: 0" in result
 
     def test_command_with_newline_in_output(self):
         """Test command output with embedded newlines."""
-        result = self.tool.use(json.dumps({
-            "command": "printf 'a\\nb\\nc'"
-        }))
+        result = self.tool.use(json.dumps({"command": "printf 'a\\nb\\nc'"}))
         assert "a" in result
         assert "b" in result
         assert "c" in result
@@ -448,10 +428,9 @@ class TestShellExecuteToolSecurity:
     def test_no_privilege_escalation(self):
         """Test that sudo is not automatically available."""
         # This should either fail or require password (not auto-escalate)
-        result = ShellExecuteTool().use(json.dumps({
-            "command": "sudo -n echo test",
-            "timeout": 3
-        }))
+        result = ShellExecuteTool().use(
+            json.dumps({"command": "sudo -n echo test", "timeout": 3})
+        )
         # Either permission denied or exit code non-zero
         # (sudo -n fails immediately if no passwordless sudo configured)
         assert "Exit code: 0" not in result or "test" in result
@@ -459,8 +438,8 @@ class TestShellExecuteToolSecurity:
     def test_rm_with_safe_path_allowed(self):
         """Test that rm on specific files is NOT blocked (only rm -rf / is)."""
         # rm on a non-existent file should be allowed (just fail with exit code 1)
-        result = ShellExecuteTool().use(json.dumps({
-            "command": "rm /tmp/nonexistent_test_file_xyz_12345"
-        }))
+        result = ShellExecuteTool().use(
+            json.dumps({"command": "rm /tmp/nonexistent_test_file_xyz_12345"})
+        )
         # Should not be blocked, just fail normally
         assert "blocked" not in result.lower()

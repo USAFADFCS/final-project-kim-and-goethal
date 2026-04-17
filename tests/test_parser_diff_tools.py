@@ -68,10 +68,12 @@ class TestParserDifferentialProbeTool:
 
     def test_default_runs_all_tests(self):
         """Without tests param, all test categories are run."""
-        with patch.object(self.tool, "_test_duplicate_params", return_value=[]) as m1, \
-             patch.object(self.tool, "_test_content_type", return_value=[]) as m2, \
-             patch.object(self.tool, "_test_url_parsing", return_value=[]) as m3, \
-             patch.object(self.tool, "_test_encoding_diff", return_value=[]) as m4:
+        with (
+            patch.object(self.tool, "_test_duplicate_params", return_value=[]) as m1,
+            patch.object(self.tool, "_test_content_type", return_value=[]) as m2,
+            patch.object(self.tool, "_test_url_parsing", return_value=[]) as m3,
+            patch.object(self.tool, "_test_encoding_diff", return_value=[]) as m4,
+        ):
             self.tool.use(json.dumps({"url": "http://example.com/api"}))
             m1.assert_called_once()
             m2.assert_called_once()
@@ -80,12 +82,18 @@ class TestParserDifferentialProbeTool:
 
     def test_selective_test(self):
         """Only the specified test runs."""
-        with patch.object(self.tool, "_test_duplicate_params", return_value=[]) as m1, \
-             patch.object(self.tool, "_test_content_type", return_value=[]) as m2:
-            self.tool.use(json.dumps({
-                "url": "http://example.com/api",
-                "tests": ["duplicate_params"],
-            }))
+        with (
+            patch.object(self.tool, "_test_duplicate_params", return_value=[]) as m1,
+            patch.object(self.tool, "_test_content_type", return_value=[]) as m2,
+        ):
+            self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/api",
+                        "tests": ["duplicate_params"],
+                    }
+                )
+            )
             m1.assert_called_once()
             m2.assert_not_called()
 
@@ -93,10 +101,14 @@ class TestParserDifferentialProbeTool:
 
     def test_output_header(self):
         with patch.object(self.tool, "_test_duplicate_params", return_value=[]):
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com/api",
-                "tests": ["duplicate_params"],
-            }))
+            result = self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/api",
+                        "tests": ["duplicate_params"],
+                    }
+                )
+            )
             assert "ParserDifferentialProbeTool" in result
 
     def test_no_session_creates_default(self):
@@ -106,10 +118,14 @@ class TestParserDifferentialProbeTool:
     def test_method_default_is_get(self):
         """Default method should be GET."""
         with patch.object(self.tool, "_test_duplicate_params", return_value=[]) as mock:
-            self.tool.use(json.dumps({
-                "url": "http://example.com/api",
-                "tests": ["duplicate_params"],
-            }))
+            self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/api",
+                        "tests": ["duplicate_params"],
+                    }
+                )
+            )
             # Check method passed to _test_duplicate_params
             args = mock.call_args
             assert args[0][2] == "GET" or args[1].get("method") == "GET"

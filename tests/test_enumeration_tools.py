@@ -31,10 +31,11 @@ class TestPathEnumeratorTool:
 
     def test_unknown_wordlist(self):
         """Test handling of unknown wordlist name."""
-        result = self.tool.use(json.dumps({
-            "url": "http://example.com",
-            "wordlist": "nonexistent_wordlist"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"url": "http://example.com", "wordlist": "nonexistent_wordlist"}
+            )
+        )
         assert "Error" in result
         assert "Unknown wordlist" in result
 
@@ -63,28 +64,32 @@ class TestPathEnumeratorTool:
 
     def test_custom_wordlist(self):
         """Test using a custom wordlist."""
-        with patch.object(self.tool.session, 'get') as mock_get:
+        with patch.object(self.tool.session, "get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 404
             mock_response.content = b""
             mock_get.return_value = mock_response
 
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["custom1", "custom2", "custom3"]
-            }))
+            result = self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com",
+                        "wordlist": ["custom1", "custom2", "custom3"],
+                    }
+                )
+            )
 
             assert "Paths tested:" in result
             assert mock_get.called
 
     # === HTTP Request Tests ===
 
-    @patch('ctf_solver.tools.enumeration_tools.PathEnumeratorTool')
+    @patch("ctf_solver.tools.enumeration_tools.PathEnumeratorTool")
     def test_successful_path_discovery(self, mock_tool):
         """Test discovering accessible paths."""
         tool = PathEnumeratorTool()
 
-        with patch.object(tool.session, 'get') as mock_get:
+        with patch.object(tool.session, "get") as mock_get:
             # First call returns 200, rest return 404
             def side_effect(url, **kwargs):
                 mock_resp = Mock()
@@ -101,22 +106,26 @@ class TestPathEnumeratorTool:
 
             mock_get.side_effect = side_effect
 
-            result = tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["robots.txt", "admin", "test"],
-                "max_paths": 3
-            }))
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com",
+                        "wordlist": ["robots.txt", "admin", "test"],
+                        "max_paths": 3,
+                    }
+                )
+            )
 
             assert "robots.txt" in result
             assert "200" in result
             assert "DISCOVERED PATHS" in result
 
-    @patch('ctf_solver.tools.enumeration_tools.PathEnumeratorTool')
+    @patch("ctf_solver.tools.enumeration_tools.PathEnumeratorTool")
     def test_protected_path_detection(self, mock_tool):
         """Test detecting protected (403) paths."""
         tool = PathEnumeratorTool()
 
-        with patch.object(tool.session, 'get') as mock_get:
+        with patch.object(tool.session, "get") as mock_get:
             mock_resp = Mock()
             mock_resp.status_code = 403
             mock_resp.content = b"Forbidden"
@@ -125,21 +134,21 @@ class TestPathEnumeratorTool:
             mock_resp.request.path_url = "/admin"
             mock_get.return_value = mock_resp
 
-            result = tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["admin"],
-                "max_paths": 1
-            }))
+            result = tool.use(
+                json.dumps(
+                    {"url": "http://example.com", "wordlist": ["admin"], "max_paths": 1}
+                )
+            )
 
             assert "403" in result
             assert "[!]" in result  # Protected indicator
 
-    @patch('ctf_solver.tools.enumeration_tools.PathEnumeratorTool')
+    @patch("ctf_solver.tools.enumeration_tools.PathEnumeratorTool")
     def test_redirect_detection(self, mock_tool):
         """Test detecting redirect responses."""
         tool = PathEnumeratorTool()
 
-        with patch.object(tool.session, 'get') as mock_get:
+        with patch.object(tool.session, "get") as mock_get:
             mock_resp = Mock()
             mock_resp.status_code = 302
             mock_resp.content = b""
@@ -148,11 +157,11 @@ class TestPathEnumeratorTool:
             mock_resp.request.path_url = "/login"
             mock_get.return_value = mock_resp
 
-            result = tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["login"],
-                "max_paths": 1
-            }))
+            result = tool.use(
+                json.dumps(
+                    {"url": "http://example.com", "wordlist": ["login"], "max_paths": 1}
+                )
+            )
 
             assert "302" in result
             assert "[->]" in result  # Redirect indicator
@@ -161,18 +170,22 @@ class TestPathEnumeratorTool:
 
     def test_extension_testing(self):
         """Test that extensions are appended to paths."""
-        with patch.object(self.tool.session, 'get') as mock_get:
+        with patch.object(self.tool.session, "get") as mock_get:
             mock_resp = Mock()
             mock_resp.status_code = 404
             mock_resp.content = b""
             mock_get.return_value = mock_resp
 
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["config"],
-                "extensions": [".php", ".bak"],
-                "max_paths": 10
-            }))
+            result = self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com",
+                        "wordlist": ["config"],
+                        "extensions": [".php", ".bak"],
+                        "max_paths": 10,
+                    }
+                )
+            )
 
             # Should test config, config.php, config.bak
             call_urls = [call[0][0] for call in mock_get.call_args_list]
@@ -185,20 +198,27 @@ class TestPathEnumeratorTool:
         """Test detection of flag patterns in responses."""
         tool = PathEnumeratorTool()
 
-        with patch.object(tool.session, 'get') as mock_get:
+        with patch.object(tool.session, "get") as mock_get:
+            baseline_resp = Mock()
+            baseline_resp.status_code = 404
+            baseline_resp.content = b"Not Found"
             mock_resp = Mock()
             mock_resp.status_code = 200
             mock_resp.content = b"flag{test_flag_here}"
             mock_resp.text = "flag{test_flag_here}"
             mock_resp.request = Mock()
             mock_resp.request.path_url = "/flag.txt"
-            mock_get.return_value = mock_resp
+            mock_get.side_effect = [baseline_resp, mock_resp]
 
-            result = tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["flag.txt"],
-                "max_paths": 1
-            }))
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com",
+                        "wordlist": ["flag.txt"],
+                        "max_paths": 1,
+                    }
+                )
+            )
 
             assert "FLAG" in result.upper()
 
@@ -206,20 +226,27 @@ class TestPathEnumeratorTool:
         """Test detection of source code exposure."""
         tool = PathEnumeratorTool()
 
-        with patch.object(tool.session, 'get') as mock_get:
+        with patch.object(tool.session, "get") as mock_get:
+            baseline_resp = Mock()
+            baseline_resp.status_code = 404
+            baseline_resp.content = b"Not Found"
             mock_resp = Mock()
             mock_resp.status_code = 200
             mock_resp.content = b"<?php echo 'hello'; ?>"
             mock_resp.text = "<?php echo 'hello'; ?>"
             mock_resp.request = Mock()
             mock_resp.request.path_url = "/config.php.bak"
-            mock_get.return_value = mock_resp
+            mock_get.side_effect = [baseline_resp, mock_resp]
 
-            result = tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["config.php.bak"],
-                "max_paths": 1
-            }))
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com",
+                        "wordlist": ["config.php.bak"],
+                        "max_paths": 1,
+                    }
+                )
+            )
 
             assert "source code" in result.lower()
 
@@ -227,20 +254,27 @@ class TestPathEnumeratorTool:
         """Test detection of directory listing."""
         tool = PathEnumeratorTool()
 
-        with patch.object(tool.session, 'get') as mock_get:
+        with patch.object(tool.session, "get") as mock_get:
+            baseline_resp = Mock()
+            baseline_resp.status_code = 404
+            baseline_resp.content = b"Not Found"
             mock_resp = Mock()
             mock_resp.status_code = 200
             mock_resp.content = b"<html><title>Index of /uploads</title></html>"
             mock_resp.text = "<html><title>Index of /uploads</title></html>"
             mock_resp.request = Mock()
             mock_resp.request.path_url = "/uploads"
-            mock_get.return_value = mock_resp
+            mock_get.side_effect = [baseline_resp, mock_resp]
 
-            result = tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["uploads"],
-                "max_paths": 1
-            }))
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com",
+                        "wordlist": ["uploads"],
+                        "max_paths": 1,
+                    }
+                )
+            )
 
             assert "directory listing" in result.lower()
 
@@ -250,20 +284,27 @@ class TestPathEnumeratorTool:
         """Test CTF hint for git repository exposure."""
         tool = PathEnumeratorTool()
 
-        with patch.object(tool.session, 'get') as mock_get:
+        with patch.object(tool.session, "get") as mock_get:
+            baseline_resp = Mock()
+            baseline_resp.status_code = 404
+            baseline_resp.content = b"Not Found"
             mock_resp = Mock()
             mock_resp.status_code = 200
             mock_resp.content = b"ref: refs/heads/main"
             mock_resp.text = "ref: refs/heads/main"
             mock_resp.request = Mock()
             mock_resp.request.path_url = "/.git/HEAD"
-            mock_get.return_value = mock_resp
+            mock_get.side_effect = [baseline_resp, mock_resp]
 
-            result = tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": [".git/HEAD"],
-                "max_paths": 1
-            }))
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com",
+                        "wordlist": [".git/HEAD"],
+                        "max_paths": 1,
+                    }
+                )
+            )
 
             assert "git" in result.lower()
 
@@ -273,14 +314,14 @@ class TestPathEnumeratorTool:
         """Test handling of request timeouts."""
         import requests
 
-        with patch.object(self.tool.session, 'get') as mock_get:
+        with patch.object(self.tool.session, "get") as mock_get:
             mock_get.side_effect = requests.exceptions.Timeout()
 
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["test"],
-                "max_paths": 1
-            }))
+            result = self.tool.use(
+                json.dumps(
+                    {"url": "http://example.com", "wordlist": ["test"], "max_paths": 1}
+                )
+            )
 
             assert "Timeout" in result or "No interesting paths" in result
 
@@ -288,14 +329,16 @@ class TestPathEnumeratorTool:
         """Test handling of connection errors."""
         import requests
 
-        with patch.object(self.tool.session, 'get') as mock_get:
-            mock_get.side_effect = requests.exceptions.ConnectionError("Connection refused")
+        with patch.object(self.tool.session, "get") as mock_get:
+            mock_get.side_effect = requests.exceptions.ConnectionError(
+                "Connection refused"
+            )
 
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["test"],
-                "max_paths": 1
-            }))
+            result = self.tool.use(
+                json.dumps(
+                    {"url": "http://example.com", "wordlist": ["test"], "max_paths": 1}
+                )
+            )
 
             # Should handle error gracefully
             assert "Error" in result or "No interesting paths" in result
@@ -345,7 +388,8 @@ class TestBackupFileFinder:
 
     def test_backup_found(self):
         """Test finding a backup file."""
-        with patch.object(self.tool.session, 'get') as mock_get:
+        with patch.object(self.tool.session, "get") as mock_get:
+
             def side_effect(url, **kwargs):
                 mock_resp = Mock()
                 if url.endswith(".bak"):
@@ -359,30 +403,27 @@ class TestBackupFileFinder:
 
             mock_get.side_effect = side_effect
 
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com/config.php"
-            }))
+            result = self.tool.use(json.dumps({"url": "http://example.com/config.php"}))
 
             assert "BACKUP FILES FOUND" in result
             assert ".bak" in result
 
     def test_no_backup_found(self):
         """Test when no backup files exist."""
-        with patch.object(self.tool.session, 'get') as mock_get:
+        with patch.object(self.tool.session, "get") as mock_get:
             mock_resp = Mock()
             mock_resp.status_code = 404
             mock_resp.content = b""
             mock_get.return_value = mock_resp
 
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com/config.php"
-            }))
+            result = self.tool.use(json.dumps({"url": "http://example.com/config.php"}))
 
             assert "No backup files found" in result
 
     def test_content_preview(self):
         """Test that content preview is shown for found backups."""
-        with patch.object(self.tool.session, 'get') as mock_get:
+        with patch.object(self.tool.session, "get") as mock_get:
+
             def side_effect(url, **kwargs):
                 mock_resp = Mock()
                 if url.endswith(".bak"):
@@ -396,9 +437,7 @@ class TestBackupFileFinder:
 
             mock_get.side_effect = side_effect
 
-            result = self.tool.use(json.dumps({
-                "url": "http://example.com/config.php"
-            }))
+            result = self.tool.use(json.dumps({"url": "http://example.com/config.php"}))
 
             assert "Preview:" in result
 
@@ -413,11 +452,14 @@ class TestEnumerationToolsCTFScenarios:
 
     def test_git_repo_discovery_scenario(self):
         """Test discovering exposed git repository."""
-        with patch.object(self.path_tool.session, 'get') as mock_get:
+        with patch.object(self.path_tool.session, "get") as mock_get:
+
             def side_effect(url, **kwargs):
                 mock_resp = Mock()
                 mock_resp.request = Mock()
-                mock_resp.request.path_url = url.split("example.com")[1] if "example.com" in url else url
+                mock_resp.request.path_url = (
+                    url.split("example.com")[1] if "example.com" in url else url
+                )
 
                 if ".git/HEAD" in url:
                     mock_resp.status_code = 200
@@ -436,22 +478,25 @@ class TestEnumerationToolsCTFScenarios:
 
             mock_get.side_effect = side_effect
 
-            result = self.path_tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": "git",
-                "max_paths": 20
-            }))
+            result = self.path_tool.use(
+                json.dumps(
+                    {"url": "http://example.com", "wordlist": "git", "max_paths": 20}
+                )
+            )
 
             assert ".git" in result.lower()
             assert "200" in result
 
     def test_admin_panel_discovery_scenario(self):
         """Test discovering protected admin panel."""
-        with patch.object(self.path_tool.session, 'get') as mock_get:
+        with patch.object(self.path_tool.session, "get") as mock_get:
+
             def side_effect(url, **kwargs):
                 mock_resp = Mock()
                 mock_resp.request = Mock()
-                mock_resp.request.path_url = url.split("example.com")[1] if "example.com" in url else url
+                mock_resp.request.path_url = (
+                    url.split("example.com")[1] if "example.com" in url else url
+                )
 
                 if "admin" in url.lower():
                     mock_resp.status_code = 401
@@ -466,24 +511,29 @@ class TestEnumerationToolsCTFScenarios:
 
             mock_get.side_effect = side_effect
 
-            result = self.path_tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": "admin",
-                "max_paths": 10
-            }))
+            result = self.path_tool.use(
+                json.dumps(
+                    {"url": "http://example.com", "wordlist": "admin", "max_paths": 10}
+                )
+            )
 
             assert "401" in result
             assert "admin" in result.lower()
 
     def test_source_code_backup_scenario(self):
         """Test finding source code in backup file."""
-        with patch.object(self.backup_tool.session, 'get') as mock_get:
+        with patch.object(self.backup_tool.session, "get") as mock_get:
+
             def side_effect(url, **kwargs):
                 mock_resp = Mock()
                 if url.endswith(".php.bak") or url.endswith(".php~"):
                     mock_resp.status_code = 200
-                    mock_resp.content = b"<?php\n$flag = 'picoCTF{backup_files_exposed}';\n?>"
-                    mock_resp.text = "<?php\n$flag = 'picoCTF{backup_files_exposed}';\n?>"
+                    mock_resp.content = (
+                        b"<?php\n$flag = 'picoCTF{backup_files_exposed}';\n?>"
+                    )
+                    mock_resp.text = (
+                        "<?php\n$flag = 'picoCTF{backup_files_exposed}';\n?>"
+                    )
                 else:
                     mock_resp.status_code = 404
                     mock_resp.content = b""
@@ -491,24 +541,29 @@ class TestEnumerationToolsCTFScenarios:
 
             mock_get.side_effect = side_effect
 
-            result = self.backup_tool.use(json.dumps({
-                "url": "http://example.com/index.php"
-            }))
+            result = self.backup_tool.use(
+                json.dumps({"url": "http://example.com/index.php"})
+            )
 
             assert "BACKUP FILES FOUND" in result
             assert "flag" in result.lower() or "php" in result.lower()
 
     def test_flag_in_robots_scenario(self):
         """Test finding flag hint in robots.txt."""
-        with patch.object(self.path_tool.session, 'get') as mock_get:
+        with patch.object(self.path_tool.session, "get") as mock_get:
+
             def side_effect(url, **kwargs):
                 mock_resp = Mock()
                 mock_resp.request = Mock()
-                mock_resp.request.path_url = url.split("example.com")[1] if "example.com" in url else url
+                mock_resp.request.path_url = (
+                    url.split("example.com")[1] if "example.com" in url else url
+                )
 
                 if "robots.txt" in url:
                     mock_resp.status_code = 200
-                    mock_resp.content = b"User-agent: *\nDisallow: /secret_flag_location/"
+                    mock_resp.content = (
+                        b"User-agent: *\nDisallow: /secret_flag_location/"
+                    )
                     mock_resp.text = "User-agent: *\nDisallow: /secret_flag_location/"
                 else:
                     mock_resp.status_code = 404
@@ -519,11 +574,15 @@ class TestEnumerationToolsCTFScenarios:
 
             mock_get.side_effect = side_effect
 
-            result = self.path_tool.use(json.dumps({
-                "url": "http://example.com",
-                "wordlist": ["robots.txt"],
-                "max_paths": 1
-            }))
+            result = self.path_tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com",
+                        "wordlist": ["robots.txt"],
+                        "max_paths": 1,
+                    }
+                )
+            )
 
             assert "robots.txt" in result
             assert "200" in result

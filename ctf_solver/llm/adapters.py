@@ -11,9 +11,11 @@ Supported providers:
 - Hybrid (multi-model routing)
 """
 
-import os
+import json
 import logging
-from abc import ABC, abstractmethod
+import os
+import random
+import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import (
@@ -49,6 +51,124 @@ try:
 except ImportError:
     OLLAMA_INSTALLED = False
     ollama = None  # type: ignore
+
+
+def _is_transient_error(error: Exception) -> bool:
+    """Check if an error is transient and worth retrying."""
+    # Anthropic transient errors
+    if ANTHROPIC_INSTALLED:
+        if isinstance(error, anthropic.RateLimitError):
+            return True
+        if isinstance(error, anthropic.APIConnectionError):
+            return True
+        if isinstance(error, anthropic.APITimeoutError):
+            return True
+        if isinstance(error, anthropic.InternalServerError):
+            return True
+        # Auth and bad request errors should NOT be retried
+        if isinstance(error, anthropic.AuthenticationError):
+            return False
+        if isinstance(error, anthropic.BadRequestError):
+            return False
+
+    # Ollama transient errors (connection refused, timeout)
+    if isinstance(error, (ConnectionError, TimeoutError, OSError)):
+        return True
+
+    # httpx errors (used by both anthropic and ollama under the hood)
+    error_name = type(error).__name__
+    if error_name in ("ConnectError", "ReadTimeout", "ConnectTimeout"):
+        return True
+
+    return False
+
+
+def _retry_with_backoff(
+    fn: Callable[[], Any],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+) -> Any:
+    """
+    Retry a callable with exponential backoff on transient errors.
+
+    Args:
+        fn: Zero-argument callable to execute.
+        max_retries: Maximum number of retry attempts.
+        base_delay: Base delay in seconds (doubles each retry).
+
+    Returns:
+        The return value of fn() on success.
+
+    Raises:
+        The original exception if it is not transient or retries are exhausted.
+    """
+    last_error: Optional[Exception] = None
+    for attempt in range(max_retries + 1):
+        try:
+            return fn()
+        except Exception as e:
+            last_error = e
+            if not _is_transient_error(e):
+                raise
+            if attempt == max_retries:
+                raise
+            delay = base_delay * (2**attempt) + random.uniform(0, 0.5)
+            logger.warning(
+                "Transient error (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1,
+                max_retries + 1,
+                delay,
+                e,
+            )
+            time.sleep(delay)
+
+    # Should never reach here, but satisfy type checker
+    raise last_error  # type: ignore[misc]
+
+
+async def _async_retry_with_backoff(
+    fn: Callable[[], Any],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+) -> Any:
+    """
+    Async version of _retry_with_backoff.
+
+    Args:
+        fn: Zero-argument async callable to execute.
+        max_retries: Maximum number of retry attempts.
+        base_delay: Base delay in seconds (doubles each retry).
+
+    Returns:
+        The return value of await fn() on success.
+
+    Raises:
+        The original exception if it is not transient or retries are exhausted.
+    """
+    import asyncio
+
+    last_error: Optional[Exception] = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await fn()
+        except Exception as e:
+            last_error = e
+            if not _is_transient_error(e):
+                raise
+            if attempt == max_retries:
+                raise
+            delay = base_delay * (2**attempt) + random.uniform(0, 0.5)
+            logger.warning(
+                "Transient error (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1,
+                max_retries + 1,
+                delay,
+                e,
+            )
+            await asyncio.sleep(delay)
+
+    # Should never reach here, but satisfy type checker
+    raise last_error  # type: ignore[misc]
 
 
 class LLMProvider(str, Enum):
@@ -103,6 +223,27 @@ DEFAULT_CONFIGS: Dict[LLMProvider, ModelConfig] = {
 }
 
 
+# JSON schema for the ReAct response format.
+# Used with output_config to guarantee valid JSON from Claude.
+_REACT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "thought": {"type": "string"},
+        "action": {
+            "type": "object",
+            "properties": {
+                "tool_name": {"type": "string"},
+                "tool_input": {"type": "string"},
+            },
+            "required": ["tool_name", "tool_input"],
+            "additionalProperties": False,
+        },
+    },
+    "required": ["thought", "action"],
+    "additionalProperties": False,
+}
+
+
 class AnthropicAdapter(AbstractChatModel):
     """
     An adapter for interacting with Anthropic's Claude models.
@@ -115,7 +256,7 @@ class AnthropicAdapter(AbstractChatModel):
         api_key: Optional[str] = None,
         model_name: str = "claude-sonnet-4-20250514",
         max_tokens: int = 4096,
-        timeout: float = 60.0,
+        timeout: float = 120.0,
     ):
         """
         Initialize the Anthropic adapter.
@@ -161,24 +302,62 @@ class AnthropicAdapter(AbstractChatModel):
             Tuple of (system_prompt, messages_list)
         """
         system_prompt = None
-        anthropic_messages = []
+        anthropic_messages: List[Dict[str, Any]] = []
+
+        # Only the FIRST system message becomes the Anthropic `system`
+        # parameter (the static prompt).  All later system messages
+        # (tool observations, progress checks) stay inline as "user"
+        # messages so the conversation flow is preserved.
+        first_system_seen = False
 
         for msg in messages:
             if msg.role == "system":
-                # Anthropic takes system as a separate parameter
-                system_prompt = msg.content
+                if not first_system_seen:
+                    # First system message → Anthropic system parameter
+                    if system_prompt:
+                        system_prompt += "\n\n" + (msg.content or "")
+                    else:
+                        system_prompt = msg.content
+                    first_system_seen = True
+                else:
+                    # Subsequent system messages → user role (inline)
+                    role = "user"
+                    content = msg.content or ""
+                    if anthropic_messages and anthropic_messages[-1]["role"] == role:
+                        anthropic_messages[-1]["content"] += "\n\n" + content
+                    else:
+                        anthropic_messages.append({"role": role, "content": content})
             else:
-                # Map roles to Anthropic format
                 role = "assistant" if msg.role == "assistant" else "user"
 
-                # Handle tool messages by including them as user messages
                 if msg.role == "tool":
                     role = "user"
                     content = f"[Tool Result ({msg.name})]: {msg.content}"
                 else:
                     content = msg.content or ""
 
-                anthropic_messages.append({"role": role, "content": content})
+                # Merge consecutive messages with the same role (Claude
+                # rejects adjacent messages from the same role).
+                if anthropic_messages and anthropic_messages[-1]["role"] == role:
+                    anthropic_messages[-1]["content"] += "\n\n" + content
+                else:
+                    anthropic_messages.append({"role": role, "content": content})
+
+        # Claude requires the conversation to end with a user message.
+        if anthropic_messages and anthropic_messages[-1]["role"] != "user":
+            anthropic_messages.append(
+                {
+                    "role": "user",
+                    "content": "Continue solving the challenge. "
+                    'Respond with ONLY a JSON object with "thought" and "action" keys.',
+                }
+            )
+
+        # Claude requires at least one user message.
+        if not anthropic_messages:
+            anthropic_messages.append(
+                {"role": "user", "content": "Begin solving the challenge."}
+            )
 
         return system_prompt, anthropic_messages
 
@@ -213,21 +392,52 @@ class AnthropicAdapter(AbstractChatModel):
             if system_prompt:
                 create_kwargs["system"] = system_prompt
 
-            # Add temperature if provided
-            if "temperature" in kwargs:
-                create_kwargs["temperature"] = kwargs["temperature"]
+            # Default to low temperature for consistent JSON output
+            create_kwargs["temperature"] = kwargs.get("temperature", 0.2)
+
+            # Force JSON output matching the ReAct schema.
+            # This guarantees every response is valid JSON — no more
+            # format errors or wasted steps on __format_error__.
+            create_kwargs["output_config"] = {
+                "format": {
+                    "type": "json_schema",
+                    "schema": _REACT_SCHEMA,
+                }
+            }
 
             # Add tools if provided
             if "tools" in kwargs:
                 create_kwargs["tools"] = kwargs["tools"]
 
-            response = self.sync_client.messages.create(**create_kwargs)
+            response = _retry_with_backoff(
+                lambda: self.sync_client.messages.create(**create_kwargs)
+            )
 
-            # Extract text content
+            # Log non-normal stop reasons visibly
+            if response.stop_reason not in ("end_turn",):
+                print(f"[Anthropic] WARNING: stop_reason={response.stop_reason}")
+
+            # Extract text content from response blocks
             content = ""
             for block in response.content:
                 if hasattr(block, "text"):
                     content += block.text
+
+            # If content is empty or not JSON (refusal/truncation), create
+            # a valid JSON fallback so the parser doesn't trigger format errors
+            if not content.strip() or not content.strip().startswith("{"):
+                content = json.dumps(
+                    {
+                        "thought": f"[stop_reason={response.stop_reason}] "
+                        "The previous attempt had an issue. "
+                        "Let me try a different approach.",
+                        "action": {
+                            "tool_name": "attack_planner",
+                            "tool_input": "Suggest alternative approaches "
+                            "for this challenge.",
+                        },
+                    }
+                )
 
             return Message(
                 role="assistant",
@@ -236,8 +446,18 @@ class AnthropicAdapter(AbstractChatModel):
             )
 
         except Exception as e:
+            print(f"[Anthropic] API error (invoke): {e}")
             logger.error(f"Anthropic API error (invoke): {e}")
-            return Message(role="assistant", content=f"Error: {e}")
+            content = json.dumps(
+                {
+                    "thought": f"[API error] {e}. Let me try again.",
+                    "action": {
+                        "tool_name": "attack_planner",
+                        "tool_input": "Suggest a fresh approach.",
+                    },
+                }
+            )
+            return Message(role="assistant", content=content)
 
     async def ainvoke(self, messages: List[Message], **kwargs: Any) -> Message:
         """Asynchronously invoke the Claude model."""
@@ -253,18 +473,49 @@ class AnthropicAdapter(AbstractChatModel):
             if system_prompt:
                 create_kwargs["system"] = system_prompt
 
-            if "temperature" in kwargs:
-                create_kwargs["temperature"] = kwargs["temperature"]
+            # Default to low temperature for consistent JSON output
+            create_kwargs["temperature"] = kwargs.get("temperature", 0.2)
+
+            # Force JSON output matching the ReAct schema.
+            create_kwargs["output_config"] = {
+                "format": {
+                    "type": "json_schema",
+                    "schema": _REACT_SCHEMA,
+                }
+            }
 
             if "tools" in kwargs:
                 create_kwargs["tools"] = kwargs["tools"]
 
-            response = await self.async_client.messages.create(**create_kwargs)
+            response = await _async_retry_with_backoff(
+                lambda: self.async_client.messages.create(**create_kwargs)
+            )
 
+            # Log non-normal stop reasons visibly
+            if response.stop_reason not in ("end_turn",):
+                print(f"[Anthropic] WARNING: stop_reason={response.stop_reason}")
+
+            # Extract text content from response blocks
             content = ""
             for block in response.content:
                 if hasattr(block, "text"):
                     content += block.text
+
+            # If content is empty or not JSON (refusal/truncation), create
+            # a valid JSON fallback so the parser doesn't trigger format errors
+            if not content.strip() or not content.strip().startswith("{"):
+                content = json.dumps(
+                    {
+                        "thought": f"[stop_reason={response.stop_reason}] "
+                        "The previous attempt had an issue. "
+                        "Let me try a different approach.",
+                        "action": {
+                            "tool_name": "attack_planner",
+                            "tool_input": "Suggest alternative approaches "
+                            "for this challenge.",
+                        },
+                    }
+                )
 
             return Message(
                 role="assistant",
@@ -273,8 +524,18 @@ class AnthropicAdapter(AbstractChatModel):
             )
 
         except Exception as e:
+            print(f"[Anthropic] API error (ainvoke): {e}")
             logger.error(f"Anthropic API error (ainvoke): {e}")
-            return Message(role="assistant", content=f"Error: {e}")
+            content = json.dumps(
+                {
+                    "thought": f"[API error] {e}. Let me try again.",
+                    "action": {
+                        "tool_name": "attack_planner",
+                        "tool_input": "Suggest a fresh approach.",
+                    },
+                }
+            )
+            return Message(role="assistant", content=content)
 
     def stream(
         self, messages: List[Message], **kwargs: Any
@@ -398,12 +659,14 @@ class OllamaAdapter(AbstractChatModel):
         ollama_messages = self._prepare_messages(messages)
 
         try:
-            response = self.client.chat(
-                model=self.model_name,
-                messages=ollama_messages,
-                options={
-                    "temperature": kwargs.get("temperature", 0.7),
-                },
+            response = _retry_with_backoff(
+                lambda: self.client.chat(
+                    model=self.model_name,
+                    messages=ollama_messages,
+                    options={
+                        "temperature": kwargs.get("temperature", 0.7),
+                    },
+                )
             )
 
             return Message(
@@ -425,9 +688,7 @@ class OllamaAdapter(AbstractChatModel):
         import asyncio
 
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, lambda: self.invoke(messages, **kwargs)
-        )
+        return await loop.run_in_executor(None, lambda: self.invoke(messages, **kwargs))
 
     def stream(
         self, messages: List[Message], **kwargs: Any
@@ -649,7 +910,7 @@ def create_adapter(
             api_key=api_key,
             model_name=model_name or DEFAULT_CONFIGS[LLMProvider.ANTHROPIC].model_name,
             max_tokens=kwargs.get("max_tokens", 4096),
-            timeout=kwargs.get("timeout", 60.0),
+            timeout=kwargs.get("timeout", 120.0),
         )
 
     elif provider == LLMProvider.OLLAMA:
@@ -700,7 +961,6 @@ def create_adapter_from_config(config: "SolverConfig") -> AbstractChatModel:
         An AbstractChatModel adapter instance.
     """
     # Import here to avoid circular imports
-    from ctf_solver.config import SolverConfig
 
     provider = getattr(config, "llm_provider", LLMProvider.OPENAI)
     model_name = config.model_name
@@ -720,6 +980,8 @@ def create_adapter_from_config(config: "SolverConfig") -> AbstractChatModel:
         model_name=model_name,
         api_key=api_key,
         base_url=getattr(config, "llm_base_url", None),
+        max_tokens=getattr(config, "max_tokens", 2048),
+        timeout=getattr(config, "llm_timeout", 120.0),
     )
 
 

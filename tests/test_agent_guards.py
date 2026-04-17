@@ -25,7 +25,6 @@ from ctf_solver.agent import (
 )
 from ctf_solver.prompts.templates import COOKIE_BYPASS_EXAMPLE
 
-
 # ==============================================================================
 # _extract_json_object — balanced-brace JSON extraction
 # ==============================================================================
@@ -199,9 +198,9 @@ class TestCTFAgentGuards:
         agent = self._make_agent()
         agent._tracker = MagicMock()
         agent._tracker.tool_call_log = [
-            {"tool":"http_fetch"},
-            {"tool":"javascript_source"},
-            {"tool":"robots_txt"},
+            {"tool": "http_fetch"},
+            {"tool": "javascript_source"},
+            {"tool": "robots_txt"},
         ]
         assert agent._only_recon_so_far()
 
@@ -209,8 +208,8 @@ class TestCTFAgentGuards:
         agent = self._make_agent()
         agent._tracker = MagicMock()
         agent._tracker.tool_call_log = [
-            {"tool":"http_fetch"},
-            {"tool":"sqli_probe"},
+            {"tool": "http_fetch"},
+            {"tool": "sqli_probe"},
         ]
         assert not agent._only_recon_so_far()
 
@@ -223,7 +222,7 @@ class TestCTFAgentGuards:
     def test_build_guard_message_attempt_1(self):
         agent = self._make_agent()
         agent._tracker = MagicMock()
-        agent._tracker.tool_call_log = [{"tool":"http_fetch"}]
+        agent._tracker.tool_call_log = [{"tool": "http_fetch"}]
         msg = agent._build_guard_message(1, "I found the password")
         assert "Finding information is NOT the same" in msg
         assert "http_fetch" in msg
@@ -231,7 +230,7 @@ class TestCTFAgentGuards:
     def test_build_guard_message_attempt_2_with_findings(self):
         agent = self._make_agent()
         agent._tracker = MagicMock()
-        agent._tracker.tool_call_log = [{"tool":"javascript_source"}]
+        agent._tracker.tool_call_log = [{"tool": "javascript_source"}]
         msg = agent._build_guard_message(2, "I found the password in JavaScript")
         assert "URGENT" in msg
         assert "EXPLOIT" in msg
@@ -239,7 +238,7 @@ class TestCTFAgentGuards:
     def test_build_guard_message_attempt_2_without_findings(self):
         agent = self._make_agent()
         agent._tracker = MagicMock()
-        agent._tracker.tool_call_log = [{"tool":"sqli_probe"}]
+        agent._tracker.tool_call_log = [{"tool": "sqli_probe"}]
         msg = agent._build_guard_message(2, "I could not find any vulnerabilities")
         assert "COMPLETELY different approach" in msg
 
@@ -326,10 +325,12 @@ class TestParserMonkeyPatch:
         from fairlib.core.message import Thought, Action
 
         agent = self._make_agent()
-        text = json.dumps({
-            "thought": "test",
-            "action": {"tool_name": "http_fetch", "tool_input": "{}"},
-        })
+        text = json.dumps(
+            {
+                "thought": "test",
+                "action": {"tool_name": "http_fetch", "tool_input": "{}"},
+            }
+        )
         result = agent.planner._parse_json_response(text)
         thought, action = result
         assert thought.text == "test"
@@ -381,26 +382,47 @@ class TestParserMonkeyPatch:
         agent.planner._parse_json_response(text)
         assert agent._format_error_count == 2
 
-    def test_format_error_fallback_after_3(self):
-        """After 3 format errors, falls back to original parser (FinalAnswer)."""
+    def test_format_error_fallback_after_3_consecutive(self):
+        """After 3 consecutive format errors, force-stops with FinalAnswer."""
         from fairlib.core.message import FinalAnswer
 
         agent = self._make_agent()
-        agent._format_error_count = 3  # Already had 3 errors
+        agent._consecutive_format_errors = 2  # Already had 2 consecutive
 
         text = "Not JSON at all"
         result = agent.planner._parse_json_response(text)
-        # Now it should fall back to original parser's FinalAnswer behavior
+        # 3rd consecutive error should trigger force-stop FinalAnswer
         assert isinstance(result, FinalAnswer)
+        assert "AGENT STOPPED" in result.text
+
+    def test_consecutive_errors_reset_on_valid_json(self):
+        """Consecutive error count resets when valid JSON is parsed."""
+        agent = self._make_agent()
+        # Trigger 2 format errors
+        agent.planner._parse_json_response("Not JSON")
+        agent.planner._parse_json_response("Not JSON")
+        assert agent._consecutive_format_errors == 2
+
+        # Valid JSON resets the counter
+        valid = json.dumps(
+            {
+                "thought": "test",
+                "action": {"tool_name": "http_fetch", "tool_input": "{}"},
+            }
+        )
+        agent.planner._parse_json_response(valid)
+        assert agent._consecutive_format_errors == 0
 
     def test_final_answer_tool_still_works(self):
         from fairlib.core.message import FinalAnswer
 
         agent = self._make_agent()
-        text = json.dumps({
-            "thought": "Found the flag",
-            "action": {"tool_name": "final_answer", "tool_input": "FLAG{test}"},
-        })
+        text = json.dumps(
+            {
+                "thought": "Found the flag",
+                "action": {"tool_name": "final_answer", "tool_input": "FLAG{test}"},
+            }
+        )
         result = agent.planner._parse_json_response(text)
         assert isinstance(result, FinalAnswer)
         assert result.text == "FLAG{test}"
@@ -416,23 +438,28 @@ class TestPromptEnhancements:
 
     def test_system_prompt_has_information_vs_solution(self):
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
+
         assert "INFORMATION vs. SOLUTION" in DEFAULT_SYSTEM_PROMPT
 
     def test_system_prompt_has_exploitation_protocol(self):
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
+
         assert "EXPLOITATION FOLLOW-THROUGH PROTOCOL" in DEFAULT_SYSTEM_PROMPT
 
     def test_system_prompt_has_checklist(self):
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
+
         assert "BEFORE calling final_answer, verify" in DEFAULT_SYSTEM_PROMPT
 
     def test_system_prompt_has_negative_format_examples(self):
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
+
         assert "INCORRECT formats" in DEFAULT_SYSTEM_PROMPT
 
     def test_js_example_shows_full_chain(self):
         """JS example should show: find cred → use cred → access page → flag."""
         from ctf_solver.prompts.templates import JS_ANALYSIS_EXAMPLE
+
         example_text = JS_ANALYSIS_EXAMPLE.text
         # Should include login POST
         assert "api/login" in example_text or "/api/login" in example_text
@@ -457,11 +484,13 @@ class TestPromptEnhancements:
 
     def test_initial_message_has_exploitation_warning(self):
         from ctf_solver.prompts.templates import get_initial_message
+
         msg = get_initial_message(challenge_url="http://test.com")
         assert "Finding information is NOT the same" in msg
 
     def test_system_prompt_common_chains(self):
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
+
         assert "Credential found in JS" in DEFAULT_SYSTEM_PROMPT
         assert "Token prefix/format found" in DEFAULT_SYSTEM_PROMPT
         assert "Cookie controls access" in DEFAULT_SYSTEM_PROMPT

@@ -37,33 +37,39 @@ class TestSqliProbeTool:
 
     def test_invalid_method(self):
         """Test handling of invalid HTTP method."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "DELETE",
-            "param": "id"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com", "method": "DELETE", "param": "id"})
+        )
         assert "Error" in result
         assert "method" in result.lower()
 
     def test_invalid_payload_set(self):
         """Test handling of invalid payload set."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "invalid_set"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "invalid_set",
+                }
+            )
+        )
         assert "Error" in result
         assert "payload_set" in result.lower()
 
     def test_custom_payloads_required(self):
         """Test that custom payloads are required when using custom set."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "custom"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                }
+            )
+        )
         assert "Error" in result
         assert "custom_payloads" in result.lower()
 
@@ -129,7 +135,7 @@ class TestSqliProbeTool:
 
     def test_detect_sqlite_error(self):
         """Test detection of SQLite errors."""
-        response = "[SQLITE_ERROR] near \"test\": syntax error"
+        response = '[SQLITE_ERROR] near "test": syntax error'
         errors = self.tool._detect_sql_errors(response)
         assert len(errors) > 0
         assert any("sqlite" in e.lower() for e in errors)
@@ -195,11 +201,13 @@ class TestSqliProbeTool:
 
     # === HTTP Request Tests ===
 
-    @patch.object(SqliProbeTool, '_detect_sql_errors')
-    @patch.object(SqliProbeTool, '_detect_success')
-    @patch.object(SqliProbeTool, '_detect_failure')
-    @patch.object(SqliProbeTool, '_extract_flag')
-    def test_probe_with_get_method(self, mock_flag, mock_fail, mock_success, mock_errors):
+    @patch.object(SqliProbeTool, "_detect_sql_errors")
+    @patch.object(SqliProbeTool, "_detect_success")
+    @patch.object(SqliProbeTool, "_detect_failure")
+    @patch.object(SqliProbeTool, "_extract_flag")
+    def test_probe_with_get_method(
+        self, mock_flag, mock_fail, mock_success, mock_errors
+    ):
         """Test probing with GET method."""
         mock_errors.return_value = []
         mock_success.return_value = []
@@ -214,23 +222,29 @@ class TestSqliProbeTool:
 
         tool = SqliProbeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "custom",
-            "custom_payloads": ["'"]
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["'"],
+                }
+            )
+        )
 
         assert "SqliProbeTool" in result
         assert "SQL Injection Probe Results" in result
         mock_session.get.assert_called()
 
-    @patch.object(SqliProbeTool, '_detect_sql_errors')
-    @patch.object(SqliProbeTool, '_detect_success')
-    @patch.object(SqliProbeTool, '_detect_failure')
-    @patch.object(SqliProbeTool, '_extract_flag')
-    def test_probe_with_post_method(self, mock_flag, mock_fail, mock_success, mock_errors):
+    @patch.object(SqliProbeTool, "_detect_sql_errors")
+    @patch.object(SqliProbeTool, "_detect_success")
+    @patch.object(SqliProbeTool, "_detect_failure")
+    @patch.object(SqliProbeTool, "_extract_flag")
+    def test_probe_with_post_method(
+        self, mock_flag, mock_fail, mock_success, mock_errors
+    ):
         """Test probing with POST method."""
         mock_errors.return_value = []
         mock_success.return_value = []
@@ -245,14 +259,18 @@ class TestSqliProbeTool:
 
         tool = SqliProbeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "method": "POST",
-            "param": "username",
-            "payload_set": "custom",
-            "custom_payloads": ["admin' --"],
-            "data": {"password": "test"}
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/login",
+                    "method": "POST",
+                    "param": "username",
+                    "payload_set": "custom",
+                    "custom_payloads": ["admin' --"],
+                    "data": {"password": "test"},
+                }
+            )
+        )
 
         assert "SqliProbeTool" in result
         mock_session.post.assert_called()
@@ -275,13 +293,17 @@ class TestSqliProbeTool:
 
         tool = SqliProbeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "custom",
-            "custom_payloads": ["'"]
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["'"],
+                }
+            )
+        )
 
         assert "INTERESTING PAYLOADS" in result
         assert "SQL errors" in result.lower() or "error" in result.lower()
@@ -297,21 +319,27 @@ class TestSqliProbeTool:
 
         # Bypass response (success)
         bypass_response = Mock()
-        bypass_response.text = "Welcome admin! Dashboard loaded. Here is your flag: CTF{bypassed}"
+        bypass_response.text = (
+            "Welcome admin! Dashboard loaded. Here is your flag: CTF{bypassed}"
+        )
         bypass_response.status_code = 200
 
         mock_session.post.side_effect = [baseline_response, bypass_response]
 
         tool = SqliProbeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "method": "POST",
-            "param": "username",
-            "payload_set": "custom",
-            "custom_payloads": ["' OR '1'='1' --"],
-            "data": {"password": "x"}
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/login",
+                    "method": "POST",
+                    "param": "username",
+                    "payload_set": "custom",
+                    "custom_payloads": ["' OR '1'='1' --"],
+                    "data": {"password": "x"},
+                }
+            )
+        )
 
         assert "INTERESTING PAYLOADS" in result
         assert "FLAG" in result or "CTF{bypassed}" in result
@@ -327,18 +355,22 @@ class TestSqliProbeTool:
 
         mock_session.get.side_effect = [
             baseline_response,
-            requests.exceptions.Timeout("Connection timed out")
+            requests.exceptions.Timeout("Connection timed out"),
         ]
 
         tool = SqliProbeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "custom",
-            "custom_payloads": ["' AND SLEEP(10) --"]
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["' AND SLEEP(10) --"],
+                }
+            )
+        )
 
         assert "TIMEOUT" in result or "timed out" in result.lower()
 
@@ -372,22 +404,24 @@ class TestSqliColumnCounter:
 
     def test_invalid_method(self):
         """Test handling of invalid HTTP method."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "PUT",
-            "param": "id"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com", "method": "PUT", "param": "id"})
+        )
         assert "Error" in result
         assert "method" in result.lower()
 
     def test_invalid_technique(self):
         """Test handling of invalid technique."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "technique": "invalid"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "technique": "invalid",
+                }
+            )
+        )
         assert "Error" in result
         assert "technique" in result.lower()
 
@@ -416,20 +450,24 @@ class TestSqliColumnCounter:
             ok_response,  # ORDER BY 1
             ok_response,  # ORDER BY 2
             ok_response,  # ORDER BY 3
-            error_response  # ORDER BY 4
+            error_response,  # ORDER BY 4
         ]
 
         tool = SqliColumnCounter(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "technique": "order_by",
-            "prefix": "'",
-            "suffix": " --",
-            "max_columns": 10
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "technique": "order_by",
+                    "prefix": "'",
+                    "suffix": " --",
+                    "max_columns": 10,
+                }
+            )
+        )
 
         assert "3 columns detected" in result
         assert "ORDER BY 3: OK" in result
@@ -450,20 +488,20 @@ class TestSqliColumnCounter:
         error_response.text = "Error in ORDER BY"
         error_response.status_code = 200
 
-        mock_session.post.side_effect = [
-            baseline,
-            ok_response,
-            error_response
-        ]
+        mock_session.post.side_effect = [baseline, ok_response, error_response]
 
         tool = SqliColumnCounter(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/search",
-            "method": "POST",
-            "param": "query",
-            "technique": "order_by"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/search",
+                    "method": "POST",
+                    "param": "query",
+                    "technique": "order_by",
+                }
+            )
+        )
 
         assert "Column Count Detection" in result
         mock_session.post.assert_called()
@@ -492,18 +530,22 @@ class TestSqliColumnCounter:
             baseline,
             wrong_count,  # 1 NULL
             wrong_count,  # 2 NULLs
-            correct_count  # 3 NULLs - success
+            correct_count,  # 3 NULLs - success
         ]
 
         tool = SqliColumnCounter(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "technique": "union_null",
-            "max_columns": 5
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "technique": "union_null",
+                    "max_columns": 5,
+                }
+            )
+        )
 
         assert "3 columns detected" in result or "SUCCESS" in result
 
@@ -516,11 +558,9 @@ class TestSqliColumnCounter:
 
         tool = SqliColumnCounter(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/page", "method": "GET", "param": "id"})
+        )
 
         assert "Error" in result
 
@@ -550,14 +590,18 @@ class TestSqliToolsCTFScenarios:
 
         tool = SqliProbeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://ctf.challenge.com/login",
-            "method": "POST",
-            "param": "username",
-            "payload_set": "custom",
-            "custom_payloads": ["admin' --"],
-            "data": {"password": "anything"}
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://ctf.challenge.com/login",
+                    "method": "POST",
+                    "param": "username",
+                    "payload_set": "custom",
+                    "custom_payloads": ["admin' --"],
+                    "data": {"password": "anything"},
+                }
+            )
+        )
 
         assert "FLAGS FOUND" in result or "picoCTF" in result
         assert "INTERESTING PAYLOADS" in result
@@ -582,13 +626,17 @@ class TestSqliToolsCTFScenarios:
 
         tool = SqliProbeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://ctf.challenge.com/product",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "custom",
-            "custom_payloads": ["'"]
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://ctf.challenge.com/product",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["'"],
+                }
+            )
+        )
 
         assert "INTERESTING PAYLOADS" in result
         assert "MySQL" in result or "SQL errors" in result
@@ -598,7 +646,9 @@ class TestSqliToolsCTFScenarios:
         mock_session = Mock()
 
         baseline = Mock()
-        baseline.text = "<table><tr><td>Item1</td><td>Desc1</td><td>Price1</td></tr></table>"
+        baseline.text = (
+            "<table><tr><td>Item1</td><td>Desc1</td><td>Price1</td></tr></table>"
+        )
         baseline.status_code = 200
 
         # Wrong column counts
@@ -612,21 +662,27 @@ class TestSqliToolsCTFScenarios:
 
         # Correct column count (3)
         success = Mock()
-        success.text = "<table><tr><td>Item1</td><td>Desc1</td><td>Price1</td></tr></table>"
+        success.text = (
+            "<table><tr><td>Item1</td><td>Desc1</td><td>Price1</td></tr></table>"
+        )
         success.status_code = 200
 
         mock_session.get.side_effect = [baseline, error1, error2, success]
 
         tool = SqliColumnCounter(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://ctf.challenge.com/products",
-            "method": "GET",
-            "param": "category",
-            "technique": "union_null",
-            "prefix": "'",
-            "suffix": " --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://ctf.challenge.com/products",
+                    "method": "GET",
+                    "param": "category",
+                    "technique": "union_null",
+                    "prefix": "'",
+                    "suffix": " --",
+                }
+            )
+        )
 
         assert "Column Count Detection" in result
         # Should suggest next steps
@@ -639,13 +695,17 @@ class TestSqliToolsEdgeCases:
     def test_empty_custom_payloads(self):
         """Test handling of empty custom payloads list."""
         tool = SqliProbeTool()
-        result = tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "custom",
-            "custom_payloads": []
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": [],
+                }
+            )
+        )
         assert "Error" in result
 
     def test_special_characters_in_payload(self):
@@ -659,13 +719,17 @@ class TestSqliToolsEdgeCases:
         tool = SqliProbeTool(session=mock_session)
 
         # Should handle unicode and special chars
-        result = tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "custom",
-            "custom_payloads": ["' OR '1'='1' --", "\" OR \"\"=\"", "';--"]
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["' OR '1'='1' --", '" OR ""="', "';--"],
+                }
+            )
+        )
 
         assert "SqliProbeTool" in result
 
@@ -685,13 +749,17 @@ class TestSqliToolsEdgeCases:
 
         tool = SqliProbeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "payload_set": "custom",
-            "custom_payloads": ["test"]
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["test"],
+                }
+            )
+        )
 
         assert "SqliProbeTool" in result
 
@@ -712,16 +780,22 @@ class TestSqliToolsEdgeCases:
 
         tool = SqliColumnCounter(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "technique": "order_by",
-            "max_columns": 5
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "technique": "order_by",
+                    "max_columns": 5,
+                }
+            )
+        )
 
         # Should stop at max_columns, not test beyond
-        assert mock_session.get.call_count <= 7  # baseline + up to 5 ORDER BY tests + potential extra
+        assert (
+            mock_session.get.call_count <= 7
+        )  # baseline + up to 5 ORDER BY tests + potential extra
 
 
 class TestSqliteBypassPayloadSet:
@@ -757,12 +831,16 @@ class TestSqliteBypassPayloadSet:
         mock_session.post.side_effect = [baseline] + [normal_resp] * num_payloads
 
         tool = SqliProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "method": "POST",
-            "param": "username",
-            "payload_set": "sqlite_bypass",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/login",
+                    "method": "POST",
+                    "param": "username",
+                    "payload_set": "sqlite_bypass",
+                }
+            )
+        )
 
         assert "Error" not in result or "Probe Results" in result
 
@@ -770,7 +848,9 @@ class TestSqliteBypassPayloadSet:
         """Test that bypass payloads include admin concatenation techniques."""
         payloads = self.tool.SQLITE_BYPASS_PAYLOADS
         concat_payloads = [p for p in payloads if "||" in p and "min" in p]
-        assert len(concat_payloads) > 0, "Should have admin concatenation bypass payloads"
+        assert (
+            len(concat_payloads) > 0
+        ), "Should have admin concatenation bypass payloads"
 
     def test_sqlite_bypass_contains_is_operator(self):
         """Test that bypass payloads include IS operator alternatives."""

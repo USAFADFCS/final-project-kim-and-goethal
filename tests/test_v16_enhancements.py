@@ -22,7 +22,6 @@ from ctf_solver.tools.nosql_tools import NosqlPayloadGenerator
 from ctf_solver.tools.xss_tools import XssPayloadGenerator
 from ctf_solver.tools.ssti_tools import SstiProbeTool, SstiExploitSuggester
 
-
 # ==============================================================================
 # RaceConditionTool — single-packet mode
 # ==============================================================================
@@ -102,30 +101,52 @@ class TestRaceConditionSinglePacket:
     def test_single_packet_mode_dispatches(self):
         """mode=single_packet calls _single_packet_attack."""
         mock_results = [
-            {"index": i, "status": 200, "length": 10, "body": "ok",
-             "body_preview": "ok", "elapsed_ms": 1.0, "error": None}
+            {
+                "index": i,
+                "status": 200,
+                "length": 10,
+                "body": "ok",
+                "body_preview": "ok",
+                "elapsed_ms": 1.0,
+                "error": None,
+            }
             for i in range(3)
         ]
-        with patch.object(self.tool, "_single_packet_attack", return_value=mock_results) as mock:
-            self.tool.use(json.dumps({
-                "url": "http://example.com/test",
-                "mode": "single_packet",
-                "concurrency": 3,
-            }))
+        with patch.object(
+            self.tool, "_single_packet_attack", return_value=mock_results
+        ) as mock:
+            self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/test",
+                        "mode": "single_packet",
+                        "concurrency": 3,
+                    }
+                )
+            )
             mock.assert_called_once()
 
     def test_thread_mode_default(self):
         """Default mode should use thread pool (not single_packet)."""
         mock_result = {
-            "index": 1, "status": 200, "length": 2, "body": "ok",
-            "body_preview": "ok", "elapsed_ms": 1.0, "error": None,
+            "index": 1,
+            "status": 200,
+            "length": 2,
+            "body": "ok",
+            "body_preview": "ok",
+            "elapsed_ms": 1.0,
+            "error": None,
         }
         with patch.object(self.tool, "_single_packet_attack") as sp_mock:
             with patch.object(self.tool, "_send_request", return_value=mock_result):
-                self.tool.use(json.dumps({
-                    "url": "http://example.com/test",
-                    "concurrency": 2,
-                }))
+                self.tool.use(
+                    json.dumps(
+                        {
+                            "url": "http://example.com/test",
+                            "concurrency": 2,
+                        }
+                    )
+                )
             sp_mock.assert_not_called()
 
 
@@ -146,30 +167,46 @@ class TestGraphqlAliasBruteforce:
 
     def test_alias_bruteforce_dispatches(self):
         """alias_bruteforce param triggers _alias_bruteforce."""
-        with patch.object(self.tool, "_alias_bruteforce", return_value="result") as mock:
-            self.tool.use(json.dumps({
-                "url": "http://example.com/graphql",
-                "alias_bruteforce": {
-                    "query_template": '{{ login(pin: "{value}") {{ token }} }}',
-                    "values": ["0000", "1111"],
-                },
-            }))
+        with patch.object(
+            self.tool, "_alias_bruteforce", return_value="result"
+        ) as mock:
+            self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/graphql",
+                        "alias_bruteforce": {
+                            "query_template": '{{ login(pin: "{value}") {{ token }} }}',
+                            "values": ["0000", "1111"],
+                        },
+                    }
+                )
+            )
             mock.assert_called_once()
 
     def test_alias_bruteforce_with_range(self):
         """Range parameter generates values."""
-        with patch.object(self.tool, "_alias_bruteforce", return_value="result") as mock:
-            self.tool.use(json.dumps({
-                "url": "http://example.com/graphql",
-                "alias_bruteforce": {
-                    "query_template": '{{ pin(code: "{value}") {{ ok }} }}',
-                    "range": [0, 5],
-                },
-            }))
+        with patch.object(
+            self.tool, "_alias_bruteforce", return_value="result"
+        ) as mock:
+            self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://example.com/graphql",
+                        "alias_bruteforce": {
+                            "query_template": '{{ pin(code: "{value}") {{ ok }} }}',
+                            "range": [0, 5],
+                        },
+                    }
+                )
+            )
             mock.assert_called_once()
             # Values should be generated from range
             call_args = mock.call_args
-            values = call_args[1].get("values") or call_args[0][2] if len(call_args[0]) > 2 else None
+            values = (
+                call_args[1].get("values") or call_args[0][2]
+                if len(call_args[0]) > 2
+                else None
+            )
             # The method was called — good enough for unit test
 
 
@@ -215,13 +252,21 @@ class TestXssMxss:
 
     def test_mxss_default_all_sanitizers(self):
         result = self.tool.use(json.dumps({"operation": "mxss"}))
-        assert "mXSS" in result or "mutation" in result.lower() or "sanitizer" in result.lower()
+        assert (
+            "mXSS" in result
+            or "mutation" in result.lower()
+            or "sanitizer" in result.lower()
+        )
 
     def test_mxss_specific_sanitizer(self):
-        result = self.tool.use(json.dumps({
-            "operation": "mxss",
-            "sanitizer": "dompurify",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "mxss",
+                    "sanitizer": "dompurify",
+                }
+            )
+        )
         assert "DOMPurify" in result or "dompurify" in result.lower()
 
     def test_mxss_payloads_exist(self):

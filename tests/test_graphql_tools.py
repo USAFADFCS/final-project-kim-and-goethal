@@ -12,7 +12,6 @@ from unittest.mock import MagicMock
 
 from ctf_solver.tools.graphql_tools import GraphqlIntrospectionTool, GraphqlQueryTool
 
-
 # ==============================================================================
 # Shared introspection response data
 # ==============================================================================
@@ -34,7 +33,11 @@ INTROSPECTION_RESULT = {
                             "args": [
                                 {
                                     "name": "id",
-                                    "type": {"name": "Int", "kind": "SCALAR", "ofType": None},
+                                    "type": {
+                                        "name": "Int",
+                                        "kind": "SCALAR",
+                                        "ofType": None,
+                                    },
                                 }
                             ],
                         }
@@ -51,7 +54,11 @@ INTROSPECTION_RESULT = {
                         },
                         {
                             "name": "name",
-                            "type": {"name": "String", "kind": "SCALAR", "ofType": None},
+                            "type": {
+                                "name": "String",
+                                "kind": "SCALAR",
+                                "ofType": None,
+                            },
                             "args": [],
                         },
                     ],
@@ -62,7 +69,11 @@ INTROSPECTION_RESULT = {
                     "fields": [
                         {
                             "name": "value",
-                            "type": {"name": "String", "kind": "SCALAR", "ofType": None},
+                            "type": {
+                                "name": "String",
+                                "kind": "SCALAR",
+                                "ofType": None,
+                            },
                             "args": [],
                         }
                     ],
@@ -111,9 +122,13 @@ class TestGraphqlIntrospectionTool:
         mock_resp.headers = {}
         self.mock_session.post.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                }
+            )
+        )
 
         # Verify introspection was successful
         assert "Introspection Successful" in result
@@ -152,9 +167,13 @@ class TestGraphqlIntrospectionTool:
         self.mock_session.post.return_value = blocked_resp
         self.mock_session.get.return_value = success_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                }
+            )
+        )
 
         # The tool should have tried the alternate method (GET) and succeeded
         assert "Introspection Successful" in result
@@ -167,9 +186,13 @@ class TestGraphqlIntrospectionTool:
         """Test error handling when session.post raises an exception."""
         self.mock_session.post.side_effect = Exception("Connection refused")
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "Connection refused" in result
@@ -183,10 +206,14 @@ class TestGraphqlIntrospectionTool:
         mock_resp.headers = {}
         self.mock_session.get.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-            "method": "GET",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                    "method": "GET",
+                }
+            )
+        )
 
         # session.get should be called, not session.post
         assert self.mock_session.get.called
@@ -213,17 +240,25 @@ class TestGraphqlQueryTool:
 
     def test_missing_url(self):
         """Test that 'url' is required."""
-        result = self.tool.use(json.dumps({
-            "query": "{ users { id } }",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "query": "{ users { id } }",
+                }
+            )
+        )
         assert "Error" in result
         assert "url" in result.lower()
 
     def test_missing_query(self):
         """Test that 'query' is required."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                }
+            )
+        )
         assert "Error" in result
         assert "query" in result.lower()
 
@@ -244,10 +279,14 @@ class TestGraphqlQueryTool:
         mock_resp.headers = {}
         self.mock_session.post.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-            "query": "{ user(id: 1) { id name } }",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                    "query": "{ user(id: 1) { id name } }",
+                }
+            )
+        )
 
         assert "Query Result" in result
         assert "admin" in result
@@ -267,10 +306,14 @@ class TestGraphqlQueryTool:
         mock_resp.headers = {}
         self.mock_session.post.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-            "query": "{ secretData { value } }",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                    "query": "{ secretData { value } }",
+                }
+            )
+        )
 
         assert "ERRORS" in result
         assert "Access denied" in result
@@ -286,10 +329,14 @@ class TestGraphqlQueryTool:
         mock_resp.headers = {}
         self.mock_session.post.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-            "query": "{ flag }",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                    "query": "{ flag }",
+                }
+            )
+        )
 
         assert "FLAGS FOUND" in result
         assert "CTF{test_flag_123}" in result
@@ -309,12 +356,16 @@ class TestGraphqlQueryTool:
         mock_resp.headers = {}
         self.mock_session.post.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-            "query": "{ user(id: 1) { id } }",
-            "batch": True,
-            "batch_count": 3,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                    "query": "{ user(id: 1) { id } }",
+                    "batch": True,
+                    "batch_count": 3,
+                }
+            )
+        )
 
         # Verify the POST body was sent as an array of 3 queries
         call_kwargs = self.mock_session.post.call_args
@@ -339,11 +390,15 @@ class TestGraphqlQueryTool:
         mock_resp.headers = {}
         self.mock_session.post.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/graphql",
-            "query": "query GetUser($id: Int!) { user(id: $id) { id name } }",
-            "variables": {"id": 1},
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/graphql",
+                    "query": "query GetUser($id: Int!) { user(id: $id) { id name } }",
+                    "variables": {"id": 1},
+                }
+            )
+        )
 
         # Verify variables were included in the POST body
         call_kwargs = self.mock_session.post.call_args

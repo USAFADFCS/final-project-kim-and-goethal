@@ -12,7 +12,6 @@ from ctf_solver.tools.cmdi_tools import (
     CommandInjectionPayloadGenerator,
 )
 
-
 # ============================================================
 # CommandInjectionProbeTool Tests
 # ============================================================
@@ -48,11 +47,15 @@ class TestCommandInjectionProbeTool:
 
     def test_invalid_method(self):
         """Test handling of invalid HTTP method."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-            "method": "DELETE",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                    "method": "DELETE",
+                }
+            )
+        )
         assert "Error" in result
         assert "GET" in result or "POST" in result
 
@@ -61,10 +64,14 @@ class TestCommandInjectionProbeTool:
     def test_baseline_failure(self):
         """Test that a baseline request failure is reported."""
         self.mock_session.get.side_effect = Exception("Connection refused")
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                }
+            )
+        )
         assert "Error" in result
         assert "baseline" in result.lower() or "Connection refused" in result
 
@@ -77,18 +84,24 @@ class TestCommandInjectionProbeTool:
         baseline_resp.status_code = 200
 
         injected_resp = MagicMock()
-        injected_resp.text = "PING 127.0.0.1: 56 data bytes\nuid=1000(user) gid=1000(user)"
+        injected_resp.text = (
+            "PING 127.0.0.1: 56 data bytes\nuid=1000(user) gid=1000(user)"
+        )
         injected_resp.status_code = 200
 
         self.mock_session.get.return_value = injected_resp
         # First call is baseline, rest are probes
         self.mock_session.get.side_effect = [baseline_resp] + [injected_resp] * 200
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-            "os_target": "linux",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                    "os_target": "linux",
+                }
+            )
+        )
 
         assert "INJECTION CONFIRMED" in result or "COMMAND INJECTION DETECTED" in result
 
@@ -115,6 +128,7 @@ class TestCommandInjectionProbeTool:
 
         # Patch time.time to simulate delay for time-based payloads
         import ctf_solver.tools.cmdi_tools as cmdi_module
+
         original_time = time.time
 
         time_call_count = {"n": 0}
@@ -140,15 +154,21 @@ class TestCommandInjectionProbeTool:
 
         cmdi_module.time.time = mock_time
         try:
-            result = self.tool.use(json.dumps({
-                "url": "http://test.com/ping",
-                "param": "ip",
-                "os_target": "linux",
-            }))
+            result = self.tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test.com/ping",
+                        "param": "ip",
+                        "os_target": "linux",
+                    }
+                )
+            )
         finally:
             cmdi_module.time.time = original_time
 
-        assert "TIME-BASED INJECTION" in result or "COMMAND INJECTION DETECTED" in result
+        assert (
+            "TIME-BASED INJECTION" in result or "COMMAND INJECTION DETECTED" in result
+        )
 
     def test_no_injection_all_same(self):
         """Test no injection detected when all responses are the same as baseline."""
@@ -158,11 +178,15 @@ class TestCommandInjectionProbeTool:
 
         self.mock_session.get.return_value = baseline_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-            "os_target": "linux",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                    "os_target": "linux",
+                }
+            )
+        )
 
         assert "No command injection detected" in result
 
@@ -178,11 +202,15 @@ class TestCommandInjectionProbeTool:
 
         self.mock_session.get.side_effect = [baseline_resp] + [injected_resp] * 100
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-            "os_target": "windows",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                    "os_target": "windows",
+                }
+            )
+        )
 
         # Should contain Windows-specific detection
         assert "Windows" in result
@@ -199,10 +227,14 @@ class TestCommandInjectionProbeTool:
 
         self.mock_session.get.side_effect = [baseline_resp] + [flag_resp] * 200
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                }
+            )
+        )
 
         assert "FLAG" in result
         assert "picoCTF{cmd_inj3cti0n_ftw}" in result
@@ -214,15 +246,21 @@ class TestCommandInjectionProbeTool:
         baseline_resp.status_code = 200
 
         passwd_resp = MagicMock()
-        passwd_resp.text = "root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin"
+        passwd_resp.text = (
+            "root:x:0:0:root:/root:/bin/bash\ndaemon:x:1:1:daemon:/usr/sbin"
+        )
         passwd_resp.status_code = 200
 
         self.mock_session.get.side_effect = [baseline_resp] + [passwd_resp] * 200
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                }
+            )
+        )
 
         assert "INJECTION CONFIRMED" in result or "COMMAND INJECTION DETECTED" in result
 
@@ -233,11 +271,15 @@ class TestCommandInjectionProbeTool:
         baseline_resp.status_code = 200
         self.mock_session.get.return_value = baseline_resp
 
-        self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-            "method": "GET",
-        }))
+        self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                    "method": "GET",
+                }
+            )
+        )
 
         assert self.mock_session.get.called
         assert not self.mock_session.post.called
@@ -249,11 +291,15 @@ class TestCommandInjectionProbeTool:
         baseline_resp.status_code = 200
         self.mock_session.post.return_value = baseline_resp
 
-        self.tool.use(json.dumps({
-            "url": "http://test.com/ping",
-            "param": "ip",
-            "method": "POST",
-        }))
+        self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/ping",
+                    "param": "ip",
+                    "method": "POST",
+                }
+            )
+        )
 
         assert self.mock_session.post.called
         assert not self.mock_session.get.called
@@ -295,10 +341,14 @@ class TestCommandInjectionPayloadGenerator:
 
     def test_inline_linux_payloads(self):
         """Test inline operation generates Linux payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "inline",
-            "os_target": "linux",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "inline",
+                    "os_target": "linux",
+                }
+            )
+        )
 
         assert "Inline Payloads" in result
         assert "Linux" in result
@@ -312,10 +362,14 @@ class TestCommandInjectionPayloadGenerator:
 
     def test_inline_windows_payloads(self):
         """Test inline operation generates Windows payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "inline",
-            "os_target": "windows",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "inline",
+                    "os_target": "windows",
+                }
+            )
+        )
 
         assert "Windows" in result
         assert "& id" in result or "&id" in result
@@ -327,10 +381,14 @@ class TestCommandInjectionPayloadGenerator:
 
     def test_blind_sleep_payloads(self):
         """Test blind operation generates sleep-based payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "blind",
-            "os_target": "linux",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "blind",
+                    "os_target": "linux",
+                }
+            )
+        )
 
         assert "Blind Payloads" in result
         assert "sleep 5" in result
@@ -339,19 +397,27 @@ class TestCommandInjectionPayloadGenerator:
 
     def test_blind_ping_payloads(self):
         """Test blind operation generates ping-based payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "blind",
-            "os_target": "linux",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "blind",
+                    "os_target": "linux",
+                }
+            )
+        )
 
         assert "ping -c 5 127.0.0.1" in result
 
     def test_blind_dns_exfiltration(self):
         """Test blind operation generates DNS exfiltration payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "blind",
-            "os_target": "linux",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "blind",
+                    "os_target": "linux",
+                }
+            )
+        )
 
         assert "nslookup" in result
         assert "attacker.com" in result
@@ -360,9 +426,13 @@ class TestCommandInjectionPayloadGenerator:
 
     def test_filter_bypass_space(self):
         """Test filter_bypass generates space bypass techniques."""
-        result = self.tool.use(json.dumps({
-            "operation": "filter_bypass",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "filter_bypass",
+                }
+            )
+        )
 
         assert "Space Bypass" in result
         assert "${IFS}" in result
@@ -372,9 +442,13 @@ class TestCommandInjectionPayloadGenerator:
 
     def test_filter_bypass_keyword(self):
         """Test filter_bypass generates keyword bypass techniques."""
-        result = self.tool.use(json.dumps({
-            "operation": "filter_bypass",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "filter_bypass",
+                }
+            )
+        )
 
         assert "Keyword Bypass" in result
         assert "/bin/c?t" in result
@@ -382,9 +456,13 @@ class TestCommandInjectionPayloadGenerator:
 
     def test_filter_bypass_encoding(self):
         """Test filter_bypass generates encoding bypass techniques."""
-        result = self.tool.use(json.dumps({
-            "operation": "filter_bypass",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "filter_bypass",
+                }
+            )
+        )
 
         assert "Encoding Bypass" in result
         assert "printf" in result
@@ -395,11 +473,15 @@ class TestCommandInjectionPayloadGenerator:
 
     def test_custom_command(self):
         """Test that custom command is reflected in payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "inline",
-            "command": "cat /etc/shadow",
-            "os_target": "linux",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "inline",
+                    "command": "cat /etc/shadow",
+                    "os_target": "linux",
+                }
+            )
+        )
 
         assert "cat /etc/shadow" in result
         assert "; cat /etc/shadow" in result
@@ -409,10 +491,16 @@ class TestCommandInjectionPayloadGenerator:
     def test_all_operations_return_content(self):
         """Test that all valid operations return non-empty meaningful output."""
         for operation in ("inline", "blind", "filter_bypass"):
-            result = self.tool.use(json.dumps({
-                "operation": operation,
-                "command": "whoami",
-            }))
+            result = self.tool.use(
+                json.dumps(
+                    {
+                        "operation": operation,
+                        "command": "whoami",
+                    }
+                )
+            )
             assert "CommandInjectionPayloadGenerator" in result
             assert "Error" not in result
-            assert len(result) > 100, f"Operation '{operation}' returned too little content"
+            assert (
+                len(result) > 100
+            ), f"Operation '{operation}' returned too little content"

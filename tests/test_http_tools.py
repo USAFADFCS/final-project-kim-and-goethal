@@ -13,7 +13,6 @@ from unittest.mock import Mock, patch, MagicMock
 
 from ctf_solver.tools.http_tools import HttpFetchTool, FormSubmitTool
 
-
 # ==============================================================================
 # Fixtures
 # ==============================================================================
@@ -39,6 +38,7 @@ def mock_response():
     - content (bytes version of text)
     - raw.headers.items() returning [] (for Set-Cookie extraction)
     """
+
     def _make(text="", status_code=200, headers=None, url="http://test.local/"):
         resp = Mock()
         resp.text = text
@@ -53,6 +53,7 @@ def mock_response():
         resp.raw = Mock()
         resp.raw.headers = raw_headers_mock
         return resp
+
     return _make
 
 
@@ -95,10 +96,14 @@ class TestHttpFetchTool:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                }
+            )
+        )
 
         assert "Method: POST" in result
         assert "Status: 200" in result
@@ -113,17 +118,23 @@ class TestHttpFetchTool:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/check",
-            "method": "POST",
-            "body": {"status": ["open", "open", "open", "open"]},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/check",
+                    "method": "POST",
+                    "body": {"status": ["open", "open", "open", "open"]},
+                }
+            )
+        )
 
         assert "Method: POST" in result
         assert "FLAG{test}" in result
         # Verify json= was used (not data=)
         call_kwargs = mock_session.post.call_args
-        assert call_kwargs.kwargs.get("json") == {"status": ["open", "open", "open", "open"]}
+        assert call_kwargs.kwargs.get("json") == {
+            "status": ["open", "open", "open", "open"]
+        }
 
     def test_put_with_json_body(self, mock_session, mock_response):
         """Test PUT request with JSON body."""
@@ -131,11 +142,15 @@ class TestHttpFetchTool:
         mock_session.put.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/api/1",
-            "method": "PUT",
-            "body": {"name": "updated"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api/1",
+                    "method": "PUT",
+                    "body": {"name": "updated"},
+                }
+            )
+        )
 
         assert "Method: PUT" in result
         mock_session.put.assert_called_once()
@@ -148,11 +163,15 @@ class TestHttpFetchTool:
         mock_session.patch.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/api/1",
-            "method": "PATCH",
-            "body": {"field": "value"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api/1",
+                    "method": "PATCH",
+                    "body": {"field": "value"},
+                }
+            )
+        )
 
         assert "Method: PATCH" in result
         mock_session.patch.assert_called_once()
@@ -163,10 +182,14 @@ class TestHttpFetchTool:
         mock_session.delete.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/api/1",
-            "method": "DELETE",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api/1",
+                    "method": "DELETE",
+                }
+            )
+        )
 
         assert "Method: DELETE" in result
         mock_session.delete.assert_called_once()
@@ -174,10 +197,14 @@ class TestHttpFetchTool:
     def test_invalid_method(self, mock_session):
         """Test that invalid methods are rejected."""
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/",
-            "method": "TRACE",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "method": "TRACE",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "method" in result.lower()
@@ -203,10 +230,14 @@ class TestHttpFetchTool:
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/",
-            "headers": {"Authorization": "Bearer token123"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "headers": {"Authorization": "Bearer token123"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.get.call_args
         assert call_kwargs.kwargs["headers"]["Authorization"] == "Bearer token123"
@@ -217,10 +248,14 @@ class TestHttpFetchTool:
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/",
-            "params": {"id": "1"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "params": {"id": "1"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.get.call_args
         assert call_kwargs.kwargs["params"] == {"id": "1"}
@@ -232,10 +267,14 @@ class TestHttpFetchTool:
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/",
-            "max_body": 100,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "max_body": 100,
+                }
+            )
+        )
 
         assert "truncated" in result.lower()
         # Body should be truncated, not the full 10000 chars
@@ -257,12 +296,16 @@ class TestHttpFetchTool:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "params": {"v": "2"},
-            "body": {"data": "test"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "params": {"v": "2"},
+                    "body": {"data": "test"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs["params"] == {"v": "2"}
@@ -295,17 +338,24 @@ class TestFormSubmitTool:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/login",
-            "method": "POST",
-            "data": {"username": "admin", "password": "test"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/login",
+                    "method": "POST",
+                    "data": {"username": "admin", "password": "test"},
+                }
+            )
+        )
 
         assert "Method: POST" in result
         assert "Welcome!" in result
         # Should use data= (form-encoded) by default
         call_kwargs = mock_session.post.call_args
-        assert call_kwargs.kwargs.get("data") == {"username": "admin", "password": "test"}
+        assert call_kwargs.kwargs.get("data") == {
+            "username": "admin",
+            "password": "test",
+        }
 
     def test_json_post_with_content_type(self, mock_session, mock_response):
         """Test JSON POST when Content-Type is application/json."""
@@ -316,18 +366,26 @@ class TestFormSubmitTool:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/check",
-            "method": "POST",
-            "data": {"status": ["open", "open", "open", "open"]},
-            "headers": {"Content-Type": "application/json"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/check",
+                    "method": "POST",
+                    "data": {"status": ["open", "open", "open", "open"]},
+                    "headers": {"Content-Type": "application/json"},
+                }
+            )
+        )
 
         assert "FLAG{json_win}" in result
         # Verify json= was used instead of data=
         call_kwargs = mock_session.post.call_args
-        assert call_kwargs.kwargs.get("json") == {"status": ["open", "open", "open", "open"]}
-        assert "data" not in call_kwargs.kwargs or call_kwargs.kwargs.get("data") is None
+        assert call_kwargs.kwargs.get("json") == {
+            "status": ["open", "open", "open", "open"]
+        }
+        assert (
+            "data" not in call_kwargs.kwargs or call_kwargs.kwargs.get("data") is None
+        )
 
     def test_json_post_case_insensitive_header(self, mock_session, mock_response):
         """Test JSON detection is case-insensitive for Content-Type header key."""
@@ -335,12 +393,16 @@ class TestFormSubmitTool:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "data": {"key": "value"},
-            "headers": {"content-type": "application/json"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "data": {"key": "value"},
+                    "headers": {"content-type": "application/json"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs.get("json") == {"key": "value"}
@@ -351,12 +413,16 @@ class TestFormSubmitTool:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "data": {"key": "value"},
-            "headers": {"Content-Type": "application/json; charset=utf-8"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "data": {"key": "value"},
+                    "headers": {"Content-Type": "application/json; charset=utf-8"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs.get("json") == {"key": "value"}
@@ -367,12 +433,16 @@ class TestFormSubmitTool:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/form",
-            "method": "POST",
-            "data": {"field": "value"},
-            "headers": {"Content-Type": "application/x-www-form-urlencoded"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/form",
+                    "method": "POST",
+                    "data": {"field": "value"},
+                    "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs.get("data") == {"field": "value"}
@@ -383,11 +453,15 @@ class TestFormSubmitTool:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/form",
-            "method": "POST",
-            "data": {"field": "value"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/form",
+                    "method": "POST",
+                    "data": {"field": "value"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs.get("data") == {"field": "value"}
@@ -398,11 +472,15 @@ class TestFormSubmitTool:
         mock_session.get.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/search",
-            "method": "GET",
-            "data": {"q": "test"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/search",
+                    "method": "GET",
+                    "data": {"q": "test"},
+                }
+            )
+        )
 
         assert "Method: GET" in result
         mock_session.get.assert_called_once()
@@ -426,10 +504,14 @@ class TestFormSubmitTool:
     def test_invalid_method(self, mock_session):
         """Test error for invalid method."""
         tool = FormSubmitTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/",
-            "method": "PUT",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "method": "PUT",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "GET" in result and "POST" in result
@@ -446,10 +528,14 @@ class TestFormSubmitTool:
         mock_session.post.side_effect = ConnectionError("Connection refused")
 
         tool = FormSubmitTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/",
-            "method": "POST",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "method": "POST",
+                }
+            )
+        )
 
         assert "Error" in result
 
@@ -459,11 +545,15 @@ class TestFormSubmitTool:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/",
-            "method": "POST",
-            "max_body": 50,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "method": "POST",
+                    "max_body": 50,
+                }
+            )
+        )
 
         assert "truncated" in result.lower()
 
@@ -492,15 +582,21 @@ class TestJsonApiPatterns:
 
         # Using HttpFetchTool with POST + body (recommended approach)
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/check-combination",
-            "method": "POST",
-            "body": {"status": ["open", "open", "open", "open"]},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/check-combination",
+                    "method": "POST",
+                    "body": {"status": ["open", "open", "open", "open"]},
+                }
+            )
+        )
 
         assert "picoCTF{combination_cracked}" in result
         call_kwargs = mock_session.post.call_args
-        assert call_kwargs.kwargs["json"] == {"status": ["open", "open", "open", "open"]}
+        assert call_kwargs.kwargs["json"] == {
+            "status": ["open", "open", "open", "open"]
+        }
 
     def test_api_auth_pattern(self, mock_session, mock_response):
         """Test API authentication with JSON body."""
@@ -511,11 +607,15 @@ class TestJsonApiPatterns:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/api/login",
-            "method": "POST",
-            "body": {"username": "admin", "password": "secret"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api/login",
+                    "method": "POST",
+                    "body": {"username": "admin", "password": "secret"},
+                }
+            )
+        )
 
         assert "FLAG{api_auth}" in result
 
@@ -525,14 +625,18 @@ class TestJsonApiPatterns:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "body": {
-                "user": {"name": "admin", "role": "superuser"},
-                "action": "elevate",
-            },
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "body": {
+                        "user": {"name": "admin", "role": "superuser"},
+                        "action": "elevate",
+                    },
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         body = call_kwargs.kwargs["json"]
@@ -544,11 +648,15 @@ class TestJsonApiPatterns:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "body": {"ids": [1, 2, 3], "action": "delete"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "body": {"ids": [1, 2, 3], "action": "delete"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs["json"]["ids"] == [1, 2, 3]
@@ -568,9 +676,18 @@ class TestFormatMismatchDetection:
 
         tracker = Mock()
         tracker.tool_call_log = [
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api\nBad Request"},
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api\nBad Request"},
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api\nBad Request"},
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api\nBad Request",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api\nBad Request",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api\nBad Request",
+            },
         ]
 
         engine = ReflectionEngine(tracker)
@@ -588,9 +705,18 @@ class TestFormatMismatchDetection:
 
         tracker = Mock()
         tracker.tool_call_log = [
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api1\nBad Request"},
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api2\nBad Request"},
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api3\nBad Request"},
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api1\nBad Request",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api2\nBad Request",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api3\nBad Request",
+            },
         ]
 
         engine = ReflectionEngine(tracker)
@@ -605,9 +731,18 @@ class TestFormatMismatchDetection:
 
         tracker = Mock()
         tracker.tool_call_log = [
-            {"tool": "form_submit", "output": "Status: 200\nURL: http://test.local/api\nOK"},
-            {"tool": "form_submit", "output": "Status: 404\nURL: http://test.local/api\nNot Found"},
-            {"tool": "form_submit", "output": "Status: 200\nURL: http://test.local/api\nOK"},
+            {
+                "tool": "form_submit",
+                "output": "Status: 200\nURL: http://test.local/api\nOK",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 404\nURL: http://test.local/api\nNot Found",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 200\nURL: http://test.local/api\nOK",
+            },
         ]
 
         engine = ReflectionEngine(tracker)
@@ -622,9 +757,18 @@ class TestFormatMismatchDetection:
 
         tracker = Mock()
         tracker.tool_call_log = [
-            {"tool": "form_submit", "output": "Status: 415\nURL: http://test.local/api\nUnsupported"},
-            {"tool": "form_submit", "output": "Status: 415\nURL: http://test.local/api\nUnsupported"},
-            {"tool": "form_submit", "output": "Status: 415\nURL: http://test.local/api\nUnsupported"},
+            {
+                "tool": "form_submit",
+                "output": "Status: 415\nURL: http://test.local/api\nUnsupported",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 415\nURL: http://test.local/api\nUnsupported",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 415\nURL: http://test.local/api\nUnsupported",
+            },
         ]
 
         engine = ReflectionEngine(tracker)
@@ -640,13 +784,24 @@ class TestFormatMismatchDetection:
 
         tracker = Mock()
         tracker.tool_call_log = [
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api\nBad Request"},
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api\nBad Request"},
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api\nBad Request"},
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api\nBad Request",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api\nBad Request",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api\nBad Request",
+            },
         ]
 
         engine = ReflectionEngine(tracker)
-        result = engine.generate_reflection("form_submit", '{"url": "http://test.local/api"}', 3)
+        result = engine.generate_reflection(
+            "form_submit", '{"url": "http://test.local/api"}', 3
+        )
 
         assert "[SELF-REFLECTION]" in result
         assert "TOOL FORMAT ISSUE" in result
@@ -658,8 +813,14 @@ class TestFormatMismatchDetection:
 
         tracker = Mock()
         tracker.tool_call_log = [
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api\nBad Request"},
-            {"tool": "form_submit", "output": "Status: 400\nURL: http://test.local/api\nBad Request"},
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api\nBad Request",
+            },
+            {
+                "tool": "form_submit",
+                "output": "Status: 400\nURL: http://test.local/api\nBad Request",
+            },
         ]
 
         engine = ReflectionEngine(tracker)
@@ -680,17 +841,22 @@ class TestPromptUpdates:
     def test_system_prompt_mentions_json_post(self):
         """Test system prompt mentions JSON POST capability."""
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
+
         assert "POST" in DEFAULT_SYSTEM_PROMPT
         assert "body" in DEFAULT_SYSTEM_PROMPT
 
     def test_system_prompt_mentions_form_submit_json_fallback(self):
         """Test system prompt guides agent to use http_fetch for JSON."""
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
-        assert "400/415" in DEFAULT_SYSTEM_PROMPT or "http_fetch" in DEFAULT_SYSTEM_PROMPT
+
+        assert (
+            "400/415" in DEFAULT_SYSTEM_PROMPT or "http_fetch" in DEFAULT_SYSTEM_PROMPT
+        )
 
     def test_json_api_example_exists(self):
         """Test JSON API few-shot example is defined."""
         from ctf_solver.prompts.templates import JSON_API_EXAMPLE
+
         assert JSON_API_EXAMPLE is not None
         # Should contain the key pattern: POST + body + JSON
         example_text = JSON_API_EXAMPLE.text
@@ -700,6 +866,7 @@ class TestPromptUpdates:
     def test_json_api_example_in_module(self):
         """Test JSON API example is exported from prompts module."""
         from ctf_solver.prompts import JSON_API_EXAMPLE
+
         assert JSON_API_EXAMPLE is not None
 
 
@@ -739,10 +906,14 @@ class TestHttpFetchToolEnhancements:
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/",
-            "follow_redirects": False,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "follow_redirects": False,
+                }
+            )
+        )
 
         call_kwargs = mock_session.get.call_args
         assert call_kwargs.kwargs["allow_redirects"] is False
@@ -757,11 +928,15 @@ class TestHttpFetchToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "follow_redirects": False,
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "follow_redirects": False,
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs["allow_redirects"] is False
@@ -804,11 +979,15 @@ class TestHttpFetchToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "timeout": 60,
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "timeout": 60,
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs["timeout"] == 60
@@ -839,12 +1018,16 @@ class TestHttpFetchToolEnhancements:
 
         xml_payload = '<?xml version="1.0"?><request><action>test</action></request>'
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/soap",
-            "method": "POST",
-            "raw_body": xml_payload,
-            "headers": {"Content-Type": "text/xml"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/soap",
+                    "method": "POST",
+                    "raw_body": xml_payload,
+                    "headers": {"Content-Type": "text/xml"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs["data"] == xml_payload
@@ -859,11 +1042,15 @@ class TestHttpFetchToolEnhancements:
         mock_session.put.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "PUT",
-            "raw_body": "raw-text-body",
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "PUT",
+                    "raw_body": "raw-text-body",
+                }
+            )
+        )
 
         call_kwargs = mock_session.put.call_args
         assert call_kwargs.kwargs["data"] == "raw-text-body"
@@ -871,12 +1058,16 @@ class TestHttpFetchToolEnhancements:
     def test_raw_body_mutually_exclusive_with_body(self, mock_session):
         """Test that providing both body and raw_body returns an error."""
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "body": {"key": "value"},
-            "raw_body": "raw text",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "body": {"key": "value"},
+                    "raw_body": "raw text",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "mutually exclusive" in result
@@ -889,11 +1080,15 @@ class TestHttpFetchToolEnhancements:
         mock_session.delete.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api/1",
-            "method": "DELETE",
-            "raw_body": "<delete id='1'/>",
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api/1",
+                    "method": "DELETE",
+                    "raw_body": "<delete id='1'/>",
+                }
+            )
+        )
 
         call_kwargs = mock_session.delete.call_args
         assert call_kwargs.kwargs["data"] == "<delete id='1'/>"
@@ -910,10 +1105,14 @@ class TestHttpFetchToolEnhancements:
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/secure",
-            "auth": ["admin", "secret123"],
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/secure",
+                    "auth": ["admin", "secret123"],
+                }
+            )
+        )
 
         call_kwargs = mock_session.get.call_args
         assert call_kwargs.kwargs["auth"] == ("admin", "secret123")
@@ -927,12 +1126,16 @@ class TestHttpFetchToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "auth": ["user", "pass"],
-            "body": {"action": "do"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "auth": ["user", "pass"],
+                    "body": {"action": "do"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs["auth"] == ("user", "pass")
@@ -959,10 +1162,14 @@ class TestHttpFetchToolEnhancements:
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/",
-            "auth": ["only-username"],
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "auth": ["only-username"],
+                }
+            )
+        )
 
         call_kwargs = mock_session.get.call_args
         assert "auth" not in call_kwargs.kwargs
@@ -975,10 +1182,14 @@ class TestHttpFetchToolEnhancements:
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/",
-            "auth": [123, 456],
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/",
+                    "auth": [123, 456],
+                }
+            )
+        )
 
         call_kwargs = mock_session.get.call_args
         assert call_kwargs.kwargs["auth"] == ("123", "456")
@@ -997,7 +1208,9 @@ class TestHttpFetchToolEnhancements:
     def test_binary_octet_stream(self, mock_session, mock_response):
         """Test binary detection for application/octet-stream."""
         binary_data = bytes(range(256)) * 4  # 1024 bytes
-        resp = self._make_binary_response(mock_response, "application/octet-stream", binary_data)
+        resp = self._make_binary_response(
+            mock_response, "application/octet-stream", binary_data
+        )
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
@@ -1078,7 +1291,9 @@ class TestHttpFetchToolEnhancements:
     def test_binary_hex_preview_first_512_bytes(self, mock_session, mock_response):
         """Test hex preview shows exactly the first 512 bytes."""
         binary_data = bytes(range(256)) * 4  # 1024 bytes total
-        resp = self._make_binary_response(mock_response, "application/octet-stream", binary_data)
+        resp = self._make_binary_response(
+            mock_response, "application/octet-stream", binary_data
+        )
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
@@ -1090,7 +1305,9 @@ class TestHttpFetchToolEnhancements:
     def test_binary_small_no_truncation_marker(self, mock_session, mock_response):
         """Test binary response <= 512 bytes does not show ...[truncated]... marker."""
         small_binary = b"\x00\x01\x02\x03"  # 4 bytes
-        resp = self._make_binary_response(mock_response, "application/octet-stream", small_binary)
+        resp = self._make_binary_response(
+            mock_response, "application/octet-stream", small_binary
+        )
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
@@ -1132,11 +1349,15 @@ class TestHttpFetchToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/login",
-            "method": "POST",
-            "body": {"user": "admin"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/login",
+                    "method": "POST",
+                    "body": {"user": "admin"},
+                }
+            )
+        )
 
         assert "[SET-COOKIE HEADERS]" in result
         assert "session=abc123" in result
@@ -1148,7 +1369,7 @@ class TestHttpFetchToolEnhancements:
         resp.content = b"ok"
         resp.headers = {"Content-Type": "text/html"}
         # Ensure no raw attribute that would confuse the code
-        if hasattr(resp, 'raw'):
+        if hasattr(resp, "raw"):
             del resp.raw
         mock_session.get.return_value = resp
 
@@ -1179,8 +1400,12 @@ class TestHttpFetchToolEnhancements:
 
     def test_redirect_chain_display(self, mock_session, mock_response):
         """Test redirect chain is shown when response has history."""
-        redirect1 = self._make_redirect_mock(301, "http://test.local/old", "http://test.local/new")
-        redirect2 = self._make_redirect_mock(302, "http://test.local/new", "http://test.local/final")
+        redirect1 = self._make_redirect_mock(
+            301, "http://test.local/old", "http://test.local/new"
+        )
+        redirect2 = self._make_redirect_mock(
+            302, "http://test.local/new", "http://test.local/final"
+        )
 
         final_resp = mock_response(text="Final page", url="http://test.local/final")
         final_resp.history = [redirect1, redirect2]
@@ -1211,7 +1436,9 @@ class TestHttpFetchToolEnhancements:
 
     def test_single_redirect_in_chain(self, mock_session, mock_response):
         """Test redirect chain with a single hop."""
-        redirect = self._make_redirect_mock(302, "http://test.local/start", "http://test.local/end")
+        redirect = self._make_redirect_mock(
+            302, "http://test.local/start", "http://test.local/end"
+        )
 
         final_resp = mock_response(text="End", url="http://test.local/end")
         final_resp.history = [redirect]
@@ -1232,17 +1459,23 @@ class TestHttpFetchToolEnhancements:
 
     def test_delete_with_json_body(self, mock_session, mock_response):
         """Test DELETE request with a JSON body."""
-        resp = mock_response(text='{"deleted": true}', url="http://test.local/api/item/5")
+        resp = mock_response(
+            text='{"deleted": true}', url="http://test.local/api/item/5"
+        )
         resp.history = []
         resp.content = b'{"deleted": true}'
         mock_session.delete.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/api/item/5",
-            "method": "DELETE",
-            "body": {"confirm": True, "reason": "cleanup"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api/item/5",
+                    "method": "DELETE",
+                    "body": {"confirm": True, "reason": "cleanup"},
+                }
+            )
+        )
 
         assert "Method: DELETE" in result
         call_kwargs = mock_session.delete.call_args
@@ -1256,10 +1489,14 @@ class TestHttpFetchToolEnhancements:
         mock_session.delete.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/api/item/5",
-            "method": "DELETE",
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api/item/5",
+                    "method": "DELETE",
+                }
+            )
+        )
 
         assert "Method: DELETE" in result
         call_kwargs = mock_session.delete.call_args
@@ -1274,11 +1511,15 @@ class TestHttpFetchToolEnhancements:
         mock_session.delete.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api/item",
-            "method": "DELETE",
-            "raw_body": "<delete><id>42</id></delete>",
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api/item",
+                    "method": "DELETE",
+                    "raw_body": "<delete><id>42</id></delete>",
+                }
+            )
+        )
 
         call_kwargs = mock_session.delete.call_args
         assert call_kwargs.kwargs["data"] == "<delete><id>42</id></delete>"
@@ -1295,12 +1536,16 @@ class TestHttpFetchToolEnhancements:
         mock_session.get.return_value = resp
 
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/secure",
-            "auth": ["admin", "pass"],
-            "timeout": 25,
-            "follow_redirects": False,
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/secure",
+                    "auth": ["admin", "pass"],
+                    "timeout": 25,
+                    "follow_redirects": False,
+                }
+            )
+        )
 
         call_kwargs = mock_session.get.call_args
         assert call_kwargs.kwargs["auth"] == ("admin", "pass")
@@ -1316,14 +1561,18 @@ class TestHttpFetchToolEnhancements:
 
         xml = "<Envelope><Body>test</Body></Envelope>"
         tool = HttpFetchTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/soap",
-            "method": "POST",
-            "raw_body": xml,
-            "auth": ["svc", "key"],
-            "timeout": 45,
-            "headers": {"Content-Type": "text/xml; charset=utf-8"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/soap",
+                    "method": "POST",
+                    "raw_body": xml,
+                    "auth": ["svc", "key"],
+                    "timeout": 45,
+                    "headers": {"Content-Type": "text/xml; charset=utf-8"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs["data"] == xml
@@ -1333,7 +1582,9 @@ class TestHttpFetchToolEnhancements:
     def test_redirect_chain_with_set_cookies(self, mock_session, mock_response):
         """Test redirect chain and Set-Cookie are both shown."""
         redirect = self._make_redirect_mock(
-            302, "http://test.local/login", "http://test.local/dashboard",
+            302,
+            "http://test.local/login",
+            "http://test.local/dashboard",
             extra_headers={"Set-Cookie": "token=xyz; Path=/"},
         )
 
@@ -1347,11 +1598,15 @@ class TestHttpFetchToolEnhancements:
         mock_session.post.return_value = final_resp
 
         tool = HttpFetchTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/login",
-            "method": "POST",
-            "body": {"user": "admin", "pass": "secret"},
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/login",
+                    "method": "POST",
+                    "body": {"user": "admin", "pass": "secret"},
+                }
+            )
+        )
 
         assert "Redirect chain:" in result
         assert "302" in result
@@ -1377,12 +1632,16 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "data": {"name": "test", "value": "123"},
-            "multipart": True,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "data": {"name": "test", "value": "123"},
+                    "multipart": True,
+                }
+            )
+        )
 
         assert "Uploaded" in result
         call_kwargs = mock_session.post.call_args
@@ -1392,7 +1651,9 @@ class TestFormSubmitToolEnhancements:
         assert files_sent["name"] == (None, "test")
         assert files_sent["value"] == (None, "123")
         # Should NOT use data= directly for the form fields
-        assert call_kwargs.kwargs.get("data") is None or "data" not in call_kwargs.kwargs
+        assert (
+            call_kwargs.kwargs.get("data") is None or "data" not in call_kwargs.kwargs
+        )
 
     def test_multipart_false_sends_form_encoded(self, mock_session, mock_response):
         """Test multipart=False (default) uses regular form-encoded data."""
@@ -1400,16 +1661,22 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/form",
-            "method": "POST",
-            "data": {"field": "value"},
-            "multipart": False,
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/form",
+                    "method": "POST",
+                    "data": {"field": "value"},
+                    "multipart": False,
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs.get("data") == {"field": "value"}
-        assert "files" not in call_kwargs.kwargs or call_kwargs.kwargs.get("files") is None
+        assert (
+            "files" not in call_kwargs.kwargs or call_kwargs.kwargs.get("files") is None
+        )
 
     def test_multipart_default_false(self, mock_session, mock_response):
         """Test multipart defaults to False when omitted."""
@@ -1417,11 +1684,15 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/form",
-            "method": "POST",
-            "data": {"field": "value"},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/form",
+                    "method": "POST",
+                    "data": {"field": "value"},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs.get("data") == {"field": "value"}
@@ -1436,18 +1707,22 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "data": {"description": "my file"},
-            "files": {
-                "file": {
-                    "filename": "test.txt",
-                    "content": "Hello, World!",
-                    "content_type": "text/plain",
-                },
-            },
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "data": {"description": "my file"},
+                    "files": {
+                        "file": {
+                            "filename": "test.txt",
+                            "content": "Hello, World!",
+                            "content_type": "text/plain",
+                        },
+                    },
+                }
+            )
+        )
 
         assert "File received" in result
         call_kwargs = mock_session.post.call_args
@@ -1467,22 +1742,26 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "files": {
-                "avatar": {
-                    "filename": "photo.jpg",
-                    "content": "JFIF-data",
-                    "content_type": "image/jpeg",
-                },
-                "resume": {
-                    "filename": "resume.pdf",
-                    "content": "PDF-data",
-                    "content_type": "application/pdf",
-                },
-            },
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "files": {
+                        "avatar": {
+                            "filename": "photo.jpg",
+                            "content": "JFIF-data",
+                            "content_type": "image/jpeg",
+                        },
+                        "resume": {
+                            "filename": "resume.pdf",
+                            "content": "PDF-data",
+                            "content_type": "application/pdf",
+                        },
+                    },
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         files_sent = call_kwargs.kwargs["files"]
@@ -1499,16 +1778,20 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "files": {
-                "binary": {
-                    "filename": "data.bin",
-                    "content": "some bytes",
-                },
-            },
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "files": {
+                        "binary": {
+                            "filename": "data.bin",
+                            "content": "some bytes",
+                        },
+                    },
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         files_sent = call_kwargs.kwargs["files"]
@@ -1521,15 +1804,19 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "files": {
-                "attachment": {
-                    "content": "payload data",
-                },
-            },
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "files": {
+                        "attachment": {
+                            "content": "payload data",
+                        },
+                    },
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         files_sent = call_kwargs.kwargs["files"]
@@ -1542,13 +1829,17 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "files": {
-                "payload": "raw file content here",
-            },
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "files": {
+                        "payload": "raw file content here",
+                    },
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         files_sent = call_kwargs.kwargs["files"]
@@ -1564,17 +1855,21 @@ class TestFormSubmitToolEnhancements:
 
         unicode_content = "Hello \u00e9\u00e0\u00fc"
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "files": {
-                "file": {
-                    "filename": "unicode.txt",
-                    "content": unicode_content,
-                    "content_type": "text/plain; charset=utf-8",
-                },
-            },
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "files": {
+                        "file": {
+                            "filename": "unicode.txt",
+                            "content": unicode_content,
+                            "content_type": "text/plain; charset=utf-8",
+                        },
+                    },
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         files_sent = call_kwargs.kwargs["files"]
@@ -1588,18 +1883,22 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "data": {"title": "My Upload", "category": "ctf"},
-            "files": {
-                "file": {
-                    "filename": "exploit.py",
-                    "content": "import os; os.system('id')",
-                    "content_type": "text/x-python",
-                },
-            },
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "data": {"title": "My Upload", "category": "ctf"},
+                    "files": {
+                        "file": {
+                            "filename": "exploit.py",
+                            "content": "import os; os.system('id')",
+                            "content_type": "text/x-python",
+                        },
+                    },
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         assert call_kwargs.kwargs["data"] == {"title": "My Upload", "category": "ctf"}
@@ -1611,19 +1910,23 @@ class TestFormSubmitToolEnhancements:
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "data": {"extra": "field"},
-            "multipart": True,
-            "files": {
-                "doc": {
-                    "filename": "doc.pdf",
-                    "content": "pdf-bytes",
-                    "content_type": "application/pdf",
-                },
-            },
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "data": {"extra": "field"},
+                    "multipart": True,
+                    "files": {
+                        "doc": {
+                            "filename": "doc.pdf",
+                            "content": "pdf-bytes",
+                            "content_type": "application/pdf",
+                        },
+                    },
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         files_sent = call_kwargs.kwargs["files"]
@@ -1633,37 +1936,49 @@ class TestFormSubmitToolEnhancements:
         # data should also be sent for the form fields
         assert call_kwargs.kwargs["data"] == {"extra": "field"}
 
-    def test_multipart_json_content_type_takes_precedence(self, mock_session, mock_response):
+    def test_multipart_json_content_type_takes_precedence(
+        self, mock_session, mock_response
+    ):
         """Test that application/json Content-Type takes precedence over multipart flag."""
         resp = mock_response(text='{"ok": true}', url="http://test.local/api")
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/api",
-            "method": "POST",
-            "data": {"key": "value"},
-            "headers": {"Content-Type": "application/json"},
-            "multipart": True,
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/api",
+                    "method": "POST",
+                    "data": {"key": "value"},
+                    "headers": {"Content-Type": "application/json"},
+                    "multipart": True,
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         # JSON should win over multipart
         assert call_kwargs.kwargs.get("json") == {"key": "value"}
 
-    def test_empty_files_dict_triggers_multipart_trick(self, mock_session, mock_response):
+    def test_empty_files_dict_triggers_multipart_trick(
+        self, mock_session, mock_response
+    ):
         """Test that empty files={} with multipart=True uses the (None, v) trick."""
         resp = mock_response(text="ok", url="http://test.local/upload")
         mock_session.post.return_value = resp
 
         tool = FormSubmitTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.local/upload",
-            "method": "POST",
-            "data": {"field1": "val1"},
-            "multipart": True,
-            "files": {},
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.local/upload",
+                    "method": "POST",
+                    "data": {"field1": "val1"},
+                    "multipart": True,
+                    "files": {},
+                }
+            )
+        )
 
         call_kwargs = mock_session.post.call_args
         files_sent = call_kwargs.kwargs["files"]

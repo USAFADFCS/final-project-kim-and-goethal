@@ -249,7 +249,7 @@ class SqlPatternHintTool:
         "group by",
         "order by",
         "' or 1=1",
-        "\" or 1=1",
+        '" or 1=1',
         "--",
         "/*",
         "*/",

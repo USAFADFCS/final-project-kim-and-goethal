@@ -48,10 +48,14 @@ class TestWebSocketProbeTool:
         assert "Error" in result
 
     def test_unknown_operation(self):
-        result = self.tool.use(json.dumps({
-            "url": "ws://example.com/ws",
-            "operation": "hack",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "ws://example.com/ws",
+                    "operation": "hack",
+                }
+            )
+        )
         assert "Error" in result
         assert "Unknown operation" in result
 

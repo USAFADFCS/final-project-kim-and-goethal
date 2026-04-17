@@ -44,11 +44,9 @@ class TestSstiProbeToolBasics:
     def test_invalid_method(self):
         """Test handling of invalid HTTP method."""
         tool = SstiProbeTool()
-        result = tool.use(json.dumps({
-            "url": "http://test.com",
-            "param": "name",
-            "method": "DELETE"
-        }))
+        result = tool.use(
+            json.dumps({"url": "http://test.com", "param": "name", "method": "DELETE"})
+        )
         assert "Error" in result
         assert "GET" in result or "POST" in result
 
@@ -71,11 +69,11 @@ class TestSstiProbeDetection:
         mock_session.get.return_value = mock_response
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "VULNERABLE" in result or "49" in result
 
@@ -88,11 +86,11 @@ class TestSstiProbeDetection:
         mock_session.get.return_value = mock_response
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "VULNERABLE" in result or "7777777" in result
 
@@ -113,11 +111,11 @@ class TestSstiProbeDetection:
         mock_session.get.side_effect = mock_get
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "Jinja2" in result or "jinja2" in result.lower()
 
@@ -138,11 +136,11 @@ class TestSstiProbeDetection:
         mock_session.get.side_effect = mock_get
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "Twig" in result or "Template" in result
 
@@ -163,11 +161,11 @@ class TestSstiProbeDetection:
         mock_session.get.side_effect = mock_get
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         # Should detect Freemarker or at least version output
         assert "reemarker" in result or "." in result
@@ -191,11 +189,11 @@ class TestSstiProbeDetection:
         mock_session.get.side_effect = mock_get
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "ERB" in result or "Ruby" in result or "49" in result
 
@@ -208,12 +206,16 @@ class TestSstiProbeDetection:
         mock_session.post.return_value = mock_response
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "POST",
-            "param": "name",
-            "data": {"other": "value"}
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "POST",
+                    "param": "name",
+                    "data": {"other": "value"},
+                }
+            )
+        )
 
         # Should have used POST
         assert mock_session.post.called
@@ -240,11 +242,11 @@ class TestSstiProbeErrorDetection:
         mock_session.get.side_effect = mock_get
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "jinja" in result.lower()
 
@@ -265,11 +267,11 @@ class TestSstiProbeErrorDetection:
         mock_session.get.side_effect = mock_get
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "twig" in result.lower() or "Twig" in result
 
@@ -294,11 +296,11 @@ class TestSstiProbeExploitSuggestions:
         mock_session.get.side_effect = mock_get
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "RCE" in result or "popen" in result or "Payload" in result
 
@@ -315,12 +317,16 @@ class TestSstiProbeHeaders:
         mock_session.get.return_value = mock_response
 
         tool = SstiProbeTool(session=mock_session)
-        tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name",
-            "headers": {"Authorization": "Bearer token123"}
-        }))
+        tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "name",
+                    "headers": {"Authorization": "Bearer token123"},
+                }
+            )
+        )
 
         # Check that headers were passed
         call_kwargs = mock_session.get.call_args[1]
@@ -376,10 +382,9 @@ class TestSstiExploitSuggesterPayloads:
     def test_jinja2_custom_command(self):
         """Test Jinja2 payloads with custom command."""
         tool = SstiExploitSuggester()
-        result = tool.use(json.dumps({
-            "engine": "jinja2",
-            "command": "cat /etc/passwd"
-        }))
+        result = tool.use(
+            json.dumps({"engine": "jinja2", "command": "cat /etc/passwd"})
+        )
 
         assert "cat /etc/passwd" in result
 
@@ -453,10 +458,7 @@ class TestSstiExploitSuggesterFileRead:
     def test_jinja2_file_read(self):
         """Test Jinja2 file read payloads."""
         tool = SstiExploitSuggester()
-        result = tool.use(json.dumps({
-            "engine": "jinja2",
-            "file": "/etc/shadow"
-        }))
+        result = tool.use(json.dumps({"engine": "jinja2", "file": "/etc/shadow"}))
 
         assert "/etc/shadow" in result
         assert "File" in result or "read" in result
@@ -464,10 +466,7 @@ class TestSstiExploitSuggesterFileRead:
     def test_erb_file_read(self):
         """Test ERB file read payloads."""
         tool = SstiExploitSuggester()
-        result = tool.use(json.dumps({
-            "engine": "erb",
-            "file": "/flag.txt"
-        }))
+        result = tool.use(json.dumps({"engine": "erb", "file": "/flag.txt"}))
 
         assert "/flag.txt" in result
 
@@ -506,20 +505,19 @@ class TestSstiToolsCTFScenarios:
 
         # Step 1: Detect SSTI
         probe_tool = SstiProbeTool(session=mock_session)
-        probe_result = probe_tool.use(json.dumps({
-            "url": "http://test.com/greet",
-            "method": "GET",
-            "param": "name"
-        }))
+        probe_result = probe_tool.use(
+            json.dumps(
+                {"url": "http://test.com/greet", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "VULNERABLE" in probe_result or "49" in probe_result
 
         # Step 2: Get exploitation payloads
         exploit_tool = SstiExploitSuggester()
-        exploit_result = exploit_tool.use(json.dumps({
-            "engine": "jinja2",
-            "command": "cat /flag.txt"
-        }))
+        exploit_result = exploit_tool.use(
+            json.dumps({"engine": "jinja2", "command": "cat /flag.txt"})
+        )
 
         assert "cat /flag.txt" in exploit_result
         assert "popen" in exploit_result or "subclasses" in exploit_result
@@ -544,11 +542,11 @@ class TestSstiToolsCTFScenarios:
         mock_session.get.side_effect = mock_get
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         # Should detect via error
         assert "Error" in result or "Template" in result
@@ -563,11 +561,11 @@ class TestSstiToolsEdgeCases:
         mock_session.get.side_effect = Exception("Connection timeout")
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         assert "Error" in result or "timeout" in result.lower()
 
@@ -580,11 +578,11 @@ class TestSstiToolsEdgeCases:
         mock_session.get.return_value = mock_response
 
         tool = SstiProbeTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "name"
-        }))
+        result = tool.use(
+            json.dumps(
+                {"url": "http://test.com/page", "method": "GET", "param": "name"}
+            )
+        )
 
         # Should note reflection
         assert "Reflected" in result or "not executed" in result.lower()
@@ -609,6 +607,7 @@ class TestSstiToolsIntegration:
     def test_import_from_tools(self):
         """Test that SSTI tools are importable from tools package."""
         from ctf_solver.tools import SstiProbeTool, SstiExploitSuggester
+
         probe = SstiProbeTool()
         suggester = SstiExploitSuggester()
         assert probe.name == "ssti_probe"
@@ -629,12 +628,13 @@ class TestSstiToolsIntegration:
             assert isinstance(tool.description, str)
 
             # use returns string
-            result = tool.use('{}')
+            result = tool.use("{}")
             assert isinstance(result, str)
 
     def test_probe_shares_session(self):
         """Test that SstiProbeTool uses shared session."""
         import requests
+
         session = requests.Session()
         session.headers["X-Custom"] = "test"
 

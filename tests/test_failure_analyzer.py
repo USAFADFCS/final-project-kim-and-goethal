@@ -25,7 +25,6 @@ from ctf_solver.failure_analyzer import (
 )
 from ctf_solver.run_tracker import RunTracker
 
-
 # ===========================================================================
 # TestFailureDetection
 # ===========================================================================

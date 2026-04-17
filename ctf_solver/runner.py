@@ -146,9 +146,13 @@ Examples:
     parser.add_argument(
         "--rag-mode",
         choices=[
-            "none", "original",
-            "augmented_readonly", "augmented",                  # legacy names
-            "lessons_readonly", "lessons_write", "lessons_buildonly",  # new names
+            "none",
+            "original",
+            "augmented_readonly",
+            "augmented",  # legacy names
+            "lessons_readonly",
+            "lessons_write",
+            "lessons_buildonly",  # new names
         ],
         default=None,
         help=(
@@ -216,22 +220,98 @@ Examples:
 
 
 def _load_source_files(paths: List[str]) -> Dict[str, str]:
-    """Read source file paths into a filename → content mapping."""
+    """Read source file paths into a filename → content mapping.
+
+    Supports plain text files, ZIP archives, and TAR archives
+    (.tar, .tar.gz, .tar.bz2, .tgz, .tbz2).
+    """
+    import tarfile
+    import zipfile
+
+    _TEXT_EXTENSIONS = {
+        ".py",
+        ".php",
+        ".js",
+        ".ts",
+        ".java",
+        ".go",
+        ".rb",
+        ".c",
+        ".h",
+        ".cpp",
+        ".cs",
+        ".sql",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".html",
+        ".xml",
+        ".sh",
+        ".env",
+        ".conf",
+        ".cfg",
+        ".ini",
+        ".toml",
+        ".txt",
+        ".md",
+        ".htm",
+        ".jsx",
+        ".tsx",
+        ".rs",
+        ".swift",
+        ".kt",
+    }
+
+    def _add_text(filename: str, data: bytes) -> None:
+        ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+        if ext not in _TEXT_EXTENSIONS:
+            return
+        try:
+            result[filename] = data.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                result[filename] = data.decode("latin-1")
+            except UnicodeDecodeError:
+                pass
+
     result: Dict[str, str] = {}
     for raw_path in paths:
         p = Path(raw_path)
         if not p.exists():
             print(f"[WARNING] Source file not found: {raw_path}", file=sys.stderr)
             continue
+        name_lower = p.name.lower()
         try:
-            result[p.name] = p.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            try:
-                result[p.name] = p.read_text(encoding="latin-1")
-            except Exception as exc:
-                print(
-                    f"[WARNING] Could not read {raw_path}: {exc}", file=sys.stderr
-                )
+            if name_lower.endswith(".zip"):
+                with zipfile.ZipFile(p) as zf:
+                    for member in zf.namelist():
+                        if member.endswith("/"):
+                            continue
+                        member_name = member.split("/")[-1] if "/" in member else member
+                        _add_text(member_name, zf.read(member))
+            elif (
+                name_lower.endswith(".tar")
+                or name_lower.endswith(".tar.gz")
+                or name_lower.endswith(".tar.bz2")
+                or name_lower.endswith(".tgz")
+                or name_lower.endswith(".tbz2")
+            ):
+                with tarfile.open(str(p), mode="r:*") as tf:
+                    for member in tf.getmembers():
+                        if not member.isfile():
+                            continue
+                        f = tf.extractfile(member)
+                        if f is None:
+                            continue
+                        member_name = (
+                            member.name.split("/")[-1]
+                            if "/" in member.name
+                            else member.name
+                        )
+                        _add_text(member_name, f.read())
+            else:
+                raw = p.read_bytes()
+                _add_text(p.name, raw)
         except Exception as exc:
             print(f"[WARNING] Could not read {raw_path}: {exc}", file=sys.stderr)
     return result
@@ -296,7 +376,9 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         verbose=args.verbose if args.verbose else None,
         rag_mode=args.rag_mode if args.rag_mode else None,
         use_llm_for_lessons=True if args.llm_lessons else None,
-        lessons_llm_model=args.lessons_model if args.lessons_model != "gpt-4o-mini" else None,
+        lessons_llm_model=(
+            args.lessons_model if args.lessons_model != "gpt-4o-mini" else None
+        ),
     )
 
 
@@ -369,6 +451,34 @@ async def run_agent(config: SolverConfig) -> str:
                 "Use the lesson below to avoid repeating past mistakes.\n\n"
                 + prior_reflection
             )
+
+    # Proactive RAG injection: even when no challenge-specific prior lesson exists,
+    # query the knowledge base with the challenge description upfront so the agent
+    # always sees relevant prior knowledge before its first action — not just when
+    # it happens to call ctf_knowledge_query mid-run.
+    if config.rag_mode in RAG_EXPERIENCE_MODES:
+        active_tool = get_active_knowledge_tool()
+        if active_tool is not None:
+            query = (
+                config.challenge_description
+                or config.challenge_name
+                or "web CTF exploitation techniques"
+            )
+            print(
+                f"[RAG] Proactive knowledge injection attempted (query: {query!r:.80})."
+            )
+            proactive_results = active_tool.use(query)
+            if proactive_results and "No relevant information" not in proactive_results:
+                print(
+                    "[RAG] Proactive knowledge injection succeeded — results injected."
+                )
+                initial_message += (
+                    "\n\n## Relevant Background Knowledge\n"
+                    "> Retrieved from the knowledge base before the run. "
+                    "Apply these lessons to your approach.\n\n" + proactive_results
+                )
+            else:
+                print("[RAG] Proactive knowledge injection: no relevant results found.")
 
     print("\n=== Agent Input ===")
     print(initial_message)
@@ -445,13 +555,17 @@ async def run_agent(config: SolverConfig) -> str:
                 # Consolidate lessons by category (fires when ≥2 docs per category)
                 consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
                 if consolidated:
-                    print(f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated.")
+                    print(
+                        f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated."
+                    )
                 # Rebuild index so new docs are queryable in the same session
                 active_tool = get_active_knowledge_tool()
                 if active_tool is not None:
                     active_tool.refresh_index()
             else:
-                print("[Lessons DB] No new rule docs (duplicate run or confidence bumped).")
+                print(
+                    "[Lessons DB] No new rule docs (duplicate run or confidence bumped)."
+                )
         else:
             # Legacy AUGMENTED mode: separate failure/success pipeline
             if not candidate_flags:

@@ -10,7 +10,6 @@ Parser differentials appeared in Google CTF, DiceCTF, corCTF, HITCON 2023.
 
 import json
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode
 
 import requests
 
@@ -83,7 +82,7 @@ class ParserDifferentialProbeTool:
         (
             "charset utf-7",
             "application/json; charset=utf-7",
-            '+AHsAIg-admin+ACI-:true+AH0-',
+            "+AHsAIg-admin+ACI-:true+AH0-",
         ),
     ]
 
@@ -136,21 +135,24 @@ class ParserDifferentialProbeTool:
                     resp = self.session.get(test_url, timeout=timeout)
                 else:
                     resp = self.session.post(
-                        url, data=qs,
+                        url,
+                        data=qs,
                         headers={"Content-Type": "application/x-www-form-urlencoded"},
                         timeout=timeout,
                     )
 
                 diff = abs(len(resp.text) - baseline_len)
                 if diff > 50 or resp.status_code != baseline.status_code:
-                    findings.append({
-                        "test": "duplicate_params",
-                        "desc": desc,
-                        "payload": qs,
-                        "status": resp.status_code,
-                        "length_diff": diff,
-                        "body_preview": resp.text[:200],
-                    })
+                    findings.append(
+                        {
+                            "test": "duplicate_params",
+                            "desc": desc,
+                            "payload": qs,
+                            "status": resp.status_code,
+                            "length_diff": diff,
+                            "body_preview": resp.text[:200],
+                        }
+                    )
             except Exception:
                 pass
 
@@ -175,13 +177,15 @@ class ParserDifferentialProbeTool:
 
                 # Look for signs of successful parsing confusion
                 if resp.status_code in (200, 302):
-                    findings.append({
-                        "test": "content_type",
-                        "desc": desc,
-                        "content_type": content_type,
-                        "status": resp.status_code,
-                        "body_preview": resp.text[:200],
-                    })
+                    findings.append(
+                        {
+                            "test": "content_type",
+                            "desc": desc,
+                            "content_type": content_type,
+                            "status": resp.status_code,
+                            "body_preview": resp.text[:200],
+                        }
+                    )
             except Exception:
                 pass
 
@@ -202,7 +206,7 @@ class ParserDifferentialProbeTool:
         except Exception:
             baseline_status = None
 
-        from urllib.parse import urlparse, urlunparse
+        from urllib.parse import urlparse
 
         parsed = urlparse(url)
         base = f"{parsed.scheme}://{parsed.netloc}"
@@ -218,13 +222,15 @@ class ParserDifferentialProbeTool:
                     and baseline_status is not None
                     and resp.status_code != baseline_status
                 ) or (resp.status_code in (200, 302) and "admin" in path_payload):
-                    findings.append({
-                        "test": "url_parsing",
-                        "desc": desc,
-                        "payload_url": test_url,
-                        "status": resp.status_code,
-                        "body_preview": resp.text[:200],
-                    })
+                    findings.append(
+                        {
+                            "test": "url_parsing",
+                            "desc": desc,
+                            "payload_url": test_url,
+                            "status": resp.status_code,
+                            "body_preview": resp.text[:200],
+                        }
+                    )
             except Exception:
                 pass
 
@@ -255,19 +261,22 @@ class ParserDifferentialProbeTool:
                     resp = self.session.get(test_url, timeout=timeout)
                 else:
                     resp = self.session.post(
-                        url, data=qs,
+                        url,
+                        data=qs,
                         headers={"Content-Type": "application/x-www-form-urlencoded"},
                         timeout=timeout,
                     )
 
                 if resp.status_code in (200, 302):
-                    findings.append({
-                        "test": "encoding",
-                        "desc": desc,
-                        "payload": qs,
-                        "status": resp.status_code,
-                        "body_preview": resp.text[:200],
-                    })
+                    findings.append(
+                        {
+                            "test": "encoding",
+                            "desc": desc,
+                            "payload": qs,
+                            "status": resp.status_code,
+                            "body_preview": resp.text[:200],
+                        }
+                    )
             except Exception:
                 pass
 
@@ -286,7 +295,10 @@ class ParserDifferentialProbeTool:
         param = data.get("param", "q")
         method = (data.get("method") or "GET").upper()
         tests = data.get("tests") or [
-            "duplicate_params", "content_type", "url_parsing", "encoding",
+            "duplicate_params",
+            "content_type",
+            "url_parsing",
+            "encoding",
         ]
         timeout = data.get("timeout", 10)
 
@@ -304,9 +316,7 @@ class ParserDifferentialProbeTool:
             all_findings.extend(self._test_url_parsing(url, timeout))
 
         if "encoding" in tests:
-            all_findings.extend(
-                self._test_encoding_diff(url, param, method, timeout)
-            )
+            all_findings.extend(self._test_encoding_diff(url, param, method, timeout))
 
         # Build output
         lines = [
@@ -343,14 +353,22 @@ class ParserDifferentialProbeTool:
         has_url = any(f.get("test") == "url_parsing" for f in all_findings)
 
         if has_hpp:
-            lines.append("  - HPP detected! Front-end/back-end parse parameters differently.")
-            lines.append("  - Try injecting malicious values as the second/last parameter.")
+            lines.append(
+                "  - HPP detected! Front-end/back-end parse parameters differently."
+            )
+            lines.append(
+                "  - Try injecting malicious values as the second/last parameter."
+            )
         if has_ct:
             lines.append("  - Content-Type confusion detected!")
-            lines.append("  - Try sending JSON body with form Content-Type or vice versa.")
+            lines.append(
+                "  - Try sending JSON body with form Content-Type or vice versa."
+            )
         if has_url:
             lines.append("  - URL parsing differences detected!")
-            lines.append("  - Try path traversal or access control bypass with special path chars.")
+            lines.append(
+                "  - Try path traversal or access control bypass with special path chars."
+            )
         if not all_findings:
             lines.append("  - Try testing with different parameters or endpoints.")
             lines.append("  - Check for Node.js qs module (deep object parsing).")

@@ -11,7 +11,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ExecutionResult:
     """Result of an async tool execution."""
+
     tool_name: str
     input_data: str
     output: Optional[str] = None
@@ -30,6 +31,7 @@ class ExecutionResult:
 @dataclass
 class BatchResult:
     """Result of a batch execution."""
+
     results: List[ExecutionResult] = field(default_factory=list)
     total_duration_ms: float = 0.0
     successful: int = 0
@@ -117,6 +119,7 @@ class AsyncToolExecutor:
             tool: Tool instance with .use() method
             tool_input: JSON input string for the tool
         """
+
         def execute():
             start = time.time()
             try:
@@ -186,20 +189,24 @@ class AsyncToolExecutor:
                     self._errors += 1
 
             except concurrent.futures.TimeoutError:
-                results.append(ExecutionResult(
-                    tool_name=tool_name,
-                    input_data=tool_input,
-                    error="Execution timed out",
-                    success=False,
-                ))
+                results.append(
+                    ExecutionResult(
+                        tool_name=tool_name,
+                        input_data=tool_input,
+                        error="Execution timed out",
+                        success=False,
+                    )
+                )
                 self._errors += 1
             except Exception as e:
-                results.append(ExecutionResult(
-                    tool_name=tool_name,
-                    input_data=tool_input,
-                    error=str(e),
-                    success=False,
-                ))
+                results.append(
+                    ExecutionResult(
+                        tool_name=tool_name,
+                        input_data=tool_input,
+                        error=str(e),
+                        success=False,
+                    )
+                )
                 self._errors += 1
 
         return results
@@ -307,9 +314,7 @@ class AsyncToolExecutor:
             else 0.0
         )
         error_rate = (
-            self._errors / self._total_executions
-            if self._total_executions > 0
-            else 0.0
+            self._errors / self._total_executions if self._total_executions > 0 else 0.0
         )
 
         return {

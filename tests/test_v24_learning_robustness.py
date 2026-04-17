@@ -206,7 +206,9 @@ class TestRunTrackerNewFields:
         t = RunTracker()
         t.record_detailed_tool_call("http_fetch", "input", _FAKE_HTTP_OUTPUT)
         original = t.site_fingerprint
-        t.record_detailed_tool_call("http_fetch", "input", "<title>Different Page</title>")
+        t.record_detailed_tool_call(
+            "http_fetch", "input", "<title>Different Page</title>"
+        )
         assert t.site_fingerprint == original
 
     def test_non_fingerprint_tool_does_not_set_fingerprint(self):
@@ -369,7 +371,9 @@ class TestIsLessonsDuplicateWithSeqHash:
         with tempfile.TemporaryDirectory() as tmp:
             ld = Path(tmp)
             seq_hash = hash(("http_fetch", "sqli_probe", "http_fetch", "", ""))
-            self._write_dup_doc(ld, "http://ctf.test/login", "failure", "SQL Injection", seq_hash)
+            self._write_dup_doc(
+                ld, "http://ctf.test/login", "failure", "SQL Injection", seq_hash
+            )
             assert _is_lessons_duplicate(
                 "http://ctf.test/login", "sql_injection", "failure", seq_hash, ld
             )
@@ -379,7 +383,9 @@ class TestIsLessonsDuplicateWithSeqHash:
             ld = Path(tmp)
             seq_hash_stored = hash(("http_fetch", "sqli_probe", "http_fetch", "", ""))
             seq_hash_new = hash(("sqli_probe", "http_fetch", "sqli_probe", "", ""))
-            self._write_dup_doc(ld, "http://ctf.test/login", "failure", "SQL Injection", seq_hash_stored)
+            self._write_dup_doc(
+                ld, "http://ctf.test/login", "failure", "SQL Injection", seq_hash_stored
+            )
             assert not _is_lessons_duplicate(
                 "http://ctf.test/login", "sql_injection", "failure", seq_hash_new, ld
             )
@@ -388,7 +394,9 @@ class TestIsLessonsDuplicateWithSeqHash:
         with tempfile.TemporaryDirectory() as tmp:
             ld = Path(tmp)
             seq_hash = hash(("http_fetch", "sqli_probe", "", "", ""))
-            self._write_dup_doc(ld, "http://ctf.test/login", "success", "SQL Injection", seq_hash)
+            self._write_dup_doc(
+                ld, "http://ctf.test/login", "success", "SQL Injection", seq_hash
+            )
             assert not _is_lessons_duplicate(
                 "http://ctf.test/login", "sql_injection", "failure", seq_hash, ld
             )
@@ -491,7 +499,9 @@ class TestRunLessonsPipelineRobustness:
     def test_different_tool_sequences_produce_two_docs(self):
         with tempfile.TemporaryDirectory() as tmp:
             ld = Path(tmp)
-            log1 = self._log(["http_fetch", "sqli_probe", "http_fetch", "sqli_probe", "http_fetch"])
+            log1 = self._log(
+                ["http_fetch", "sqli_probe", "http_fetch", "sqli_probe", "http_fetch"]
+            )
             written1 = run_lessons_learned_pipeline(
                 config_data=self._config,
                 tracker_data=self._tracker,
@@ -508,10 +518,15 @@ class TestRunLessonsPipelineRobustness:
             confidence_before = None
             if docs_before:
                 import re
-                m = re.search(r"\*\*Confidence:\*\*\s*(\w+)", docs_before[0].read_text())
+
+                m = re.search(
+                    r"\*\*Confidence:\*\*\s*(\w+)", docs_before[0].read_text()
+                )
                 confidence_before = m.group(1) if m else None
 
-            log2 = self._log(["sqli_probe", "sqli_probe", "nosql_probe", "http_fetch", "sqli_probe"])
+            log2 = self._log(
+                ["sqli_probe", "sqli_probe", "nosql_probe", "http_fetch", "sqli_probe"]
+            )
             written2 = run_lessons_learned_pipeline(
                 config_data=self._config,
                 tracker_data=self._tracker,
@@ -528,12 +543,14 @@ class TestRunLessonsPipelineRobustness:
             # (confidence bump = similar rule found → bumped in place, no new file written)
             confidence_bumped = False
             if docs_before and confidence_before:
-                m = re.search(r"\*\*Confidence:\*\*\s*(\w+)", docs_before[0].read_text())
+                m = re.search(
+                    r"\*\*Confidence:\*\*\s*(\w+)", docs_before[0].read_text()
+                )
                 confidence_after = m.group(1) if m else None
                 confidence_bumped = confidence_after != confidence_before
-            assert total >= 2 or written2 or confidence_bumped, (
-                "Expected second run to produce a new doc or bump confidence of existing doc"
-            )
+            assert (
+                total >= 2 or written2 or confidence_bumped
+            ), "Expected second run to produce a new doc or bump confidence of existing doc"
 
     def test_site_fingerprint_stored_in_doc(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -582,7 +599,9 @@ class TestSafeKnowledgeQueryToolIsExcluded:
         return t
 
     def test_fingerprint_match_above_threshold_excluded(self):
-        tracker = self._make_tracker("title:Login Portal|h1:Welcome to SecureCTF|form:/api/login")
+        tracker = self._make_tracker(
+            "title:Login Portal|h1:Welcome to SecureCTF|form:/api/login"
+        )
         tool = self._make_tool(tracker)
         doc = "**Site fingerprint:** title:Login Portal|h1:Welcome to SecureCTF|form:/api/login"
         assert tool._is_excluded(doc) is True

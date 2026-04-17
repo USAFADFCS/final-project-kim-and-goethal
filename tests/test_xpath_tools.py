@@ -52,11 +52,15 @@ class TestXPathProbeTool:
 
     def test_invalid_method_returns_error(self):
         """Test that an invalid HTTP method returns an error."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "method": "DELETE",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "method": "DELETE",
+                }
+            )
+        )
         assert "Error" in result
         assert "method" in result.lower()
 
@@ -69,10 +73,14 @@ class TestXPathProbeTool:
     def test_baseline_failure_returns_error(self):
         """Test that a failed baseline request returns an error message."""
         self.session.post.side_effect = Exception("Connection refused")
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "Error" in result
         assert "baseline" in result.lower()
 
@@ -82,7 +90,9 @@ class TestXPathProbeTool:
         baseline = _mock_response(200, "Login page")  # 10 chars
 
         # True-condition probes return a long (different) response
-        true_resp = _mock_response(200, "Welcome admin dashboard with lots of content here")
+        true_resp = _mock_response(
+            200, "Welcome admin dashboard with lots of content here"
+        )
 
         # False-condition probes return short response matching baseline length
         false_resp = _mock_response(200, "Login page")
@@ -107,10 +117,14 @@ class TestXPathProbeTool:
 
         self.session.post.side_effect = lambda url, **kw: post_side_effect(**kw)
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "INJECTION DETECTED" in result
         assert "DIFFERENTIAL" in result
 
@@ -119,10 +133,14 @@ class TestXPathProbeTool:
         same_resp = _mock_response(200, "Login page content")
         self.session.post.return_value = same_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "No obvious XPath injection detected" in result
 
     def test_xpath_error_messages_detected(self):
@@ -140,10 +158,14 @@ class TestXPathProbeTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "INJECTION DETECTED" in result
         assert "XPath" in result
 
@@ -162,10 +184,14 @@ class TestXPathProbeTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "FLAGS FOUND" in result
         assert "picoCTF{xp4th_1nj3ct10n}" in result
 
@@ -174,11 +200,15 @@ class TestXPathProbeTool:
         same_resp = _mock_response(200, "Page content")
         self.session.get.return_value = same_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/search",
-            "param": "q",
-            "method": "GET",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/search",
+                    "param": "q",
+                    "method": "GET",
+                }
+            )
+        )
         assert "XPathProbeTool" in result
         self.session.get.assert_called()
         self.session.post.assert_not_called()
@@ -201,38 +231,54 @@ class TestXPathBlindBooleanTool:
 
     def test_missing_url_returns_error(self):
         """Test that a missing 'url' field returns an error."""
-        result = self.tool.use(json.dumps({
-            "param": "username",
-            "operation": "test_condition",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "param": "username",
+                    "operation": "test_condition",
+                }
+            )
+        )
         assert "Error" in result
         assert "'url'" in result
 
     def test_missing_param_returns_error(self):
         """Test that a missing 'param' field returns an error."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "operation": "test_condition",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "operation": "test_condition",
+                }
+            )
+        )
         assert "Error" in result
         assert "'param'" in result
 
     def test_missing_operation_returns_error(self):
         """Test that a missing 'operation' field returns an error."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "Error" in result
         assert "'operation'" in result
 
     def test_invalid_operation_returns_error(self):
         """Test that an unsupported operation value returns an error."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "operation": "drop_table",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "operation": "drop_table",
+                }
+            )
+        )
         assert "Error" in result
         assert "'operation'" in result
 
@@ -261,14 +307,18 @@ class TestXPathBlindBooleanTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "operation": "test_condition",
-            "true_indicator": "Welcome",
-            "false_indicator": "Invalid",
-            "detect_inversion": True,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "operation": "test_condition",
+                    "true_indicator": "Welcome",
+                    "false_indicator": "Invalid",
+                    "detect_inversion": True,
+                }
+            )
+        )
         assert "XPathBlindBooleanTool" in result
         assert "RESULT" in result
 
@@ -278,24 +328,32 @@ class TestXPathBlindBooleanTool:
         # The tool needs to make inversion-detection and baseline requests first,
         # but the xpath_expression check happens early for extract_char.
         self.session.post.return_value = _mock_response(200, "page")
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "operation": "extract_char",
-            "detect_inversion": False,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "operation": "extract_char",
+                    "detect_inversion": False,
+                }
+            )
+        )
         assert "Error" in result
         assert "xpath_expression" in result
 
     def test_extract_string_requires_xpath_expression(self):
         """Test that extract_string returns an error when xpath_expression is missing."""
         self.session.post.return_value = _mock_response(200, "page")
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "operation": "extract_string",
-            "detect_inversion": False,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "operation": "extract_string",
+                    "detect_inversion": False,
+                }
+            )
+        )
         assert "Error" in result
         assert "xpath_expression" in result
 
@@ -315,13 +373,17 @@ class TestXPathBlindBooleanTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "operation": "test_condition",
-            "true_indicator": "Welcome",
-            "detect_inversion": True,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "operation": "test_condition",
+                    "true_indicator": "Welcome",
+                    "detect_inversion": True,
+                }
+            )
+        )
         assert "INVERTED ORACLE DETECTED" in result
 
     def test_oracle_normal_not_inverted(self):
@@ -337,13 +399,17 @@ class TestXPathBlindBooleanTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "operation": "test_condition",
-            "true_indicator": "Welcome",
-            "detect_inversion": True,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "operation": "test_condition",
+                    "true_indicator": "Welcome",
+                    "detect_inversion": True,
+                }
+            )
+        )
         assert "NORMAL" in result or "not inverted" in result.lower()
         assert "INVERTED ORACLE DETECTED" not in result
 
@@ -362,6 +428,7 @@ class TestXPathBlindBooleanTool:
             #   ' or (substring(//user[1]/pass,1,1)>'X') or '1'='1
             # We need to parse the comparison character out.
             import re
+
             # Check for the empty-string verification
             if "substring" in payload and "=''" in payload:
                 # Position is NOT empty (we have a char), so this should be FALSE
@@ -412,15 +479,22 @@ class TestXPathBlindBooleanTool:
         same_resp = _mock_response(200, "Same response for everything")
         self.session.post.return_value = same_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "operation": "extract_string",
-            "xpath_expression": "//user[1]/pass",
-            "max_length": 10,
-            "detect_inversion": False,
-        }))
-        assert "consecutive failures" in result.lower() or "end of string" in result.lower()
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "operation": "extract_string",
+                    "xpath_expression": "//user[1]/pass",
+                    "max_length": 10,
+                    "detect_inversion": False,
+                }
+            )
+        )
+        assert (
+            "consecutive failures" in result.lower()
+            or "end of string" in result.lower()
+        )
 
 
 # ---------------------------------------------------------------------------

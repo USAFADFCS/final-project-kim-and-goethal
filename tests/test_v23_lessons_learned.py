@@ -196,7 +196,9 @@ class TestAtomicRule:
         assert dont_rule.rule_type == "do_not"
 
     def test_tool_context_list(self):
-        rule = AtomicRule("trigger", "takeaway", "do", ["sqli_probe", "blind_sqli_boolean"])
+        rule = AtomicRule(
+            "trigger", "takeaway", "do", ["sqli_probe", "blind_sqli_boolean"]
+        )
         assert len(rule.tool_context) == 2
 
 
@@ -327,13 +329,20 @@ class TestAnalyzeRun:
     def test_missed_signal_detected(self):
         doc = analyze_run(
             config_data=CONFIG_DATA_FAILURE,
-            tracker_data={"steps": 5, "tool_calls": {"javascript_source": 1, "robots_txt": 1}, "duration_seconds": 10.0},
+            tracker_data={
+                "steps": 5,
+                "tool_calls": {"javascript_source": 1, "robots_txt": 1},
+                "duration_seconds": 10.0,
+            },
             tool_call_log=TOOL_CALL_LOG_MISSED_SIGNAL,
             agent_response="Unable to find flag",
             candidate_flags=[],
         )
         # credential_found signal should be detected
-        assert any("credential_found" in s or "password" in s.lower() for s in doc.missed_signals)
+        assert any(
+            "credential_found" in s or "password" in s.lower()
+            for s in doc.missed_signals
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +383,9 @@ class TestExtractAtomicRules:
 
     def test_missed_signal_produces_do_rule(self):
         doc = self._make_failure_doc(
-            missed_signals=["`javascript_source` found credential_found but no follow-up exploitation (form_submit, http_fetch) was attempted"]
+            missed_signals=[
+                "`javascript_source` found credential_found but no follow-up exploitation (form_submit, http_fetch) was attempted"
+            ]
         )
         rules = _extract_atomic_rules(doc)
         assert any(r.rule_type == "do" for r in rules)
@@ -528,7 +539,9 @@ class TestIsLessonsDuplicate:
     def _make_seq_hash(self):
         return hash(("http_fetch", "sqli_probe", "http_fetch", "", ""))
 
-    def _write_lesson_doc(self, docs_dir: Path, url: str, category: str, outcome: str, seq_hash: int = 0):
+    def _write_lesson_doc(
+        self, docs_dir: Path, url: str, category: str, outcome: str, seq_hash: int = 0
+    ):
         """Write a minimal fake lessons doc to test dedup."""
         content = (
             f"**Challenge URL:** {url}\n"
@@ -553,7 +566,9 @@ class TestIsLessonsDuplicate:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             seq_hash = self._make_seq_hash()
-            self._write_lesson_doc(d, "http://ctf.test/login", "SQL Injection", "failure", seq_hash)
+            self._write_lesson_doc(
+                d, "http://ctf.test/login", "SQL Injection", "failure", seq_hash
+            )
             assert _is_lessons_duplicate(
                 "http://ctf.test/login",
                 "sql_injection",
@@ -566,7 +581,9 @@ class TestIsLessonsDuplicate:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             seq_hash = self._make_seq_hash()
-            self._write_lesson_doc(d, "http://ctf.test/login", "SQL Injection", "failure", seq_hash)
+            self._write_lesson_doc(
+                d, "http://ctf.test/login", "SQL Injection", "failure", seq_hash
+            )
             assert not _is_lessons_duplicate(
                 "http://ctf.test/login",
                 "sql_injection",
@@ -579,7 +596,9 @@ class TestIsLessonsDuplicate:
         with tempfile.TemporaryDirectory() as tmpdir:
             d = Path(tmpdir)
             seq_hash = self._make_seq_hash()
-            self._write_lesson_doc(d, "http://other.test/login", "SQL Injection", "failure", seq_hash)
+            self._write_lesson_doc(
+                d, "http://other.test/login", "SQL Injection", "failure", seq_hash
+            )
             assert not _is_lessons_duplicate(
                 "http://ctf.test/login",
                 "sql_injection",
@@ -761,6 +780,7 @@ try:
 
     class _FakeDoc:
         """Minimal stand-in for a langchain Document."""
+
         def __init__(self, content: str, source_file: str, doc_type: str = "curated"):
             self.page_content = content
             self.metadata = {"source_file": source_file, "doc_type": doc_type}
@@ -768,6 +788,7 @@ try:
     class _FakeRetriever:
         def __init__(self, docs):
             self._docs = docs
+
         def retrieve(self, query, top_k=10):
             return self._docs[:top_k]
 
@@ -817,7 +838,9 @@ try:
                 _FakeDoc("Prior lesson", "lessons_001_my-challenge.md"),
             ]
             # Put URL in the "prior lesson" content (via page_content)
-            docs[1].page_content = "Challenge URL: http://ctf.test/target Prior lesson content."
+            docs[1].page_content = (
+                "Challenge URL: http://ctf.test/target Prior lesson content."
+            )
             # For URL filtering we check source_file, so embed url in filename
             docs[1].metadata["source_file"] = "lessons_001_ctf-test-target.md"
             docs[1].metadata.update({"challenge_url": "http://ctf.test/target"})

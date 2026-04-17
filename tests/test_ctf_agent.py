@@ -16,7 +16,6 @@ from fairlib.modules.planning.react_planner import ReActPlanner
 
 from ctf_solver.agent import CTFAgent, _MD_FENCE_OPEN, _MD_FENCE_CLOSE
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
 
 
@@ -100,12 +99,12 @@ class TestMarkdownFenceRegex:
     """Test the compiled regexes used for stripping markdown fences."""
 
     def test_strips_opening_json_fence(self):
-        text = "```json\n{\"key\": 1}"
+        text = '```json\n{"key": 1}'
         result = _MD_FENCE_OPEN.sub("", text)
         assert result == '{"key": 1}'
 
     def test_strips_opening_fence_no_lang(self):
-        text = "```\n{\"key\": 1}"
+        text = '```\n{"key": 1}'
         result = _MD_FENCE_OPEN.sub("", text)
         assert result == '{"key": 1}'
 
@@ -138,7 +137,9 @@ class TestMarkdownStrippingPatch:
         # The unpatched parser would fail on this input (return FinalAnswer)
         md_wrapped = '```json\n{"thought": "testing", "action": {"tool_name": "http_fetch", "tool_input": "test"}}\n```'
         unpatched_result = planner._parse_json_response(md_wrapped)
-        assert isinstance(unpatched_result, FinalAnswer), "Unpatched parser should fail on markdown"
+        assert isinstance(
+            unpatched_result, FinalAnswer
+        ), "Unpatched parser should fail on markdown"
 
         # Create CTFAgent which patches the planner
         agent = CTFAgent(
@@ -249,7 +250,10 @@ class TestFinalAnswerGuard:
         agent = _make_agent(
             planner_results=[
                 FinalAnswer(text="I don't know the answer"),
-                (Thought(text="Let me try robots_txt"), Action(tool_name="robots_txt", tool_input="test")),
+                (
+                    Thought(text="Let me try robots_txt"),
+                    Action(tool_name="robots_txt", tool_input="test"),
+                ),
                 FinalAnswer(text="FLAG{after_retry}"),
             ],
         )
@@ -322,7 +326,10 @@ class TestCTFAgentIntegration:
         agent = _make_agent(
             planner_results=[
                 FinalAnswer(text="```json\n{...attempted action...}\n```"),
-                (Thought(text="trying http_fetch"), Action(tool_name="http_fetch", tool_input="test")),
+                (
+                    Thought(text="trying http_fetch"),
+                    Action(tool_name="http_fetch", tool_input="test"),
+                ),
                 FinalAnswer(text="The flag is FLAG{markdown_bug_fixed}"),
             ],
         )
@@ -333,8 +340,14 @@ class TestCTFAgentIntegration:
         """Normal flow (tool calls → final answer with flag) is not affected."""
         agent = _make_agent(
             planner_results=[
-                (Thought(text="recon"), Action(tool_name="http_fetch", tool_input="url")),
-                (Thought(text="inspect"), Action(tool_name="html_inspector", tool_input="url")),
+                (
+                    Thought(text="recon"),
+                    Action(tool_name="http_fetch", tool_input="url"),
+                ),
+                (
+                    Thought(text="inspect"),
+                    Action(tool_name="html_inspector", tool_input="url"),
+                ),
                 FinalAnswer(text="Flag: FLAG{normal_flow}"),
             ],
         )
@@ -413,13 +426,16 @@ class TestPromptGuardrails:
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
 
         assert "CRITICAL RESPONSE FORMAT RULES" in DEFAULT_SYSTEM_PROMPT
-        assert "Do NOT wrap it in markdown code blocks" in DEFAULT_SYSTEM_PROMPT
+        assert "single, valid JSON object" in DEFAULT_SYSTEM_PROMPT
 
     def test_system_prompt_has_final_answer_rules(self):
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT
 
         assert "FINAL ANSWER RULES" in DEFAULT_SYSTEM_PROMPT
-        assert "ONLY use 'final_answer' when you have actually found a string" in DEFAULT_SYSTEM_PROMPT
+        assert (
+            "ONLY use 'final_answer' when you have actually found a string"
+            in DEFAULT_SYSTEM_PROMPT
+        )
 
     def test_system_prompt_warns_against_premature_final(self):
         from ctf_solver.prompts.templates import DEFAULT_SYSTEM_PROMPT

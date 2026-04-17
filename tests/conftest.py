@@ -17,7 +17,6 @@ from unittest.mock import Mock, MagicMock
 
 import pytest
 
-
 # ==============================================================================
 # HTTP Session Fixtures
 # ==============================================================================
@@ -331,7 +330,9 @@ def pytest_configure(config):
     """Configure pytest with custom markers."""
     config.addinivalue_line("markers", "slow: marks tests as slow")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
-    config.addinivalue_line("markers", "requires_network: marks tests requiring network")
+    config.addinivalue_line(
+        "markers", "requires_network: marks tests requiring network"
+    )
 
 
 def pytest_collection_modifyitems(config, items):

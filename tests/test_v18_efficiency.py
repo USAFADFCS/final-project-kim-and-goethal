@@ -29,7 +29,6 @@ from ctf_solver.tools.logging_wrapper import LoggingToolWrapper
 from ctf_solver.rag.query_expander import QueryExpander
 from ctf_solver.rag.reranker import SimpleReranker
 
-
 # ==============================================================================
 # _scan_for_flags — flag detection helper
 # ==============================================================================

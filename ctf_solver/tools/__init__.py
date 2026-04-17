@@ -4,53 +4,93 @@ CTF Solver Tools - HTTP, HTML, and web exploitation tools for CTF solving.
 All tools follow the FAIR framework interface with `.use(tool_input: str) -> str`.
 """
 
-from ctf_solver.tools.http_tools import HttpFetchTool, FormSubmitTool
-from ctf_solver.tools.html_tools import HtmlInspectorTool, JavaScriptSourceTool
-from ctf_solver.tools.search_tools import RegexSearchTool, ResponseSearchTool, SqlPatternHintTool
-from ctf_solver.tools.web_tools import RobotsTxtTool, CookieInspectorTool, CookieSetTool
-from ctf_solver.tools.logging_wrapper import LoggingToolWrapper
-from ctf_solver.tools.encoding_tools import EncodingTool, HashIdentifierTool
-from ctf_solver.tools.diff_tools import ResponseDiffTool, TimingCompareTool, ResponseFingerprinter
-from ctf_solver.tools.enumeration_tools import PathEnumeratorTool, BackupFileFinder
-from ctf_solver.tools.sqli_tools import SqliProbeTool, SqliColumnCounter
+from ctf_solver.tools.attack_planner import AttackPlannerTool
 from ctf_solver.tools.blind_sqli_tools import (
     BlindSqliBooleanTool,
     BlindSqliTimeTool,
     SqliDataDumper,
 )
-from ctf_solver.tools.jwt_tools import JwtTool
-from ctf_solver.tools.ssti_tools import SstiProbeTool, SstiExploitSuggester
-from ctf_solver.tools.upload_tools import FileUploadTool, UploadLocationFinder
-from ctf_solver.tools.xxe_tools import XxeProbeTool, XxePayloadGenerator, XxeDocTypeBuilder
-from ctf_solver.tools.shell_tools import ShellExecuteTool
-from ctf_solver.tools.xpath_tools import XPathProbeTool, XPathBlindBooleanTool, XPathPayloadGenerator
-from ctf_solver.tools.filter_bypass_tools import FilterEnumeratorTool, PayloadMutatorTool
-from ctf_solver.tools.ssrf_tools import SsrfProbeTool, SsrfPayloadGenerator
-from ctf_solver.tools.attack_planner import AttackPlannerTool
-from ctf_solver.tools.lfi_tools import LfiProbeTool, LfiPayloadGenerator
-from ctf_solver.tools.nosql_tools import NosqlProbeTool, NosqlPayloadGenerator
-from ctf_solver.tools.cmdi_tools import CommandInjectionProbeTool, CommandInjectionPayloadGenerator
-from ctf_solver.tools.crypto_tools import CryptoProbeTool, CryptoAnalyzerTool, CryptoPayloadGenerator
-from ctf_solver.tools.deserialization_tools import DeserializationProbeTool, DeserializationPayloadGenerator
-from ctf_solver.tools.xss_tools import XssProbeTool, XssPayloadGenerator, CspAnalyzerTool
-from ctf_solver.tools.graphql_tools import GraphqlIntrospectionTool, GraphqlQueryTool
-from ctf_solver.tools.race_tools import RaceConditionTool
+from ctf_solver.tools.cmdi_tools import (
+    CommandInjectionPayloadGenerator,
+    CommandInjectionProbeTool,
+)
+from ctf_solver.tools.crypto_tools import (
+    CryptoAnalyzerTool,
+    CryptoPayloadGenerator,
+    CryptoProbeTool,
+)
+from ctf_solver.tools.css_tools import (
+    CssExfiltrationBuilder,
+    CssInjectionPayloadGenerator,
+)
+from ctf_solver.tools.deserialization_tools import (
+    DeserializationPayloadGenerator,
+    DeserializationProbeTool,
+)
+from ctf_solver.tools.diff_tools import (
+    ResponseDiffTool,
+    ResponseFingerprinter,
+    TimingCompareTool,
+)
+from ctf_solver.tools.encoding_tools import EncodingTool, HashIdentifierTool
+from ctf_solver.tools.enumeration_tools import BackupFileFinder, PathEnumeratorTool
+from ctf_solver.tools.filter_bypass_tools import (
+    FilterEnumeratorTool,
+    PayloadMutatorTool,
+)
 from ctf_solver.tools.fuzzer_tools import RequestRepeaterTool
+from ctf_solver.tools.graphql_tools import GraphqlIntrospectionTool, GraphqlQueryTool
+from ctf_solver.tools.html_tools import HtmlInspectorTool, JavaScriptSourceTool
+from ctf_solver.tools.http_tools import FormSubmitTool, HttpFetchTool
+from ctf_solver.tools.jwt_tools import JwtTool
+from ctf_solver.tools.lfi_tools import LfiPayloadGenerator, LfiProbeTool
+from ctf_solver.tools.logging_wrapper import LoggingToolWrapper
 from ctf_solver.tools.misc_probe_tools import (
     CrlfProbeTool,
-    PhpTypeJugglingTool,
-    PrototypePollutionTool,
     IdorEnumeratorTool,
     OpenRedirectProbeTool,
+    PhpTypeJugglingTool,
+    PrototypePollutionTool,
 )
-from ctf_solver.tools.css_tools import CssInjectionPayloadGenerator, CssExfiltrationBuilder
-from ctf_solver.tools.smuggling_tools import HttpSmugglingProbeTool
-from ctf_solver.tools.session_forgery_tools import FlaskSessionForgeryTool, DomClobberingPayloadGenerator
-from ctf_solver.tools.oauth_tools import OAuthProbeTool, OAuthPayloadGenerator
-from ctf_solver.tools.php_filter_tools import PhpFilterChainTool
+from ctf_solver.tools.nosql_tools import NosqlPayloadGenerator, NosqlProbeTool
+from ctf_solver.tools.oauth_tools import OAuthPayloadGenerator, OAuthProbeTool
 from ctf_solver.tools.parser_diff_tools import ParserDifferentialProbeTool
-from ctf_solver.tools.websocket_tools import WebSocketProbeTool
+from ctf_solver.tools.php_filter_tools import PhpFilterChainTool
+from ctf_solver.tools.race_tools import RaceConditionTool
+from ctf_solver.tools.recon_tools import DeepReconTool, SecurityHeaderAnalyzerTool
+from ctf_solver.tools.search_tools import (
+    RegexSearchTool,
+    ResponseSearchTool,
+    SqlPatternHintTool,
+)
+from ctf_solver.tools.session_forgery_tools import (
+    DomClobberingPayloadGenerator,
+    FlaskSessionForgeryTool,
+)
+from ctf_solver.tools.shell_tools import ShellExecuteTool
+from ctf_solver.tools.smuggling_tools import HttpSmugglingProbeTool
+from ctf_solver.tools.sqli_tools import SqliColumnCounter, SqliProbeTool
+from ctf_solver.tools.ssrf_tools import SsrfPayloadGenerator, SsrfProbeTool
+from ctf_solver.tools.ssti_tools import SstiExploitSuggester, SstiProbeTool
+from ctf_solver.tools.upload_tools import FileUploadTool, UploadLocationFinder
 from ctf_solver.tools.wasm_tools import WasmAnalyzerTool
+from ctf_solver.tools.web_tools import CookieInspectorTool, CookieSetTool, RobotsTxtTool
+from ctf_solver.tools.websocket_tools import WebSocketProbeTool
+from ctf_solver.tools.xpath_tools import (
+    XPathBlindBooleanTool,
+    XPathPayloadGenerator,
+    XPathProbeTool,
+)
+from ctf_solver.tools.xss_tools import (
+    CspAnalyzerTool,
+    XssPayloadGenerator,
+    XssProbeTool,
+)
+from ctf_solver.tools.xxe_tools import (
+    XxeDocTypeBuilder,
+    XxePayloadGenerator,
+    XxeProbeTool,
+)
 
 __all__ = [
     "HttpFetchTool",
@@ -159,4 +199,7 @@ __all__ = [
     "WebSocketProbeTool",
     # WASM / Reverse Engineering tools
     "WasmAnalyzerTool",
+    # Recon meta-tools
+    "SecurityHeaderAnalyzerTool",
+    "DeepReconTool",
 ]

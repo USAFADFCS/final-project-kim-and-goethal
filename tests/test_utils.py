@@ -27,10 +27,10 @@ from ctf_solver.utils.async_executor import (
     ProgressTracker,
 )
 
-
 # =============================================================================
 # ResponseCache Tests
 # =============================================================================
+
 
 class TestResponseCacheBasics:
     """Basic ResponseCache functionality tests."""
@@ -281,6 +281,7 @@ class TestResponseCacheThreadSafety:
 # RequestDeduplicator Tests
 # =============================================================================
 
+
 class TestRequestDeduplicatorBasics:
     """Basic RequestDeduplicator functionality tests."""
 
@@ -417,6 +418,7 @@ class TestRequestDeduplicatorStats:
 # CachedSession Tests
 # =============================================================================
 
+
 class TestCachedSession:
     """Tests for CachedSession wrapper."""
 
@@ -473,6 +475,7 @@ class TestCachedSession:
 # =============================================================================
 # AsyncToolExecutor Tests
 # =============================================================================
+
 
 class TestAsyncToolExecutorBasics:
     """Basic AsyncToolExecutor functionality tests."""
@@ -582,10 +585,7 @@ class TestAsyncToolExecutorParallel:
         mock_tool.use = slow_use
         mock_tool.name = "test_tool"
 
-        tasks = [
-            ("test_tool", mock_tool, f'{{"i": {i}}}')
-            for i in range(5)
-        ]
+        tasks = [("test_tool", mock_tool, f'{{"i": {i}}}') for i in range(5)]
 
         start = time.time()
         batch_result = executor.execute_batch(tasks, timeout=5.0)
@@ -657,7 +657,7 @@ class TestAsyncToolExecutorStats:
         mock_tool.use.return_value = "result"
         mock_tool.name = "test_tool"
 
-        executor.submit("test_tool", mock_tool, '{}')
+        executor.submit("test_tool", mock_tool, "{}")
         executor.wait_all()
 
         stats = executor.get_stats()
@@ -676,7 +676,7 @@ class TestAsyncToolExecutorContextManager:
         mock_tool.name = "test_tool"
 
         with AsyncToolExecutor() as executor:
-            executor.submit("test_tool", mock_tool, '{}')
+            executor.submit("test_tool", mock_tool, "{}")
             results = executor.wait_all()
             assert len(results) == 1
 
@@ -684,6 +684,7 @@ class TestAsyncToolExecutorContextManager:
 # =============================================================================
 # RateLimitedExecutor Tests
 # =============================================================================
+
 
 class TestRateLimitedExecutor:
     """Tests for RateLimitedExecutor."""
@@ -723,6 +724,7 @@ class TestRateLimitedExecutor:
 # =============================================================================
 # ProgressTracker Tests
 # =============================================================================
+
 
 class TestProgressTracker:
     """Tests for ProgressTracker."""
@@ -765,6 +767,7 @@ class TestProgressTracker:
 # BatchResult Tests
 # =============================================================================
 
+
 class TestBatchResult:
     """Tests for BatchResult dataclass."""
 
@@ -795,6 +798,7 @@ class TestBatchResult:
 # ExecutionResult Tests
 # =============================================================================
 
+
 class TestExecutionResult:
     """Tests for ExecutionResult dataclass."""
 
@@ -815,7 +819,7 @@ class TestExecutionResult:
         """Test error execution result."""
         result = ExecutionResult(
             tool_name="http_fetch",
-            input_data='{}',
+            input_data="{}",
             error="Connection failed",
             success=False,
         )
@@ -826,6 +830,7 @@ class TestExecutionResult:
 # =============================================================================
 # Integration Tests
 # =============================================================================
+
 
 class TestCacheExecutorIntegration:
     """Integration tests combining cache and executor."""

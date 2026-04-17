@@ -54,11 +54,15 @@ class TestNosqlProbeTool:
 
     def test_invalid_method(self):
         """Test that an invalid HTTP method returns an error."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "method": "DELETE",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "method": "DELETE",
+                }
+            )
+        )
         assert "Error" in result
         assert "method" in result.lower()
 
@@ -67,10 +71,14 @@ class TestNosqlProbeTool:
     def test_baseline_failure(self):
         """Test that a failed baseline request returns an error message."""
         self.session.post.side_effect = Exception("Connection refused")
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "Error" in result
         assert "baseline" in result.lower()
 
@@ -80,7 +88,9 @@ class TestNosqlProbeTool:
         baseline = _mock_response(200, "Login failed")
 
         # When bracket-notation param is sent, return success-like response
-        success_resp = _mock_response(200, "Welcome to the admin dashboard! Here is your data.")
+        success_resp = _mock_response(
+            200, "Welcome to the admin dashboard! Here is your data."
+        )
 
         call_count = [0]
 
@@ -91,7 +101,7 @@ class TestNosqlProbeTool:
             if call_count[0] == 1:
                 return baseline
             # If any key has bracket notation, return success
-            for key in (data or {}):
+            for key in data or {}:
                 if "[$" in key:
                     return success_resp
             return baseline
@@ -103,18 +113,24 @@ class TestNosqlProbeTool:
         # Override side_effect to handle all calls
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "injection_type": "query_param",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "injection_type": "query_param",
+                }
+            )
+        )
         assert "INTERESTING PAYLOADS" in result or "NosqlProbeTool" in result
 
     def test_injection_detected_json_body(self):
         """Test that injection is detected when JSON body payloads trigger
         a different response from the baseline."""
         baseline = _mock_response(200, "Login failed")
-        success_resp = _mock_response(200, "Welcome admin! Dashboard loaded successfully here.")
+        success_resp = _mock_response(
+            200, "Welcome admin! Dashboard loaded successfully here."
+        )
 
         call_count = [0]
 
@@ -130,11 +146,15 @@ class TestNosqlProbeTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "injection_type": "json_body",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "injection_type": "json_body",
+                }
+            )
+        )
         assert "INTERESTING PAYLOADS" in result
 
     def test_no_injection_all_same(self):
@@ -143,10 +163,14 @@ class TestNosqlProbeTool:
         self.session.post.return_value = same_resp
         self.session.get.return_value = same_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "No obviously interesting payloads found" in result
 
     def test_error_messages_detected(self):
@@ -164,10 +188,14 @@ class TestNosqlProbeTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "NoSQL ERROR INDICATORS DETECTED" in result or "MongoError" in result
 
     def test_flag_detection(self):
@@ -185,17 +213,23 @@ class TestNosqlProbeTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                }
+            )
+        )
         assert "FLAGS FOUND" in result
         assert "picoCTF{n0sql_1nj3ct10n_ftw}" in result
 
     def test_both_injection_types(self):
         """Test that 'both' injection type tests query_param and json_body."""
         baseline = _mock_response(200, "Login failed")
-        success_resp = _mock_response(200, "Welcome admin! Dashboard loaded successfully here.")
+        success_resp = _mock_response(
+            200, "Welcome admin! Dashboard loaded successfully here."
+        )
 
         call_count = [0]
 
@@ -207,18 +241,24 @@ class TestNosqlProbeTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "injection_type": "both",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "injection_type": "both",
+                }
+            )
+        )
         assert "NosqlProbeTool" in result
         assert "Injection Type: both" in result
 
     def test_where_injection_tested(self):
         """Test that $where JavaScript injection payloads are tested."""
         baseline = _mock_response(200, "Login failed")
-        where_resp = _mock_response(200, "Welcome! You are now logged in as admin dashboard.")
+        where_resp = _mock_response(
+            200, "Welcome! You are now logged in as admin dashboard."
+        )
 
         call_count = [0]
 
@@ -233,11 +273,15 @@ class TestNosqlProbeTool:
 
         self.session.post.side_effect = post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "injection_type": "json_body",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "injection_type": "json_body",
+                }
+            )
+        )
         # The tool always tests $where payloads
         assert "NosqlProbeTool" in result
 
@@ -246,11 +290,15 @@ class TestNosqlProbeTool:
         same_resp = _mock_response(200, "Search results")
         self.session.get.return_value = same_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/search",
-            "param": "q",
-            "method": "GET",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/search",
+                    "param": "q",
+                    "method": "GET",
+                }
+            )
+        )
         assert "NosqlProbeTool" in result
         self.session.get.assert_called()
 
@@ -261,11 +309,15 @@ class TestNosqlProbeTool:
 
     def test_invalid_injection_type(self):
         """Test that an invalid injection_type returns an error."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/login",
-            "param": "username",
-            "injection_type": "xml",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/login",
+                    "param": "username",
+                    "injection_type": "xml",
+                }
+            )
+        )
         assert "Error" in result
         assert "injection_type" in result.lower()
 
@@ -337,10 +389,14 @@ class TestNosqlPayloadGenerator:
 
     def test_data_extraction_with_prefix(self):
         """Test that data_extraction uses the provided known_prefix."""
-        result = self.tool.use(json.dumps({
-            "operation": "data_extraction",
-            "known_prefix": "adm",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "data_extraction",
+                    "known_prefix": "adm",
+                }
+            )
+        )
         assert "adm" in result
         assert "3 chars known" in result
 

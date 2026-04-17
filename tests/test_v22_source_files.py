@@ -203,9 +203,31 @@ class TestProcessUploadedFiles:
     def _process(self, files: Dict[str, bytes]) -> Dict[str, str]:
         """Minimal reimplementation matching streamlit_app._process_uploaded_files logic."""
         _TEXT_EXTENSIONS = {
-            ".py", ".php", ".js", ".ts", ".java", ".go", ".rb", ".c", ".h",
-            ".cpp", ".cs", ".sql", ".yaml", ".yml", ".json", ".html", ".xml",
-            ".sh", ".env", ".conf", ".cfg", ".ini", ".toml", ".txt", ".md",
+            ".py",
+            ".php",
+            ".js",
+            ".ts",
+            ".java",
+            ".go",
+            ".rb",
+            ".c",
+            ".h",
+            ".cpp",
+            ".cs",
+            ".sql",
+            ".yaml",
+            ".yml",
+            ".json",
+            ".html",
+            ".xml",
+            ".sh",
+            ".env",
+            ".conf",
+            ".cfg",
+            ".ini",
+            ".toml",
+            ".txt",
+            ".md",
         }
         result: Dict[str, str] = {}
 
@@ -231,7 +253,9 @@ class TestProcessUploadedFiles:
                             if member.endswith("/"):
                                 continue
                             member_data = zf.read(member)
-                            member_name = member.split("/")[-1] if "/" in member else member
+                            member_name = (
+                                member.split("/")[-1] if "/" in member else member
+                            )
                             _add_bytes(member_name, member_data)
                 except zipfile.BadZipFile:
                     pass

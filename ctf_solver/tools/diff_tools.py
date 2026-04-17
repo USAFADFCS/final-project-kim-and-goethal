@@ -44,15 +44,36 @@ class ResponseDiffTool:
 
     # Keywords that suggest error-based differences
     ERROR_KEYWORDS = [
-        "error", "exception", "syntax", "sql", "mysql", "sqlite", "postgresql",
-        "warning", "fatal", "undefined", "null", "failed", "invalid",
-        "denied", "forbidden", "unauthorized"
+        "error",
+        "exception",
+        "syntax",
+        "sql",
+        "mysql",
+        "sqlite",
+        "postgresql",
+        "warning",
+        "fatal",
+        "undefined",
+        "null",
+        "failed",
+        "invalid",
+        "denied",
+        "forbidden",
+        "unauthorized",
     ]
 
     # Keywords that suggest successful auth/access
     SUCCESS_KEYWORDS = [
-        "welcome", "dashboard", "admin", "logged in", "success", "flag",
-        "authenticated", "authorized", "session", "token"
+        "welcome",
+        "dashboard",
+        "admin",
+        "logged in",
+        "success",
+        "flag",
+        "authenticated",
+        "authorized",
+        "session",
+        "token",
     ]
 
     def use(self, tool_input: str) -> str:
@@ -66,7 +87,9 @@ class ResponseDiffTool:
         mode = data.get("mode", "summary").lower()
 
         if not isinstance(response1, str) or not isinstance(response2, str):
-            return "[ResponseDiffTool] Error: 'response1' and 'response2' must be strings."
+            return (
+                "[ResponseDiffTool] Error: 'response1' and 'response2' must be strings."
+            )
 
         if mode not in ("summary", "detailed", "length_only"):
             mode = "summary"
@@ -90,18 +113,20 @@ class ResponseDiffTool:
 
         # Heuristics
         likely_boolean_sqli = (
-            len_diff_pct > 5 and len_diff_pct < 50 and
-            len(errors1) == len(errors2) and  # Same error state
-            len1 > 100 and len2 > 100  # Both have substantial content
+            len_diff_pct > 5
+            and len_diff_pct < 50
+            and len(errors1) == len(errors2)  # Same error state
+            and len1 > 100
+            and len2 > 100  # Both have substantial content
         )
 
-        likely_error_based = (
-            (len(errors1) > 0) != (len(errors2) > 0)  # Error in one but not other
-        )
+        likely_error_based = (len(errors1) > 0) != (
+            len(errors2) > 0
+        )  # Error in one but not other
 
-        likely_auth_diff = (
-            (len(success1) > 0) != (len(success2) > 0)  # Success in one but not other
-        )
+        likely_auth_diff = (len(success1) > 0) != (
+            len(success2) > 0
+        )  # Success in one but not other
 
         # Build output based on mode
         output_lines = ["[ResponseDiffTool] Comparison Results", ""]
@@ -110,7 +135,9 @@ class ResponseDiffTool:
         output_lines.append("=== LENGTH ANALYSIS ===")
         output_lines.append(f"Response 1: {len1} bytes, {len(lines1)} lines")
         output_lines.append(f"Response 2: {len2} bytes, {len(lines2)} lines")
-        output_lines.append(f"Difference: {len_diff} bytes ({len_diff_pct:.1f}%), {line_diff} lines")
+        output_lines.append(
+            f"Difference: {len_diff} bytes ({len_diff_pct:.1f}%), {line_diff} lines"
+        )
         output_lines.append("")
 
         if mode == "length_only":
@@ -118,20 +145,34 @@ class ResponseDiffTool:
 
         # Keyword analysis
         output_lines.append("=== KEYWORD ANALYSIS ===")
-        output_lines.append(f"Error keywords in response 1: {errors1 if errors1 else 'None'}")
-        output_lines.append(f"Error keywords in response 2: {errors2 if errors2 else 'None'}")
-        output_lines.append(f"Success keywords in response 1: {success1 if success1 else 'None'}")
-        output_lines.append(f"Success keywords in response 2: {success2 if success2 else 'None'}")
+        output_lines.append(
+            f"Error keywords in response 1: {errors1 if errors1 else 'None'}"
+        )
+        output_lines.append(
+            f"Error keywords in response 2: {errors2 if errors2 else 'None'}"
+        )
+        output_lines.append(
+            f"Success keywords in response 1: {success1 if success1 else 'None'}"
+        )
+        output_lines.append(
+            f"Success keywords in response 2: {success2 if success2 else 'None'}"
+        )
         output_lines.append("")
 
         # Heuristics
         output_lines.append("=== VULNERABILITY HEURISTICS ===")
         if likely_boolean_sqli:
-            output_lines.append("[!] LIKELY BOOLEAN-BASED SQLI: Responses differ in content but similar structure")
+            output_lines.append(
+                "[!] LIKELY BOOLEAN-BASED SQLI: Responses differ in content but similar structure"
+            )
         if likely_error_based:
-            output_lines.append("[!] LIKELY ERROR-BASED DETECTION: One response has errors, other doesn't")
+            output_lines.append(
+                "[!] LIKELY ERROR-BASED DETECTION: One response has errors, other doesn't"
+            )
         if likely_auth_diff:
-            output_lines.append("[!] LIKELY AUTH DIFFERENCE: One response shows success indicators")
+            output_lines.append(
+                "[!] LIKELY AUTH DIFFERENCE: One response shows success indicators"
+            )
         if not (likely_boolean_sqli or likely_error_based or likely_auth_diff):
             output_lines.append("No obvious vulnerability patterns detected")
         output_lines.append("")
@@ -152,7 +193,9 @@ class ResponseDiffTool:
         text_lower = text.lower()
         return [kw for kw in keywords if kw in text_lower]
 
-    def _get_diff_lines(self, lines1: List[str], lines2: List[str], max_diffs: int = 10) -> List[str]:
+    def _get_diff_lines(
+        self, lines1: List[str], lines2: List[str], max_diffs: int = 10
+    ) -> List[str]:
         """Get a simple diff showing changed lines."""
         output = []
         diff_count = 0
@@ -166,8 +209,12 @@ class ResponseDiffTool:
             if line1 != line2:
                 if diff_count < max_diffs:
                     output.append(f"Line {i+1}:")
-                    output.append(f"  - R1: {line1[:100]}{'...' if len(line1) > 100 else ''}")
-                    output.append(f"  - R2: {line2[:100]}{'...' if len(line2) > 100 else ''}")
+                    output.append(
+                        f"  - R1: {line1[:100]}{'...' if len(line1) > 100 else ''}"
+                    )
+                    output.append(
+                        f"  - R2: {line2[:100]}{'...' if len(line2) > 100 else ''}"
+                    )
                 diff_count += 1
 
         if diff_count > max_diffs:
@@ -237,10 +284,14 @@ class TimingCompareTool:
             timeout = 15
 
         # Time first request
-        time1, status1, error1 = self._timed_request(url, method, params1, headers, timeout)
+        time1, status1, error1 = self._timed_request(
+            url, method, params1, headers, timeout
+        )
 
         # Time second request
-        time2, status2, error2 = self._timed_request(url, method, params2, headers, timeout)
+        time2, status2, error2 = self._timed_request(
+            url, method, params2, headers, timeout
+        )
 
         # Analyze results
         output_lines = ["[TimingCompareTool] Timing Comparison Results", ""]
@@ -275,11 +326,17 @@ class TimingCompareTool:
             if time_diff >= threshold:
                 output_lines.append("")
                 output_lines.append("[!] SIGNIFICANT TIME DIFFERENCE DETECTED")
-                output_lines.append("[!] This may indicate TIME-BASED BLIND SQL INJECTION")
+                output_lines.append(
+                    "[!] This may indicate TIME-BASED BLIND SQL INJECTION"
+                )
                 if time2 > time1:
-                    output_lines.append(f"[!] Request 2 was {time_diff:.1f}s slower - params2 may contain working payload")
+                    output_lines.append(
+                        f"[!] Request 2 was {time_diff:.1f}s slower - params2 may contain working payload"
+                    )
                 else:
-                    output_lines.append(f"[!] Request 1 was {time_diff:.1f}s slower - params1 may contain working payload")
+                    output_lines.append(
+                        f"[!] Request 1 was {time_diff:.1f}s slower - params1 may contain working payload"
+                    )
             else:
                 output_lines.append("No significant timing difference detected")
 
@@ -295,7 +352,9 @@ class TimingCompareTool:
         try:
             start = time.time()
             if method == "GET":
-                resp = self.session.get(url, params=params, headers=headers, timeout=timeout)
+                resp = self.session.get(
+                    url, params=params, headers=headers, timeout=timeout
+                )
             else:
                 # Detect JSON content type
                 content_type = ""
@@ -304,9 +363,13 @@ class TimingCompareTool:
                         content_type = v.lower()
                         break
                 if "application/json" in content_type:
-                    resp = self.session.post(url, json=params, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, json=params, headers=headers, timeout=timeout
+                    )
                 else:
-                    resp = self.session.post(url, data=params, headers=headers, timeout=timeout)
+                    resp = self.session.post(
+                        url, data=params, headers=headers, timeout=timeout
+                    )
             elapsed = time.time() - start
             return elapsed, resp.status_code, None
         except requests.exceptions.Timeout:

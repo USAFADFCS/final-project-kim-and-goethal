@@ -26,7 +26,13 @@ class TestAugmentToolCounts:
     """Unit tests for _augment_tool_counts (virtual probe-evidence keys)."""
 
     def test_adds_ssti_template_probe_for_7x7(self):
-        log = [{"tool": "form_submit", "input": '{"data": {"content": "{{7*7}}"}}', "output": "49"}]
+        log = [
+            {
+                "tool": "form_submit",
+                "input": '{"data": {"content": "{{7*7}}"}}',
+                "output": "49",
+            }
+        ]
         result = _augment_tool_counts({"form_submit": 1}, log)
         assert "_ssti_template_probe" in result
 
@@ -43,8 +49,16 @@ class TestAugmentToolCounts:
     def test_no_probe_key_when_no_template_input(self):
         """Cookie Monster scenario: no {{N*N}} in any input."""
         log = [
-            {"tool": "http_fetch", "input": '{"url": "http://example.com"}', "output": "49 paths found"},
-            {"tool": "encoding", "input": '{"text": "abc==", "operation": "base64_decode"}', "output": "flag"},
+            {
+                "tool": "http_fetch",
+                "input": '{"url": "http://example.com"}',
+                "output": "49 paths found",
+            },
+            {
+                "tool": "encoding",
+                "input": '{"text": "abc==", "operation": "base64_decode"}',
+                "output": "flag",
+            },
         ]
         result = _augment_tool_counts({"http_fetch": 3, "encoding": 1}, log)
         assert "_ssti_template_probe" not in result
@@ -68,16 +82,24 @@ class TestSstiConfirmedOutputPatterns:
         return [{"tool": "form_submit", "input": "{{8*8}}", "output": output}]
 
     def test_49_fires(self):
-        assert "ssti_confirmed" in _detect_partial_successes(self._log_with_output("Hello 49!"))
+        assert "ssti_confirmed" in _detect_partial_successes(
+            self._log_with_output("Hello 49!")
+        )
 
     def test_64_fires(self):
-        assert "ssti_confirmed" in _detect_partial_successes(self._log_with_output("Result: 64"))
+        assert "ssti_confirmed" in _detect_partial_successes(
+            self._log_with_output("Result: 64")
+        )
 
     def test_36_fires(self):
-        assert "ssti_confirmed" in _detect_partial_successes(self._log_with_output("value=36"))
+        assert "ssti_confirmed" in _detect_partial_successes(
+            self._log_with_output("value=36")
+        )
 
     def test_81_fires(self):
-        assert "ssti_confirmed" in _detect_partial_successes(self._log_with_output("output: 81"))
+        assert "ssti_confirmed" in _detect_partial_successes(
+            self._log_with_output("output: 81")
+        )
 
     def test_7777777_fires(self):
         assert "ssti_confirmed" in _detect_partial_successes(
@@ -115,7 +137,9 @@ class TestGuardedCategoryOverride:
         """SSTI1 scenario: form_submit + {{7*7}} → _ssti_template_probe added by
         _augment_tool_counts — override must fire even without ssti_probe tool."""
         augmented = {"form_submit": 3, "http_fetch": 2, "_ssti_template_probe": 1}
-        result = _guarded_category_override(["ssti_confirmed"], augmented, "client_side")
+        result = _guarded_category_override(
+            ["ssti_confirmed"], augmented, "client_side"
+        )
         assert result == "ssti"
 
     def test_ssti_confirmed_without_any_evidence_is_ignored(self):
@@ -126,7 +150,12 @@ class TestGuardedCategoryOverride:
         """
         result = _guarded_category_override(
             ["ssti_confirmed"],
-            {"http_fetch": 5, "javascript_source": 2, "path_enumerator": 3, "encoding": 1},
+            {
+                "http_fetch": 5,
+                "javascript_source": 2,
+                "path_enumerator": 3,
+                "encoding": 1,
+            },
             "client_side",
         )
         assert result == "client_side"

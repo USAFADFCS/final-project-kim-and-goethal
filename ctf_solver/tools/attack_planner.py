@@ -6,7 +6,7 @@ current findings, and tools already tried.
 """
 
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 class AttackPlannerTool:
@@ -51,20 +51,38 @@ class AttackPlannerTool:
     # Each plan is a list of (step_description, tool_name) tuples.
     ATTACK_PLANS: Dict[str, List[tuple]] = {
         "sql_injection": [
-            ("Probe for SQL injection vulnerabilities using common payloads", "sqli_probe"),
+            (
+                "Probe for SQL injection vulnerabilities using common payloads",
+                "sqli_probe",
+            ),
             ("Check for input filters and blocked keywords", "filter_enumerator"),
             ("Determine the number of columns in the query", "sqli_column_counter"),
-            ("Extract data using blind boolean-based SQL injection", "blind_sqli_boolean"),
-            ("Dump database contents with UNION or error-based techniques", "sqli_data_dumper"),
+            (
+                "Extract data using blind boolean-based SQL injection",
+                "blind_sqli_boolean",
+            ),
+            (
+                "Dump database contents with UNION or error-based techniques",
+                "sqli_data_dumper",
+            ),
         ],
         "xpath_injection": [
             ("Probe for XPath injection points", "xpath_probe"),
-            ("Detect oracle inversion and extract boolean responses", "xpath_blind_boolean"),
-            ("Extract data character by character using blind XPath injection", "xpath_blind_boolean"),
+            (
+                "Detect oracle inversion and extract boolean responses",
+                "xpath_blind_boolean",
+            ),
+            (
+                "Extract data character by character using blind XPath injection",
+                "xpath_blind_boolean",
+            ),
         ],
         "file_inclusion": [
             ("Probe for path traversal and local file inclusion", "lfi_probe"),
-            ("Try PHP wrappers (php://filter, php://input, data://) for source disclosure", "lfi_payload_generator"),
+            (
+                "Try PHP wrappers (php://filter, php://input, data://) for source disclosure",
+                "lfi_payload_generator",
+            ),
             ("Read the flag file or application source code", "lfi_probe"),
             ("Chain with log poisoning if direct read fails", "lfi_payload_generator"),
         ],
@@ -87,33 +105,75 @@ class AttackPlannerTool:
         "crypto": [
             ("Identify the cryptographic scheme and parameters", "crypto_analyzer"),
             ("Detect weaknesses in the implementation", "crypto_probe"),
-            ("Generate attack payloads targeting identified weaknesses", "crypto_payload_generator"),
+            (
+                "Generate attack payloads targeting identified weaknesses",
+                "crypto_payload_generator",
+            ),
         ],
         "deserialization": [
-            ("Detect the serialization format (PHP, Java, Python pickle, etc.)", "deserialization_probe"),
-            ("Craft malicious deserialization payload", "deserialization_payload_generator"),
-            ("Trigger execution by submitting the crafted payload", "deserialization_payload_generator"),
+            (
+                "Detect the serialization format (PHP, Java, Python pickle, etc.)",
+                "deserialization_probe",
+            ),
+            (
+                "Craft malicious deserialization payload",
+                "deserialization_payload_generator",
+            ),
+            (
+                "Trigger execution by submitting the crafted payload",
+                "deserialization_payload_generator",
+            ),
         ],
         "file_upload": [
-            ("Analyze upload restrictions (allowed types, size limits, validation)", "file_upload"),
-            ("Bypass extension filtering using double extensions, null bytes, etc.", "file_upload"),
+            (
+                "Analyze upload restrictions (allowed types, size limits, validation)",
+                "file_upload",
+            ),
+            (
+                "Bypass extension filtering using double extensions, null bytes, etc.",
+                "file_upload",
+            ),
             ("Upload a web shell or malicious file", "file_upload"),
-            ("Find the upload location to access the uploaded file", "upload_location_finder"),
+            (
+                "Find the upload location to access the uploaded file",
+                "upload_location_finder",
+            ),
         ],
         "filter_bypass": [
-            ("Enumerate blocked keywords and characters systematically", "filter_enumerator"),
-            ("Generate bypass variants using encoding, case mixing, concatenation", "payload_mutator"),
+            (
+                "Enumerate blocked keywords and characters systematically",
+                "filter_enumerator",
+            ),
+            (
+                "Generate bypass variants using encoding, case mixing, concatenation",
+                "payload_mutator",
+            ),
             ("Retry the original attack with clean bypass payloads", "payload_mutator"),
         ],
         "ssti": [
-            ("Probe for Server-Side Template Injection using math expressions", "ssti_probe"),
-            ("Identify the template engine (Jinja2, Twig, Freemarker, etc.)", "ssti_probe"),
-            ("Get exploit suggestions for the identified engine", "ssti_exploit_suggester"),
+            (
+                "Probe for Server-Side Template Injection using math expressions",
+                "ssti_probe",
+            ),
+            (
+                "Identify the template engine (Jinja2, Twig, Freemarker, etc.)",
+                "ssti_probe",
+            ),
+            (
+                "Get exploit suggestions for the identified engine",
+                "ssti_exploit_suggester",
+            ),
         ],
         "xxe": [
             ("Probe for XML External Entity injection", "xxe_probe"),
-            ("Generate XXE payloads for file read, SSRF, or data exfiltration", "xxe_payload_generator"),
-            ("Try reading sensitive files (/etc/passwd, flag, source code)", "xxe_payload_generator"),
+            (
+                "Generate XXE payloads for file read, SSRF, or data exfiltration",
+                "xxe_payload_generator",
+            ),
+            (
+                "Try reading sensitive files (/etc/passwd, flag, source code)",
+                "xxe_payload_generator",
+            ),
         ],
         "jwt": [
             ("Decode and analyze the JWT token structure", "jwt_tool"),
@@ -121,11 +181,23 @@ class AttackPlannerTool:
             ("Forge a new token with modified claims", "jwt_tool"),
         ],
         "unknown": [
-            ("Perform initial reconnaissance by fetching the target page", "http_fetch"),
-            ("Inspect HTML source for hidden fields, comments, and clues", "html_analyzer"),
+            (
+                "Perform initial reconnaissance by fetching the target page",
+                "http_fetch",
+            ),
+            (
+                "Inspect HTML source for hidden fields, comments, and clues",
+                "html_analyzer",
+            ),
             ("Check robots.txt, .git/, and other common paths", "http_fetch"),
-            ("Try common injection types (SQLi, XSS, LFI, command injection)", "sqli_probe"),
-            ("Consult CTF knowledge base for hints based on challenge description", "ctf_knowledge_query"),
+            (
+                "Try common injection types (SQLi, XSS, LFI, command injection)",
+                "sqli_probe",
+            ),
+            (
+                "Consult CTF knowledge base for hints based on challenge description",
+                "ctf_knowledge_query",
+            ),
         ],
     }
 
@@ -205,7 +277,9 @@ class AttackPlannerTool:
         skipped_tools = []
         for description, tool_name in plan_steps:
             if tool_name in tools_tried:
-                skipped_tools.append(f"  [SKIP] Step: {description} (tool '{tool_name}' already tried)")
+                skipped_tools.append(
+                    f"  [SKIP] Step: {description} (tool '{tool_name}' already tried)"
+                )
             else:
                 output_lines.append(f"  {step_num}. {description}")
                 output_lines.append(f"     Tool: {tool_name}")
@@ -218,7 +292,9 @@ class AttackPlannerTool:
 
         if step_num == 1:
             output_lines.append("  All planned tools have already been tried.")
-            output_lines.append("  Consider trying a different challenge_type or reviewing findings.")
+            output_lines.append(
+                "  Consider trying a different challenge_type or reviewing findings."
+            )
 
         output_lines.append("")
         output_lines.append(f"Total steps: {step_num - 1}")
@@ -260,7 +336,9 @@ class AttackPlannerTool:
             output_lines.append("")
 
         if last_result:
-            output_lines.append(f"Last result summary: {last_result[:200]}{'...' if len(last_result) > 200 else ''}")
+            output_lines.append(
+                f"Last result summary: {last_result[:200]}{'...' if len(last_result) > 200 else ''}"
+            )
             output_lines.append("")
 
         # Check if all steps are done
@@ -273,7 +351,9 @@ class AttackPlannerTool:
             return "\n".join(output_lines)
 
         output_lines.append("=== RECOMMENDED NEXT STEP ===")
-        output_lines.append(f"  Phase {next_phase_idx + 1}/{len(plan_steps)}: {next_description}")
+        output_lines.append(
+            f"  Phase {next_phase_idx + 1}/{len(plan_steps)}: {next_description}"
+        )
         output_lines.append(f"  Tool: {next_tool}")
         output_lines.append("")
 
@@ -320,22 +400,42 @@ class AttackPlannerTool:
 
         # Common finding patterns
         if "login" in findings_lower or "auth" in findings_lower:
-            adjustments.append("Login form detected - prioritize authentication bypass payloads")
+            adjustments.append(
+                "Login form detected - prioritize authentication bypass payloads"
+            )
 
         if "error" in findings_lower or "sql" in findings_lower:
-            adjustments.append("SQL errors detected - try error-based extraction techniques")
+            adjustments.append(
+                "SQL errors detected - try error-based extraction techniques"
+            )
 
-        if "filter" in findings_lower or "blocked" in findings_lower or "waf" in findings_lower:
-            adjustments.append("Input filtering detected - add filter bypass as an early step")
+        if (
+            "filter" in findings_lower
+            or "blocked" in findings_lower
+            or "waf" in findings_lower
+        ):
+            adjustments.append(
+                "Input filtering detected - add filter bypass as an early step"
+            )
 
         if "blind" in findings_lower or "no output" in findings_lower:
-            adjustments.append("No direct output - focus on blind/boolean-based techniques")
+            adjustments.append(
+                "No direct output - focus on blind/boolean-based techniques"
+            )
 
-        if "cookie" in findings_lower or "session" in findings_lower or "token" in findings_lower:
-            adjustments.append("Session/token found - check for JWT vulnerabilities or session manipulation")
+        if (
+            "cookie" in findings_lower
+            or "session" in findings_lower
+            or "token" in findings_lower
+        ):
+            adjustments.append(
+                "Session/token found - check for JWT vulnerabilities or session manipulation"
+            )
 
         if "upload" in findings_lower or "file" in findings_lower:
-            adjustments.append("File functionality detected - consider file upload or file inclusion attacks")
+            adjustments.append(
+                "File functionality detected - consider file upload or file inclusion attacks"
+            )
 
         if "xml" in findings_lower:
             adjustments.append("XML processing detected - consider XXE injection")
@@ -345,7 +445,9 @@ class AttackPlannerTool:
 
         return adjustments
 
-    def _suggest_input(self, tool_name: str, challenge_type: str, last_result: str) -> str:
+    def _suggest_input(
+        self, tool_name: str, challenge_type: str, last_result: str
+    ) -> str:
         """Suggest input parameters for the next tool."""
         suggestions = {
             "sqli_probe": '{"url": "<target_url>", "param": "<vulnerable_param>", "method": "POST"}',

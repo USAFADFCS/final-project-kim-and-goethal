@@ -32,7 +32,6 @@ from ctf_solver.llm import (
 )
 from ctf_solver.config import SolverConfig, LLMProviderType
 
-
 # =============================================================================
 # LLMProvider Enum Tests
 # =============================================================================
@@ -171,7 +170,7 @@ class TestAnthropicAdapter:
 
     @pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic not installed")
     def test_prepare_messages_system(self):
-        """Test message preparation with system message."""
+        """Test first system message becomes system parameter."""
         with patch("ctf_solver.llm.adapters.Anthropic"):
             with patch("ctf_solver.llm.adapters.AsyncAnthropic"):
                 adapter = AnthropicAdapter(api_key="test-key")
@@ -181,9 +180,36 @@ class TestAnthropicAdapter:
                 ]
                 system, prepared = adapter._prepare_messages(messages)
                 assert system == "You are helpful"
-                assert len(prepared) == 1
+                # Last message should be user (conversation ends with user)
+                assert prepared[-1]["role"] == "user"
                 assert prepared[0]["role"] == "user"
                 assert prepared[0]["content"] == "Hello"
+
+    @pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic not installed")
+    def test_prepare_messages_inline_system(self):
+        """Test subsequent system messages stay inline as user messages."""
+        with patch("ctf_solver.llm.adapters.Anthropic"):
+            with patch("ctf_solver.llm.adapters.AsyncAnthropic"):
+                adapter = AnthropicAdapter(api_key="test-key")
+                messages = [
+                    Message(role="system", content="System prompt"),
+                    Message(role="user", content="Challenge description"),
+                    Message(role="assistant", content="First response"),
+                    Message(role="system", content="Observation: tool result"),
+                ]
+                system, prepared = adapter._prepare_messages(messages)
+                # Only first system message becomes the system parameter
+                assert system == "System prompt"
+                # Observation stays inline as user message (not in system)
+                assert prepared[0]["role"] == "user"
+                assert prepared[0]["content"] == "Challenge description"
+                assert prepared[1]["role"] == "assistant"
+                assert prepared[1]["content"] == "First response"
+                # Inline system → user
+                assert prepared[2]["role"] == "user"
+                assert "Observation: tool result" in prepared[2]["content"]
+                # Last message should be user (continuation added)
+                assert prepared[-1]["role"] == "user"
 
     @pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic not installed")
     def test_prepare_messages_tool(self):
@@ -196,9 +222,11 @@ class TestAnthropicAdapter:
                 ]
                 system, prepared = adapter._prepare_messages(messages)
                 assert system is None
-                assert len(prepared) == 1
+                # First is user (tool mapped to user)
                 assert prepared[0]["role"] == "user"
                 assert "[Tool Result (my_tool)]" in prepared[0]["content"]
+                # Last message should be user
+                assert prepared[-1]["role"] == "user"
 
     @pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic not installed")
     def test_get_model_capabilities(self):
@@ -218,8 +246,11 @@ class TestAnthropicAdapter:
         """Test successful invoke."""
         mock_client = Mock()
         mock_response = Mock()
+        mock_response.stop_reason = "end_turn"
         mock_block = Mock()
-        mock_block.text = "Hello!"
+        mock_block.text = (
+            '{"thought": "test", "action": {"tool_name": "t", "tool_input": "i"}}'
+        )
         mock_block.type = "text"
         mock_response.content = [mock_block]
         mock_client.messages.create.return_value = mock_response
@@ -230,12 +261,33 @@ class TestAnthropicAdapter:
                 result = adapter.invoke([Message(role="user", content="Hi")])
 
                 assert result.role == "assistant"
-                assert result.content == "Hello!"
+                assert '"thought"' in result.content
                 mock_client.messages.create.assert_called_once()
 
     @pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic not installed")
+    def test_invoke_refusal_fallback(self):
+        """Test that refusal produces valid JSON fallback."""
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.stop_reason = "refusal"
+        mock_response.content = []  # No text blocks on refusal
+        mock_client.messages.create.return_value = mock_response
+
+        with patch("ctf_solver.llm.adapters.Anthropic", return_value=mock_client):
+            with patch("ctf_solver.llm.adapters.AsyncAnthropic"):
+                adapter = AnthropicAdapter(api_key="test-key")
+                result = adapter.invoke([Message(role="user", content="Hi")])
+
+                assert result.role == "assistant"
+                import json
+
+                parsed = json.loads(result.content)
+                assert "thought" in parsed
+                assert "action" in parsed
+
+    @pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic not installed")
     def test_invoke_error(self):
-        """Test invoke handles errors."""
+        """Test invoke handles errors with JSON fallback."""
         mock_client = Mock()
         mock_client.messages.create.side_effect = Exception("API Error")
 
@@ -245,7 +297,47 @@ class TestAnthropicAdapter:
                 result = adapter.invoke([Message(role="user", content="Hi")])
 
                 assert result.role == "assistant"
-                assert "Error:" in result.content
+                # Error handler now returns valid JSON with error context
+                import json
+
+                parsed = json.loads(result.content)
+                assert "thought" in parsed
+                assert "API error" in parsed["thought"]
+
+    @pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic not installed")
+    def test_invoke_sets_default_temperature(self):
+        """Test that invoke sets temperature=0.2 by default."""
+        mock_client = Mock()
+        mock_response = Mock()
+        mock_response.stop_reason = "end_turn"
+        mock_block = Mock()
+        mock_block.text = (
+            '{"thought": "hi", "action": {"tool_name": "t", "tool_input": "i"}}'
+        )
+        mock_block.type = "text"
+        mock_response.content = [mock_block]
+        mock_client.messages.create.return_value = mock_response
+
+        with patch("ctf_solver.llm.adapters.Anthropic", return_value=mock_client):
+            with patch("ctf_solver.llm.adapters.AsyncAnthropic"):
+                adapter = AnthropicAdapter(api_key="test-key")
+                adapter.invoke([Message(role="user", content="Hi")])
+                call_kwargs = mock_client.messages.create.call_args[1]
+                assert call_kwargs["temperature"] == 0.2
+
+    @pytest.mark.skipif(not ANTHROPIC_INSTALLED, reason="anthropic not installed")
+    def test_factory_defaults_anthropic(self):
+        """Test create_adapter uses correct defaults for Anthropic."""
+        with patch("ctf_solver.llm.adapters.Anthropic"):
+            with patch("ctf_solver.llm.adapters.AsyncAnthropic"):
+                adapter = create_adapter(
+                    provider=LLMProvider.ANTHROPIC,
+                    api_key="test-key",
+                )
+                assert isinstance(adapter, AnthropicAdapter)
+                assert adapter.max_tokens == 4096
+                # timeout is stored on the sync_client, not easily checked
+                # but we verify the factory doesn't override with 60.0
 
 
 # =============================================================================
@@ -320,9 +412,7 @@ class TestOllamaAdapter:
     def test_invoke_success(self):
         """Test successful invoke."""
         mock_client = Mock()
-        mock_client.chat.return_value = {
-            "message": {"content": "Hello from Ollama!"}
-        }
+        mock_client.chat.return_value = {"message": {"content": "Hello from Ollama!"}}
 
         with patch("ctf_solver.llm.adapters.OllamaClient", return_value=mock_client):
             adapter = OllamaAdapter()
@@ -398,7 +488,9 @@ class TestHybridAdapter:
         mock_primary.invoke.side_effect = Exception("Primary failed")
 
         mock_fallback = Mock()
-        mock_fallback.invoke.return_value = Message(role="assistant", content="Fallback")
+        mock_fallback.invoke.return_value = Message(
+            role="assistant", content="Fallback"
+        )
 
         adapter = HybridAdapter(primary=mock_primary, fallback=mock_fallback)
         result = adapter.invoke([Message(role="user", content="Hi")])

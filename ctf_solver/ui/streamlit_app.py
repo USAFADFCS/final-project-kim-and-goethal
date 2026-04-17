@@ -28,6 +28,7 @@ os.environ["MKL_NUM_THREADS"] = "1"
 import asyncio
 import io
 import re
+import tarfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,7 @@ import streamlit as st
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from ctf_solver import __version__
 from ctf_solver.config import (
     COMMON_FLAG_PATTERNS,
     DEFAULT_FLAG_REGEX,
@@ -94,8 +96,8 @@ def init_session_state():
         "challenge_description": "",
         "challenge_hints": "",
         "agent_prompt": DEFAULT_SYSTEM_PROMPT,
-        "model_name": "gpt-4o",
-        "max_steps": 20,
+        "model_name": "gpt-5.2",
+        "max_steps": 30,
         "docs_dirs": default_docs_dirs,  # Actual default, not just placeholder
         "kb_files": default_kb_files,  # Actual default, not just placeholder
         "project_root": str(project_root),
@@ -116,6 +118,8 @@ def init_session_state():
         "challenge_name": "",
         # Source code files (filename → content)
         "source_files": {},
+        # Logging
+        "save_logs": True,
     }
 
     for key, value in defaults.items():
@@ -174,9 +178,42 @@ async def run_agent_async(config: SolverConfig) -> str:
             fallback_failure_docs_dir=str(config.failure_docs_dir),
         )
         if prior_reflection:
-            initial_message = "## Prior Attempt Analysis\n\n" + prior_reflection + "\n\n---\n\n" + initial_message
+            initial_message = (
+                "## Prior Attempt Analysis\n\n"
+                + prior_reflection
+                + "\n\n---\n\n"
+                + initial_message
+            )
             tracker.prior_reflection_injected = True
             log_callback("[Reflexion] Prior lesson injected into prompt.")
+
+    # Proactive RAG injection: query knowledge base upfront so the agent always
+    # sees relevant prior knowledge before its first action.
+    if config.rag_mode in RAG_EXPERIENCE_MODES:
+        active_tool = get_active_knowledge_tool()
+        if active_tool is not None:
+            query = (
+                config.challenge_description
+                or config.challenge_name
+                or "web CTF exploitation techniques"
+            )
+            log_callback(
+                f"[RAG] Proactive knowledge injection attempted (query: {query!r:.80})."
+            )
+            proactive_results = active_tool.use(query)
+            if proactive_results and "No relevant information" not in proactive_results:
+                log_callback(
+                    "[RAG] Proactive knowledge injection succeeded — results injected."
+                )
+                initial_message += (
+                    "\n\n## Relevant Background Knowledge\n"
+                    "> Retrieved from the knowledge base before the run. "
+                    "Apply these lessons to your approach.\n\n" + proactive_results
+                )
+            else:
+                log_callback(
+                    "[RAG] Proactive knowledge injection: no relevant results found."
+                )
 
     st.session_state.execution_trace.append(
         {
@@ -236,13 +273,17 @@ async def run_agent_async(config: SolverConfig) -> str:
                 log_callback(f"[Lessons DB] {len(written)} rule doc(s) saved.")
                 consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
                 if consolidated:
-                    log_callback(f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated.")
+                    log_callback(
+                        f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated."
+                    )
                 active_tool = get_active_knowledge_tool()
                 if active_tool is not None:
                     active_tool.refresh_index()
                     log_callback("[RAG] Index rebuilt with new lesson docs.")
             else:
-                log_callback("[Lessons DB] No new rule docs (duplicate or no rules extracted).")
+                log_callback(
+                    "[Lessons DB] No new rule docs (duplicate or no rules extracted)."
+                )
         else:
             # Legacy AUGMENTED mode
             if not tracker.run_succeeded:
@@ -259,7 +300,9 @@ async def run_agent_async(config: SolverConfig) -> str:
                 )
                 if failure_doc_path:
                     tracker.failure_doc_generated = True
-                    log_callback(f"[Experience DB] Failure doc saved: {failure_doc_path}")
+                    log_callback(
+                        f"[Experience DB] Failure doc saved: {failure_doc_path}"
+                    )
                 else:
                     log_callback("[Experience DB] Duplicate failure doc skipped")
             else:
@@ -272,11 +315,15 @@ async def run_agent_async(config: SolverConfig) -> str:
                     failure_docs_dir=config.failure_docs_dir,
                 )
                 if success_doc_path:
-                    log_callback(f"[Experience DB] Success doc saved: {success_doc_path}")
+                    log_callback(
+                        f"[Experience DB] Success doc saved: {success_doc_path}"
+                    )
                 else:
                     log_callback("[Experience DB] Duplicate success doc skipped")
 
-    st.session_state.run_stats = tracker.to_dict()
+    run_stats = tracker.to_dict()
+    run_stats["tool_call_log"] = tracker.tool_call_log
+    st.session_state.run_stats = run_stats
 
     st.session_state.execution_trace.append(
         {
@@ -328,6 +375,16 @@ def run_agent():
     auto_analyze = st.session_state.get("auto_analyze_failures", False)
     use_llm_lessons = st.session_state.get("use_llm_for_lessons", False)
 
+    # Determine API key and base URL based on selected model
+    selected_model = st.session_state.model_name
+    if selected_model.startswith("gemini"):
+        # Gemini models use GENAI.mil via OpenAI-compatible endpoint
+        api_key = os.getenv("GENAI_API_KEY", "")
+        base_url = os.getenv("GENAI_BASE_URL", "https://api.genai.mil/v1")
+    else:
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        base_url = None
+
     config = SolverConfig(
         platform_name=st.session_state.platform_name,
         agent_system_prompt=(
@@ -344,10 +401,13 @@ def run_agent():
         docs_dirs=docs_dirs,
         kb_files=kb_files,
         max_steps=st.session_state.max_steps,
-        model_name=st.session_state.model_name,
+        model_name=selected_model,
         rag_mode=rag_mode_str,
         auto_analyze_failures=auto_analyze,
         use_llm_for_lessons=use_llm_lessons,
+        openai_api_key=api_key,
+        llm_base_url=base_url,
+        lessons_llm_model=st.session_state.get("lessons_llm_model", "gpt-4o-mini"),
     )
 
     try:
@@ -378,12 +438,113 @@ def run_agent():
             }
         )
 
+        # Save log file if enabled
+        if st.session_state.get("save_logs", True):
+            try:
+                _save_challenge_log(config)
+            except Exception as log_err:
+                log_callback(f"[WARN] Failed to save log file: {log_err}")
+
     except Exception as e:
         st.session_state.error_message = str(e)
         log_callback(f"[ERROR] {e}")
 
     finally:
         st.session_state.is_running = False
+
+
+def _save_challenge_log(config: SolverConfig) -> None:
+    """Save a comprehensive log of the run to challenge_logs/."""
+    project_root = Path(st.session_state.get("project_root", get_project_root()))
+    log_dir = project_root / "challenge_logs"
+    os.makedirs(log_dir, exist_ok=True)
+
+    ts = datetime.now()
+    ts_str = ts.strftime("%Y%m%d_%H%M%S")
+    name_slug = re.sub(r"[^a-zA-Z0-9]+", "_", config.challenge_name or "unnamed")
+    name_slug = name_slug.strip("_")[:50]
+    stats = st.session_state.run_stats or {}
+    outcome = stats.get("outcome", "unknown")
+    filename = f"{name_slug}_{outcome}_{ts_str}.log"
+
+    lines = []
+    lines.append("=" * 70)
+    lines.append(f"CTF Solver Run Log — v{__version__}")
+    lines.append(f"Timestamp: {ts.isoformat()}")
+    lines.append("=" * 70)
+
+    # Config summary
+    lines.append("")
+    lines.append("--- Configuration ---")
+    lines.append(f"Platform:    {config.platform_name}")
+    lines.append(f"Challenge:   {config.challenge_name or '(unnamed)'}")
+    lines.append(f"URL:         {config.challenge_url or '(none)'}")
+    lines.append(f"Flag regex:  {config.flag_regex}")
+    lines.append(f"Model:       {config.model_name}")
+    lines.append(f"Max steps:   {config.max_steps}")
+    lines.append(f"RAG mode:    {st.session_state.get('rag_mode', '?')}")
+    if config.challenge_description:
+        lines.append(f"Description: {config.challenge_description}")
+    if config.challenge_hints:
+        lines.append(f"Hints:       {config.challenge_hints}")
+
+    # Execution log (timestamped entries from the UI)
+    lines.append("")
+    lines.append("--- Execution Log ---")
+    for entry in st.session_state.logs:
+        lines.append(entry)
+
+    # Detailed tool call log
+    tool_call_log = []
+    if stats.get("tool_call_log"):
+        tool_call_log = stats["tool_call_log"]
+    elif st.session_state.run_stats:
+        # tool_call_log may not be in stats dict; check run_history
+        pass
+
+    if tool_call_log:
+        lines.append("")
+        lines.append("--- Detailed Tool Calls ---")
+        for i, call in enumerate(tool_call_log, 1):
+            lines.append(f"\n[Call {i}] {call.get('tool', '?')}")
+            lines.append(f"  Input:  {call.get('input', '')}")
+            lines.append(f"  Output: {call.get('output', '')}")
+
+    # Final answer
+    lines.append("")
+    lines.append("--- Final Answer ---")
+    lines.append(st.session_state.final_answer or "(no answer)")
+
+    # Candidate flags
+    lines.append("")
+    lines.append("--- Candidate Flags ---")
+    if st.session_state.candidate_flags:
+        for flag in st.session_state.candidate_flags:
+            lines.append(f"  {flag}")
+    else:
+        lines.append("  (none)")
+
+    # Run statistics
+    lines.append("")
+    lines.append("--- Run Statistics ---")
+    for key, val in stats.items():
+        if key == "tool_call_log":
+            continue
+        if key == "tool_calls" and isinstance(val, dict):
+            lines.append(f"  {key}:")
+            for tool_name, count in sorted(val.items(), key=lambda x: -x[1]):
+                lines.append(f"    {tool_name}: {count}")
+        else:
+            lines.append(f"  {key}: {val}")
+
+    lines.append("")
+    lines.append("=" * 70)
+    lines.append("END OF LOG")
+    lines.append("=" * 70)
+
+    log_path = log_dir / filename
+    log_path.write_text("\n".join(lines), encoding="utf-8")
+    log_callback(f"[LOG] Run log saved to {log_path}")
 
 
 def render_sidebar():
@@ -394,10 +555,39 @@ def render_sidebar():
     # Platform configuration
     st.sidebar.header("Platform Settings")
 
-    st.session_state.platform_name = st.sidebar.text_input(
-        "Platform Name",
-        value=st.session_state.platform_name,
-        help="Name of the CTF platform (e.g., PicoCTF, HackTheBox, TryHackMe)",
+    _PLATFORM_OPTIONS = [
+        "Generic CTF",
+        "MetaCTF",
+        "PicoCTF",
+        "HackTheBox",
+        "TryHackMe",
+        "CTFd",
+        "Other",
+    ]
+    _current = st.session_state.platform_name
+    if _current in _PLATFORM_OPTIONS:
+        _idx = _PLATFORM_OPTIONS.index(_current)
+    else:
+        _idx = _PLATFORM_OPTIONS.index("Other")
+
+    _selection = st.sidebar.selectbox(
+        "Platform",
+        options=_PLATFORM_OPTIONS,
+        index=_idx,
+        help="Select the CTF platform",
+    )
+    if _selection == "Other":
+        st.session_state.platform_name = st.sidebar.text_input(
+            "Custom Platform Name",
+            value=_current if _current not in _PLATFORM_OPTIONS else "",
+        )
+    else:
+        st.session_state.platform_name = _selection
+
+    st.session_state.challenge_name = st.sidebar.text_input(
+        "Challenge Name (for lessons tracking)",
+        value=st.session_state.get("challenge_name", ""),
+        help="Name used for lessons-learned deduplication and reflexion injection",
     )
 
     # Flag pattern selector
@@ -426,8 +616,16 @@ def render_sidebar():
     # Agent configuration
     st.sidebar.header("Agent Settings")
 
-    model_options = ["gpt-4o", "gpt-5.2"]
-    current_model = st.session_state.get("model_name", "gpt-4o")
+    model_options = [
+        "gpt-5.2",
+        "gpt-4o",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6",
+        "claude-haiku-4-5",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+    ]
+    current_model = st.session_state.get("model_name", "gpt-5.2")
     current_index = (
         model_options.index(current_model) if current_model in model_options else 0
     )
@@ -435,7 +633,7 @@ def render_sidebar():
         "LLM Model",
         options=model_options,
         index=current_index,
-        help="OpenAI model to use for the agent",
+        help="Gemini (GENAI.mil), Anthropic Claude, or OpenAI model",
     )
 
     st.session_state.max_steps = st.sidebar.slider(
@@ -444,6 +642,12 @@ def render_sidebar():
         max_value=50,
         value=st.session_state.max_steps,
         help="Maximum number of reasoning steps before stopping",
+    )
+
+    st.session_state.save_logs = st.sidebar.checkbox(
+        "Save run logs",
+        value=st.session_state.get("save_logs", True),
+        help="Save detailed logs of each run to the challenge_logs/ folder",
     )
 
     st.sidebar.markdown("---")
@@ -491,7 +695,10 @@ def render_sidebar():
     rag_mode_labels = list(rag_mode_options.keys())
     current_mode = st.session_state.get("rag_mode", "original")
     # Map legacy mode names to new UI options
-    _LEGACY_MAP = {"augmented": "lessons_write", "augmented_readonly": "lessons_readonly"}
+    _LEGACY_MAP = {
+        "augmented": "lessons_write",
+        "augmented_readonly": "lessons_readonly",
+    }
     current_mode = _LEGACY_MAP.get(current_mode, current_mode)
     current_idx = (
         list(rag_mode_options.values()).index(current_mode)
@@ -520,7 +727,8 @@ def render_sidebar():
 
     # auto_analyze_failures: derived from rag_mode (kept for backward compat)
     st.session_state.auto_analyze_failures = st.session_state.rag_mode in (
-        "lessons_write", "lessons_buildonly"
+        "lessons_write",
+        "lessons_buildonly",
     )
 
     # LLM-enhanced lesson generation (only meaningful in write modes)
@@ -537,13 +745,23 @@ def render_sidebar():
         st.session_state.use_llm_for_lessons = False
 
     # Show lessons database stats for modes that use it (read or write)
-    if st.session_state.rag_mode in ("lessons_write", "lessons_buildonly", "lessons_readonly"):
+    if st.session_state.rag_mode in (
+        "lessons_write",
+        "lessons_buildonly",
+        "lessons_readonly",
+    ):
         project_root = Path(st.session_state.get("project_root", get_project_root()))
         lessons_dir = project_root / "out" / "lessons_knowledge"
         failure_dir = project_root / "out" / "failure_knowledge"
-        lessons_count = len(list(lessons_dir.glob("lessons_*.md"))) if lessons_dir.exists() else 0
-        failure_count = len(list(failure_dir.glob("failure_*.md"))) if failure_dir.exists() else 0
-        success_count = len(list(failure_dir.glob("success_*.md"))) if failure_dir.exists() else 0
+        lessons_count = (
+            len(list(lessons_dir.glob("lessons_*.md"))) if lessons_dir.exists() else 0
+        )
+        failure_count = (
+            len(list(failure_dir.glob("failure_*.md"))) if failure_dir.exists() else 0
+        )
+        success_count = (
+            len(list(failure_dir.glob("success_*.md"))) if failure_dir.exists() else 0
+        )
         total_legacy = failure_count + success_count
         msg = f"Lessons DB: {lessons_count} rule doc(s)"
         if total_legacy:
@@ -573,15 +791,19 @@ def _render_run_statistics():
     # RAG mode and outcome
     rag_mode_display = stats.get("rag_mode", "unknown")
     outcome = stats.get("outcome", "pending")
-    outcome_text = {"success": "Success ✅", "partial": "Partial 🔶", "failure": "Failed ❌"}.get(
-        outcome, outcome.capitalize()
-    )
+    outcome_text = {
+        "success": "Success ✅",
+        "partial": "Partial 🔶",
+        "failure": "Failed ❌",
+    }.get(outcome, outcome.capitalize())
 
     rc1, rc2, rc3, rc4 = st.columns(4)
     rc1.metric("RAG Mode", rag_mode_display.capitalize())
     rc2.metric("Outcome", outcome_text)
     rc3.metric("RAG Queries", stats.get("rag_queries_made", 0))
-    rc4.metric("Prior Reflection", "Yes" if stats.get("prior_reflection_injected") else "No")
+    rc4.metric(
+        "Prior Reflection", "Yes" if stats.get("prior_reflection_injected") else "No"
+    )
 
     rc5, rc6 = st.columns(2)
     rc5.metric("Unique Tools Used", stats.get("unique_tools_used", 0))
@@ -643,10 +865,37 @@ def _process_uploaded_files(uploaded_files) -> Dict[str, str]:
     result: Dict[str, str] = {}
 
     _TEXT_EXTENSIONS = {
-        ".py", ".php", ".js", ".ts", ".java", ".go", ".rb", ".c", ".h",
-        ".cpp", ".cs", ".sql", ".yaml", ".yml", ".json", ".html", ".xml",
-        ".sh", ".env", ".conf", ".cfg", ".ini", ".toml", ".txt", ".md",
-        ".htm", ".jsx", ".tsx", ".rs", ".swift", ".kt",
+        ".py",
+        ".php",
+        ".js",
+        ".ts",
+        ".java",
+        ".go",
+        ".rb",
+        ".c",
+        ".h",
+        ".cpp",
+        ".cs",
+        ".sql",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".html",
+        ".xml",
+        ".sh",
+        ".env",
+        ".conf",
+        ".cfg",
+        ".ini",
+        ".toml",
+        ".txt",
+        ".md",
+        ".htm",
+        ".jsx",
+        ".tsx",
+        ".rs",
+        ".swift",
+        ".kt",
     }
 
     def _add_bytes(filename: str, data: bytes) -> None:
@@ -661,9 +910,29 @@ def _process_uploaded_files(uploaded_files) -> Dict[str, str]:
             except UnicodeDecodeError:
                 pass  # truly binary — skip
 
+    def _extract_tar(fileobj: io.BytesIO) -> None:
+        """Extract text files from a tar archive (plain, gzip, or bz2)."""
+        try:
+            with tarfile.open(fileobj=fileobj, mode="r:*") as tf:
+                for member in tf.getmembers():
+                    if not member.isfile():
+                        continue
+                    f = tf.extractfile(member)
+                    if f is None:
+                        continue
+                    member_name = (
+                        member.name.split("/")[-1]
+                        if "/" in member.name
+                        else member.name
+                    )
+                    _add_bytes(member_name, f.read())
+        except (tarfile.TarError, EOFError, OSError):
+            pass  # not a valid tar — skip
+
     for uf in uploaded_files:
         raw = uf.read()
         name = uf.name
+        name_lower = name.lower()
         ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
         if ext == ".zip":
             try:
@@ -677,6 +946,13 @@ def _process_uploaded_files(uploaded_files) -> Dict[str, str]:
                         _add_bytes(member_name, member_data)
             except zipfile.BadZipFile:
                 pass  # not a valid ZIP — skip
+        elif (
+            ext == ".tar"
+            or name_lower.endswith(".tar.gz")
+            or name_lower.endswith(".tar.bz2")
+            or ext in (".tgz", ".tbz2")
+        ):
+            _extract_tar(io.BytesIO(raw))
         else:
             _add_bytes(name, raw)
 
@@ -738,15 +1014,45 @@ def render_main_panel():
             "Source Code Files (optional)",
             accept_multiple_files=True,
             type=[
-                "py", "php", "js", "ts", "java", "go", "rb", "c", "h",
-                "cpp", "cs", "sql", "yaml", "yml", "json", "html", "xml",
-                "sh", "txt", "md", "zip", "env", "conf", "cfg", "ini",
-                "toml", "jsx", "tsx", "rs",
+                "py",
+                "php",
+                "js",
+                "ts",
+                "java",
+                "go",
+                "rb",
+                "c",
+                "h",
+                "cpp",
+                "cs",
+                "sql",
+                "yaml",
+                "yml",
+                "json",
+                "html",
+                "xml",
+                "sh",
+                "txt",
+                "md",
+                "zip",
+                "tar",
+                "gz",
+                "tgz",
+                "bz2",
+                "tbz2",
+                "env",
+                "conf",
+                "cfg",
+                "ini",
+                "toml",
+                "jsx",
+                "tsx",
+                "rs",
             ],
             help=(
                 "Drop source files provided by the challenge here. "
                 "The agent will read them to identify vulnerabilities before making HTTP requests. "
-                "ZIP archives are automatically extracted."
+                "ZIP and TAR archives (.tar, .tar.gz, .tar.bz2) are automatically extracted."
             ),
         )
         if uploaded:

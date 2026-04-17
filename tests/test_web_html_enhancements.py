@@ -14,7 +14,6 @@ import requests
 from ctf_solver.tools.web_tools import CookieSetTool
 from ctf_solver.tools.html_tools import HtmlInspectorTool
 
-
 # ==============================================================================
 # CookieSetTool delete tests
 # ==============================================================================
@@ -30,81 +29,121 @@ class TestCookieSetToolDelete:
     def test_delete_existing_cookie(self):
         """Set a cookie, then delete it with delete=true, verify it's removed."""
         # First, set a cookie
-        result = self.tool.use(json.dumps({
-            "domain": "example.com",
-            "name": "session_id",
-            "value": "abc123",
-            "path": "/",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "domain": "example.com",
+                    "name": "session_id",
+                    "value": "abc123",
+                    "path": "/",
+                }
+            )
+        )
         assert "Set cookie" in result
-        assert self.session.cookies.get("session_id", domain="example.com", path="/") == "abc123"
+        assert (
+            self.session.cookies.get("session_id", domain="example.com", path="/")
+            == "abc123"
+        )
 
         # Now delete it
-        result = self.tool.use(json.dumps({
-            "domain": "example.com",
-            "name": "session_id",
-            "path": "/",
-            "delete": True,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "domain": "example.com",
+                    "name": "session_id",
+                    "path": "/",
+                    "delete": True,
+                }
+            )
+        )
         assert "Deleted cookie" in result
         assert "session_id" in result
-        assert self.session.cookies.get("session_id", domain="example.com", path="/") is None
+        assert (
+            self.session.cookies.get("session_id", domain="example.com", path="/")
+            is None
+        )
 
     def test_delete_nonexistent_cookie(self):
         """Try deleting a cookie that doesn't exist; should return 'not found' message."""
-        result = self.tool.use(json.dumps({
-            "domain": "example.com",
-            "name": "no_such_cookie",
-            "path": "/",
-            "delete": True,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "domain": "example.com",
+                    "name": "no_such_cookie",
+                    "path": "/",
+                    "delete": True,
+                }
+            )
+        )
         assert "not found" in result.lower()
 
     def test_delete_requires_domain(self):
         """Missing domain returns error."""
-        result = self.tool.use(json.dumps({
-            "name": "session_id",
-            "delete": True,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "name": "session_id",
+                    "delete": True,
+                }
+            )
+        )
         assert "Error" in result
         assert "domain" in result.lower()
 
     def test_delete_requires_name(self):
         """Missing name returns error."""
-        result = self.tool.use(json.dumps({
-            "domain": "example.com",
-            "delete": True,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "domain": "example.com",
+                    "delete": True,
+                }
+            )
+        )
         assert "Error" in result
         assert "name" in result.lower()
 
     def test_delete_ignores_value(self):
         """Value can be missing when delete=true; the delete still works."""
         # Set a cookie first
-        self.tool.use(json.dumps({
-            "domain": "example.com",
-            "name": "token",
-            "value": "xyz",
-            "path": "/",
-        }))
-        assert self.session.cookies.get("token", domain="example.com", path="/") == "xyz"
+        self.tool.use(
+            json.dumps(
+                {
+                    "domain": "example.com",
+                    "name": "token",
+                    "value": "xyz",
+                    "path": "/",
+                }
+            )
+        )
+        assert (
+            self.session.cookies.get("token", domain="example.com", path="/") == "xyz"
+        )
 
         # Delete without providing value
-        result = self.tool.use(json.dumps({
-            "domain": "example.com",
-            "name": "token",
-            "path": "/",
-            "delete": True,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "domain": "example.com",
+                    "name": "token",
+                    "path": "/",
+                    "delete": True,
+                }
+            )
+        )
         assert "Deleted cookie" in result
         assert self.session.cookies.get("token", domain="example.com", path="/") is None
 
     def test_set_still_requires_value(self):
         """Without delete flag, value is still required for set operation."""
-        result = self.tool.use(json.dumps({
-            "domain": "example.com",
-            "name": "admin",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "domain": "example.com",
+                    "name": "admin",
+                }
+            )
+        )
         assert "Error" in result
         assert "value" in result.lower()
 

@@ -6,7 +6,10 @@ import json
 import pytest
 import requests
 from unittest.mock import Mock, patch, MagicMock
-from ctf_solver.tools.filter_bypass_tools import FilterEnumeratorTool, PayloadMutatorTool
+from ctf_solver.tools.filter_bypass_tools import (
+    FilterEnumeratorTool,
+    PayloadMutatorTool,
+)
 
 
 def _mock_response(status_code=200, text=""):
@@ -41,11 +44,15 @@ class TestFilterEnumeratorTool:
 
     def test_invalid_method_returns_error(self):
         """Test handling of invalid HTTP method."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "username",
-            "method": "DELETE"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/login",
+                    "param": "username",
+                    "method": "DELETE",
+                }
+            )
+        )
         assert "Error" in result
         assert "method" in result.lower()
 
@@ -60,10 +67,9 @@ class TestFilterEnumeratorTool:
     def test_baseline_failure_returns_error(self):
         """Test error when baseline request fails (returns None)."""
         self.session.post.side_effect = Exception("Connection refused")
-        result = self.tool.use(json.dumps({
-            "url": "http://unreachable.com/login",
-            "param": "username"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://unreachable.com/login", "param": "username"})
+        )
         assert "Error" in result
         assert "baseline" in result.lower()
 
@@ -85,14 +91,15 @@ class TestFilterEnumeratorTool:
             return normal_resp
 
         # First call is baseline ("cleaninput123"), rest are keyword tests
-        self.session.post.side_effect = lambda url, data=None, headers=None, timeout=None: (
-            blocked_resp if data and data.get("username") == "OR" else normal_resp
+        self.session.post.side_effect = (
+            lambda url, data=None, headers=None, timeout=None: (
+                blocked_resp if data and data.get("username") == "OR" else normal_resp
+            )
         )
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "username"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/login", "param": "username"})
+        )
 
         assert "BLOCKED" in result
         assert "OR" in result
@@ -104,10 +111,9 @@ class TestFilterEnumeratorTool:
         # All requests return the same response as baseline
         self.session.post.return_value = normal_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "username"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/login", "param": "username"})
+        )
 
         assert "ALLOWED KEYWORDS" in result
         # When nothing is blocked, all keywords should be allowed
@@ -116,21 +122,26 @@ class TestFilterEnumeratorTool:
 
     def test_blocked_operator_detected(self):
         """Test that a blocked operator is detected via body content indicator."""
-        baseline = _mock_response(status_code=200, text="Normal login page with content here")
+        baseline = _mock_response(
+            status_code=200, text="Normal login page with content here"
+        )
 
         def make_response(value):
             if value == "=":
                 return _mock_response(status_code=200, text="Input filtered by WAF")
-            return _mock_response(status_code=200, text="Normal login page with content here")
+            return _mock_response(
+                status_code=200, text="Normal login page with content here"
+            )
 
-        self.session.post.side_effect = lambda url, data=None, headers=None, timeout=None: (
-            make_response(data.get("username", "")) if data else baseline
+        self.session.post.side_effect = (
+            lambda url, data=None, headers=None, timeout=None: (
+                make_response(data.get("username", "")) if data else baseline
+            )
         )
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "username"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/login", "param": "username"})
+        )
 
         assert "BLOCKED OPERATORS" in result
         assert "'='" in result
@@ -138,20 +149,23 @@ class TestFilterEnumeratorTool:
 
     def test_recommendations_or_blocked_pipe_allowed(self):
         """Test recommendation when OR is blocked but || is allowed."""
+
         def make_response(value):
             if value == "OR":
                 return _mock_response(status_code=403, text="Blocked")
             return _mock_response(status_code=200, text="Normal page content here")
 
-        self.session.post.side_effect = lambda url, data=None, headers=None, timeout=None: (
-            make_response(data.get("username", "")) if data else
-            _mock_response(status_code=200, text="Normal page content here")
+        self.session.post.side_effect = (
+            lambda url, data=None, headers=None, timeout=None: (
+                make_response(data.get("username", ""))
+                if data
+                else _mock_response(status_code=200, text="Normal page content here")
+            )
         )
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "username"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/login", "param": "username"})
+        )
 
         assert "RECOMMENDATIONS" in result
         assert "'||'" in result
@@ -159,20 +173,23 @@ class TestFilterEnumeratorTool:
 
     def test_recommendations_eq_blocked_is_allowed(self):
         """Test recommendation when = is blocked but IS is allowed."""
+
         def make_response(value):
             if value == "=":
                 return _mock_response(status_code=403, text="Blocked")
             return _mock_response(status_code=200, text="Normal page content here")
 
-        self.session.post.side_effect = lambda url, data=None, headers=None, timeout=None: (
-            make_response(data.get("username", "")) if data else
-            _mock_response(status_code=200, text="Normal page content here")
+        self.session.post.side_effect = (
+            lambda url, data=None, headers=None, timeout=None: (
+                make_response(data.get("username", ""))
+                if data
+                else _mock_response(status_code=200, text="Normal page content here")
+            )
         )
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "username"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/login", "param": "username"})
+        )
 
         assert "RECOMMENDATIONS" in result
         assert "IS" in result
@@ -183,10 +200,9 @@ class TestFilterEnumeratorTool:
         normal_resp = _mock_response(status_code=200, text="Normal page content here")
         self.session.post.return_value = normal_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "username"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/login", "param": "username"})
+        )
 
         assert "No filters detected" in result
         assert "Standard payloads should work" in result
@@ -208,10 +224,9 @@ class TestFilterEnumeratorTool:
 
         self.session.post.side_effect = side_effect_fn
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "param": "username"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/login", "param": "username"})
+        )
 
         assert "ERRORS" in result or "Allowed" in result
         # Should still produce a report, not crash
@@ -241,10 +256,9 @@ class TestPayloadMutatorTool:
 
     def test_invalid_blocked_keywords_type_returns_error(self):
         """Test handling of blocked_keywords that is not a list."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": "or"
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' OR '1'='1' --", "blocked_keywords": "or"})
+        )
         assert "Error" in result
         assert "blocked_keywords" in result
         assert "list" in result.lower()
@@ -253,78 +267,74 @@ class TestPayloadMutatorTool:
 
     def test_no_blocked_keywords_returns_no_variants(self):
         """Test that no variants are generated when no keywords are blocked."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": []
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' OR '1'='1' --", "blocked_keywords": []})
+        )
         assert "No variants could be generated" in result
 
     def test_or_replaced_with_pipe(self):
         """Test that OR is replaced with || when blocked."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": ["or"]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' OR '1'='1' --", "blocked_keywords": ["or"]})
+        )
         assert "||" in result
         assert "double-pipe" in result.lower() or "boolean OR" in result
 
     def test_eq_replaced_with_is(self):
         """Test that = is replaced with IS when blocked."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": ["="]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' OR '1'='1' --", "blocked_keywords": ["="]})
+        )
         assert "IS" in result
         assert "IS operator" in result or "equality" in result.lower()
 
     def test_eq_replaced_with_glob(self):
         """Test that = is replaced with GLOB when blocked."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": ["="]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' OR '1'='1' --", "blocked_keywords": ["="]})
+        )
         assert "GLOB" in result
 
     def test_admin_replaced_with_concatenation(self):
         """Test that admin is replaced with concatenation bypass."""
-        result = self.tool.use(json.dumps({
-            "payload": "admin' --",
-            "blocked_keywords": ["admin"]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "admin' --", "blocked_keywords": ["admin"]})
+        )
         assert "ad'||'min" in result or "adm'||'in" in result or "a'||'dmin" in result
         assert "concatenation" in result.lower()
 
     def test_comment_replaced_when_blocked(self):
         """Test that -- comment is replaced with alternatives when blocked."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": ["--"]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' OR '1'='1' --", "blocked_keywords": ["--"]})
+        )
         # Should offer /**/ or # or removal
         assert "/**/" in result or "#" in result or "no-comment" in result.lower()
 
     def test_true_replaced_with_1(self):
         """Test that true is replaced with literal 1."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR true --",
-            "blocked_keywords": ["true"]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' OR true --", "blocked_keywords": ["true"]})
+        )
         assert "literal 1" in result
 
     def test_false_replaced_with_0(self):
         """Test that false is replaced with literal 0."""
-        result = self.tool.use(json.dumps({
-            "payload": "' AND false --",
-            "blocked_keywords": ["false"]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' AND false --", "blocked_keywords": ["false"]})
+        )
         assert "literal 0" in result
 
     def test_like_replaced_with_glob(self):
         """Test that LIKE is replaced with GLOB when blocked."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR username LIKE 'admin%' --",
-            "blocked_keywords": ["like"]
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "payload": "' OR username LIKE 'admin%' --",
+                    "blocked_keywords": ["like"],
+                }
+            )
+        )
         assert "GLOB" in result
         assert "case-sensitive" in result.lower() or "alternative" in result.lower()
 
@@ -332,10 +342,11 @@ class TestPayloadMutatorTool:
 
     def test_multi_token_replacement(self):
         """Test that multiple blocked tokens are replaced simultaneously."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": ["or", "=", "--"]
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"payload": "' OR '1'='1' --", "blocked_keywords": ["or", "=", "--"]}
+            )
+        )
         # The multi-token strategy should produce a variant with all replacements
         # Look for evidence of multiple substitutions in a single variant
         assert "Variant" in result
@@ -346,42 +357,51 @@ class TestPayloadMutatorTool:
 
     def test_max_length_filters_long_variants(self):
         """Test that max_length filters out variants that are too long."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": ["or", "=", "--"],
-            "max_length": 10
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "payload": "' OR '1'='1' --",
+                    "blocked_keywords": ["or", "=", "--"],
+                    "max_length": 10,
+                }
+            )
+        )
         # With a very short max_length, most/all variants should be filtered out
         # Original is 16 chars, so replacements will likely exceed 10
-        assert "No variants could be generated" in result or "Total Variants Generated: 0" in result
+        assert (
+            "No variants could be generated" in result
+            or "Total Variants Generated: 0" in result
+        )
 
     def test_clean_vs_partial_variants(self):
         """Test that clean and partial variants are properly categorized."""
-        result = self.tool.use(json.dumps({
-            "payload": "' OR '1'='1' --",
-            "blocked_keywords": ["or"]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "' OR '1'='1' --", "blocked_keywords": ["or"]})
+        )
         # OR -> || should produce a clean variant (no blocked keywords remain)
         assert "CLEAN VARIANTS" in result
         assert "Clean (all blocked removed):" in result
 
     def test_between_bypass_for_equality(self):
         """Test BETWEEN bypass for equality when = is blocked."""
-        result = self.tool.use(json.dumps({
-            "payload": "'1'='1'",
-            "blocked_keywords": ["="]
-        }))
+        result = self.tool.use(
+            json.dumps({"payload": "'1'='1'", "blocked_keywords": ["="]})
+        )
         # Should generate a BETWEEN variant
         assert "BETWEEN" in result
         assert "equality bypass" in result.lower() or "BETWEEN" in result
 
     def test_web_gauntlet_2_scenario(self):
         """Comprehensive test: Web Gauntlet 2 scenario with multiple blocked keywords."""
-        result = self.tool.use(json.dumps({
-            "payload": "admin' OR '1'='1' --",
-            "blocked_keywords": ["or", "and", "=", "--", "admin"],
-            "max_length": 35
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "payload": "admin' OR '1'='1' --",
+                    "blocked_keywords": ["or", "and", "=", "--", "admin"],
+                    "max_length": 35,
+                }
+            )
+        )
         assert "Payload Mutation Report" in result
         assert "Blocked Keywords: or, and, =, --, admin" in result
         assert "Max Length: 35" in result
@@ -405,10 +425,14 @@ class TestPayloadMutatorTool:
 
     def test_union_case_variation(self):
         """Test that UNION is replaced with mixed case variations when blocked."""
-        result = self.tool.use(json.dumps({
-            "payload": "' UNION SELECT * FROM users --",
-            "blocked_keywords": ["union"]
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "payload": "' UNION SELECT * FROM users --",
+                    "blocked_keywords": ["union"],
+                }
+            )
+        )
         assert "UnIoN" in result or "uNiOn" in result or "UNION" in result
         assert "mixed case" in result.lower() or "case" in result.lower()
 
@@ -423,21 +447,29 @@ class TestFilterEnumeratorToolInternal:
     def test_is_blocked_by_status_code(self):
         """Test _is_blocked detects status code changes."""
         resp = _mock_response(status_code=403, text="Forbidden")
-        is_blocked, reasons = self.tool._is_blocked(resp, baseline_status=200, baseline_length=100)
+        is_blocked, reasons = self.tool._is_blocked(
+            resp, baseline_status=200, baseline_length=100
+        )
         assert is_blocked is True
         assert any("status_code" in r for r in reasons)
 
     def test_is_blocked_by_body_indicator(self):
         """Test _is_blocked detects block indicator words in body."""
-        resp = _mock_response(status_code=200, text="Your input was filtered by the WAF")
-        is_blocked, reasons = self.tool._is_blocked(resp, baseline_status=200, baseline_length=35)
+        resp = _mock_response(
+            status_code=200, text="Your input was filtered by the WAF"
+        )
+        is_blocked, reasons = self.tool._is_blocked(
+            resp, baseline_status=200, baseline_length=35
+        )
         assert is_blocked is True
         assert any("filtered" in r for r in reasons)
 
     def test_is_not_blocked_matching_response(self):
         """Test _is_blocked returns False for matching baseline response."""
         resp = _mock_response(status_code=200, text="Normal login page")
-        is_blocked, reasons = self.tool._is_blocked(resp, baseline_status=200, baseline_length=17)
+        is_blocked, reasons = self.tool._is_blocked(
+            resp, baseline_status=200, baseline_length=17
+        )
         assert is_blocked is False
         assert len(reasons) == 0
 
@@ -445,7 +477,9 @@ class TestFilterEnumeratorToolInternal:
         """Test _is_blocked detects significant length changes."""
         # Response is much shorter than baseline (>50% shorter)
         resp = _mock_response(status_code=200, text="x")
-        is_blocked, reasons = self.tool._is_blocked(resp, baseline_status=200, baseline_length=100)
+        is_blocked, reasons = self.tool._is_blocked(
+            resp, baseline_status=200, baseline_length=100
+        )
         assert is_blocked is True
         assert any("shorter" in r for r in reasons)
 
@@ -485,5 +519,7 @@ class TestPayloadMutatorToolInternal:
 
     def test_check_still_blocked_clean(self):
         """Test that _check_still_blocked returns empty for clean variant."""
-        still = self.tool._check_still_blocked("' || '1' IS '1' /**/", ["or", "=", "--"])
+        still = self.tool._check_still_blocked(
+            "' || '1' IS '1' /**/", ["or", "=", "--"]
+        )
         assert len(still) == 0

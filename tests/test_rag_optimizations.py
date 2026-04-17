@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 from unittest.mock import Mock, MagicMock, patch
 
-
 # =============================================================================
 # Test Fixtures
 # =============================================================================
@@ -206,7 +205,11 @@ class TestSimpleReranker:
 
     def test_import(self):
         """Test SimpleReranker can be imported."""
-        from ctf_solver.rag.reranker import SimpleReranker, ScoredDocument, create_reranker
+        from ctf_solver.rag.reranker import (
+            SimpleReranker,
+            ScoredDocument,
+            create_reranker,
+        )
 
         assert SimpleReranker is not None
         assert ScoredDocument is not None
@@ -293,7 +296,9 @@ class TestSimpleReranker:
 
         # Document with high-value terms should score higher
         sqli_doc = sample_documents[0]  # Has "SQL injection", "UNION", "payload"
-        generic_doc = MockDocument(page_content="This is a generic document with no exploits.")
+        generic_doc = MockDocument(
+            page_content="This is a generic document with no exploits."
+        )
 
         sqli_score, _ = reranker.score_document("test", sqli_doc)
         generic_score, _ = reranker.score_document("test", generic_doc)
@@ -416,7 +421,11 @@ class TestHybridSearcher:
 
     def test_import(self):
         """Test HybridSearcher can be imported."""
-        from ctf_solver.rag.hybrid_search import HybridSearcher, HybridResult, create_hybrid_searcher
+        from ctf_solver.rag.hybrid_search import (
+            HybridSearcher,
+            HybridResult,
+            create_hybrid_searcher,
+        )
 
         assert HybridSearcher is not None
         assert HybridResult is not None
@@ -588,7 +597,9 @@ class TestRAGIntegration:
         from ctf_solver.rag.knowledge_base import split_text_with_metadata
 
         text = "# SQL Injection\nSQL injection is a technique.\n\nUse UNION SELECT."
-        chunks = split_text_with_metadata(text, "test.md", chunk_size=50, chunk_overlap=10)
+        chunks = split_text_with_metadata(
+            text, "test.md", chunk_size=50, chunk_overlap=10
+        )
 
         assert len(chunks) > 0
         for chunk_text, metadata in chunks:
@@ -603,7 +614,9 @@ class TestRAGIntegration:
         from ctf_solver.rag.knowledge_base import split_text_with_metadata
 
         text = "SQL injection vulnerability with UNION SELECT payload"
-        chunks = split_text_with_metadata(text, "test.md", chunk_size=1000, chunk_overlap=0)
+        chunks = split_text_with_metadata(
+            text, "test.md", chunk_size=1000, chunk_overlap=0
+        )
 
         assert len(chunks) == 1
         _, metadata = chunks[0]

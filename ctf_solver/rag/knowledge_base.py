@@ -15,7 +15,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Callable, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # =============================================================================
 # CRITICAL: Set environment variables to prevent multiprocessing crashes
@@ -24,28 +24,25 @@ from typing import Any, Dict, List, Optional, Callable, Tuple
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
-from ctf_solver.config import SolverConfig
-
 # FAIR framework imports
 from fairlib import (
     Document,
     SentenceTransformerEmbedder,
     SimpleRetriever,
-    KnowledgeBaseQueryTool,
     settings,
 )
-from fairlib.utils.document_processor import DocumentProcessor
 from fairlib.modules.memory.vector_faiss import FaissVectorStore
+from fairlib.utils.document_processor import DocumentProcessor
+
+from ctf_solver.config import SolverConfig
+from ctf_solver.rag.hybrid_search import (
+    HybridSearcher,
+    create_hybrid_searcher,
+)
 
 # Local RAG optimization imports
 from ctf_solver.rag.query_expander import QueryExpander, create_query_expander
-from ctf_solver.rag.reranker import SimpleReranker, ScoredDocument, create_reranker
-from ctf_solver.rag.hybrid_search import (
-    HybridSearcher,
-    BM25Index,
-    HybridResult,
-    create_hybrid_searcher,
-)
+from ctf_solver.rag.reranker import SimpleReranker, create_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +55,9 @@ _cached_reranker: Optional[SimpleReranker] = None
 _cached_documents: List[Any] = []
 
 
-def split_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 150) -> List[str]:
+def split_text(
+    text: str, chunk_size: int = 1000, chunk_overlap: int = 150
+) -> List[str]:
     """
     Simple text splitter for RAG.
 
@@ -116,8 +115,10 @@ def split_text_with_metadata(
     chunk_idx = 0
 
     # Pre-extract section headers from full text
-    section_pattern = re.compile(r'^#+\s+(.+)$|^([A-Z][A-Za-z\s]+):$', re.MULTILINE)
-    sections = [(m.start(), m.group(1) or m.group(2)) for m in section_pattern.finditer(text)]
+    section_pattern = re.compile(r"^#+\s+(.+)$|^([A-Z][A-Za-z\s]+):$", re.MULTILINE)
+    sections = [
+        (m.start(), m.group(1) or m.group(2)) for m in section_pattern.finditer(text)
+    ]
 
     while start < length:
         end = min(start + chunk_size, length)
@@ -245,7 +246,11 @@ def initialize_knowledge_base(
 
     # Check cache
     sources_hash = _compute_sources_hash(config)
-    if not force_rebuild and _cached_retriever is not None and _cached_sources_hash == sources_hash:
+    if (
+        not force_rebuild
+        and _cached_retriever is not None
+        and _cached_sources_hash == sources_hash
+    ):
         log("Using cached knowledge base retriever")
         return _cached_retriever
 
@@ -293,7 +298,9 @@ def initialize_knowledge_base(
         embedder = SentenceTransformerEmbedder(model_name=embed_model)
         log(f"Initialized embedder with model: {embed_model}")
     except Exception as e:
-        logger.error("Failed to initialize SentenceTransformerEmbedder: %s", e, exc_info=True)
+        logger.error(
+            "Failed to initialize SentenceTransformerEmbedder: %s", e, exc_info=True
+        )
         log(f"ERROR: Failed to initialize embedder: {e}")
         return None
 
@@ -363,7 +370,9 @@ def initialize_knowledge_base(
             vector_store.add_documents(doc_chunks_with_meta)
             log("Successfully indexed all chunks")
         except Exception as e:
-            logger.error("Failed to add chunks to FAISS vector store: %s", e, exc_info=True)
+            logger.error(
+                "Failed to add chunks to FAISS vector store: %s", e, exc_info=True
+            )
             log(f"ERROR: Failed to index chunks: {e}")
             return None
 
@@ -390,7 +399,9 @@ def initialize_knowledge_base(
         )
         log("Initialized hybrid search (BM25 + vector)")
 
-    log(f"Knowledge base initialized with {len(all_chunks)} chunks from {len(doc_paths)} source(s)")
+    log(
+        f"Knowledge base initialized with {len(all_chunks)} chunks from {len(doc_paths)} source(s)"
+    )
     return _cached_retriever
 
 
@@ -503,7 +514,9 @@ class SafeKnowledgeQueryTool:
         new atomic rules become queryable in the same session without restarting.
         """
         if self._rag_config is None:
-            logger.warning("[RAG] refresh_index called but no rag_config stored; skipping.")
+            logger.warning(
+                "[RAG] refresh_index called but no rag_config stored; skipping."
+            )
             return
         try:
             clear_cache()
@@ -539,7 +552,7 @@ class SafeKnowledgeQueryTool:
 
             # Step 2: Retrieve results (hybrid or vector-only) — over-retrieve
             # to account for filtering losses in steps 3–4
-            over_k = self._top_k * 3
+            over_k = self._top_k * 5
             if self._use_hybrid_search and _cached_hybrid_searcher is not None:
                 hybrid_results = _cached_hybrid_searcher.search(
                     expanded_query, top_k=over_k
@@ -558,7 +571,9 @@ class SafeKnowledgeQueryTool:
                 metadata = getattr(doc, "metadata", {})
                 sf = metadata.get("source_file", "")
                 if self._is_excluded(content):
-                    logger.debug(f"[RAG] Excluded same-challenge doc (fingerprint match): {sf}")
+                    logger.debug(
+                        f"[RAG] Excluded same-challenge doc (fingerprint match): {sf}"
+                    )
                     continue
                 if sf in self._seen_source_files:
                     logger.debug(f"[RAG] Excluded already-seen doc: {sf}")

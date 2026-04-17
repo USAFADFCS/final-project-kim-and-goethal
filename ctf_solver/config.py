@@ -34,7 +34,9 @@ class RAGMode(str, Enum):
     AUGMENTED_READONLY = "augmented_readonly"  # Legacy alias for LESSONS_READONLY
     # New unified lessons-learned modes
     LESSONS_WRITE = "lessons_write"  # Curated docs + experience DB; writes atomic rules after every run
-    LESSONS_READONLY = "lessons_readonly"  # Curated docs + experience DB; reads only, never writes
+    LESSONS_READONLY = (
+        "lessons_readonly"  # Curated docs + experience DB; reads only, never writes
+    )
     LESSONS_BUILDONLY = "lessons_buildonly"  # Curated docs only during run; writes atomic rules after every run
 
 
@@ -49,7 +51,12 @@ RAG_WRITE_MODES: frozenset = frozenset(
 
 #: Modes that read from the experience database.
 RAG_EXPERIENCE_MODES: frozenset = frozenset(
-    {RAGMode.AUGMENTED, RAGMode.AUGMENTED_READONLY, RAGMode.LESSONS_WRITE, RAGMode.LESSONS_READONLY}
+    {
+        RAGMode.AUGMENTED,
+        RAGMode.AUGMENTED_READONLY,
+        RAGMode.LESSONS_WRITE,
+        RAGMode.LESSONS_READONLY,
+    }
 )
 
 
@@ -86,6 +93,39 @@ COMMON_FLAG_PATTERNS = {
     "ctf": r"CTF\{[^\n\r{}]{1,200}\}",
     "generic": DEFAULT_FLAG_REGEX,
 }
+
+
+# Inner-brace content that indicates a test/placeholder/example flag.
+# Matched case-insensitively against the text INSIDE the braces.
+_PLACEHOLDER_FLAG_CONTENTS = frozenset(
+    {
+        "test_flag",
+        "flag",
+        "flag_here",
+        "example",
+        "example_flag",
+        "placeholder",
+        "your_flag_here",
+        "xxx",
+        "test",
+        "sample",
+        "dummy",
+        "changeme",
+        "replace_me",
+        "insert_flag",
+        "todo",
+    }
+)
+
+
+def _is_placeholder_flag(candidate: str) -> bool:
+    """Return True if *candidate* looks like a test/placeholder flag."""
+    brace_open = candidate.find("{")
+    brace_close = candidate.rfind("}")
+    if brace_open == -1 or brace_close == -1 or brace_close <= brace_open:
+        return False
+    inner = candidate[brace_open + 1 : brace_close].strip().lower()
+    return inner in _PLACEHOLDER_FLAG_CONTENTS
 
 
 @dataclass
@@ -164,6 +204,10 @@ class SolverConfig:
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     llm_base_url: Optional[str] = None
+
+    # LLM tuning
+    max_tokens: int = 4096
+    llm_timeout: float = 120.0
 
     # Runtime configuration
     verbose: bool = False
@@ -357,7 +401,8 @@ def extract_candidate_flags(text: str, regex: str = DEFAULT_FLAG_REGEX) -> List[
     """
     try:
         pattern = re.compile(regex)
-        return pattern.findall(text)
+        raw = pattern.findall(text)
+        return [m for m in raw if not _is_placeholder_flag(m)]
     except re.error:
         return []
 
@@ -373,6 +418,8 @@ def is_valid_flag(candidate: str, regex: str = DEFAULT_FLAG_REGEX) -> bool:
     Returns:
         True if the candidate matches the pattern
     """
+    if _is_placeholder_flag(candidate):
+        return False
     try:
         pattern = re.compile(f"^{regex}$")
         return bool(pattern.match(candidate))

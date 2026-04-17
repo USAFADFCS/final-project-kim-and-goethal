@@ -11,8 +11,11 @@ import json
 import pytest
 from unittest.mock import MagicMock
 
-from ctf_solver.tools.xss_tools import XssProbeTool, XssPayloadGenerator, CspAnalyzerTool
-
+from ctf_solver.tools.xss_tools import (
+    XssProbeTool,
+    XssPayloadGenerator,
+    CspAnalyzerTool,
+)
 
 # ==============================================================================
 # XssProbeTool Tests
@@ -49,10 +52,14 @@ class TestXssProbeTool:
         """Test handling of connection error on baseline request."""
         self.mock_session.get.side_effect = ConnectionError("Connection refused")
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/search",
-            "param": "q",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/search",
+                    "param": "q",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "baseline" in result.lower()
@@ -77,10 +84,14 @@ class TestXssProbeTool:
         # Baseline first, then enough injection responses for all payloads
         self.mock_session.get.side_effect = [baseline_resp] + [injection_resp] * 30
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/search",
-            "param": "q",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/search",
+                    "param": "q",
+                }
+            )
+        )
 
         assert "FULL REFLECTIONS" in result
         assert "XSS confirmed" in result or "reflected unencoded" in result.lower()
@@ -104,10 +115,14 @@ class TestXssProbeTool:
 
         self.mock_session.get.side_effect = [baseline_resp] + [safe_resp] * 30
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/search",
-            "param": "q",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/search",
+                    "param": "q",
+                }
+            )
+        )
 
         assert "No reflections detected" in result
         assert "FULL REFLECTIONS" not in result
@@ -129,11 +144,15 @@ class TestXssProbeTool:
         # HTML_PAYLOADS has 6 payloads, so baseline + 6 injection responses
         self.mock_session.get.side_effect = [baseline_resp] + [safe_resp] * 10
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com/search",
-            "param": "q",
-            "context": "html",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com/search",
+                    "param": "q",
+                    "context": "html",
+                }
+            )
+        )
 
         # Should report testing only html context
         assert "Context(s) Tested: html" in result
@@ -168,9 +187,13 @@ class TestXssPayloadGenerator:
 
     def test_filter_bypass_basic(self):
         """Test filter_bypass operation returns payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "filter_bypass",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "filter_bypass",
+                }
+            )
+        )
 
         assert "Filter Bypass Payloads" in result
         assert "Tag-Based Bypasses" in result
@@ -180,10 +203,14 @@ class TestXssPayloadGenerator:
 
     def test_filter_bypass_with_blocked_tags(self):
         """Test filter_bypass with blocked_tags=['script'], verify no <script> in output."""
-        result = self.tool.use(json.dumps({
-            "operation": "filter_bypass",
-            "blocked_tags": ["script"],
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "filter_bypass",
+                    "blocked_tags": ["script"],
+                }
+            )
+        )
 
         assert "Filter Bypass Payloads" in result
         assert "Blocked Tags: script" in result
@@ -191,7 +218,8 @@ class TestXssPayloadGenerator:
         # Alternative tags like <svg>, <details>, etc. should be used instead
         lines = result.split("\n")
         payload_lines = [
-            line.strip() for line in lines
+            line.strip()
+            for line in lines
             if line.strip().startswith("<") and "===" not in line
         ]
         for payload_line in payload_lines:
@@ -199,9 +227,13 @@ class TestXssPayloadGenerator:
 
     def test_dom_xss(self):
         """Test dom_xss operation returns DOM sink payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "dom_xss",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "dom_xss",
+                }
+            )
+        )
 
         assert "DOM-Based XSS Payloads" in result
         assert "Sink:" in result
@@ -213,9 +245,13 @@ class TestXssPayloadGenerator:
 
     def test_polyglot(self):
         """Test polyglot operation returns polyglot payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "polyglot",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "polyglot",
+                }
+            )
+        )
 
         assert "Polyglot XSS Payloads" in result
         assert "Polyglot #1" in result
@@ -224,9 +260,13 @@ class TestXssPayloadGenerator:
 
     def test_encoding_bypass(self):
         """Test encoding_bypass operation returns encoded payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "encoding_bypass",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "encoding_bypass",
+                }
+            )
+        )
 
         assert "Encoding Bypass Payloads" in result
         # Should contain various encoding sections
@@ -240,9 +280,13 @@ class TestXssPayloadGenerator:
 
     def test_event_handlers(self):
         """Test event_handlers operation returns event handler list."""
-        result = self.tool.use(json.dumps({
-            "operation": "event_handlers",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "event_handlers",
+                }
+            )
+        )
 
         assert "Event Handlers Reference" in result
         # Should have categories
@@ -297,17 +341,25 @@ class TestCspAnalyzerTool:
         }
         self.mock_session.get.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.com",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.com",
+                }
+            )
+        )
 
         assert "NO CONTENT-SECURITY-POLICY HEADER FOUND" in result
 
     def test_unsafe_inline_detected(self):
         """Test detection of unsafe-inline in script-src."""
-        result = self.tool.use(json.dumps({
-            "csp_string": "default-src 'self'; script-src 'unsafe-inline'",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "csp_string": "default-src 'self'; script-src 'unsafe-inline'",
+                }
+            )
+        )
 
         assert "unsafe-inline" in result
         assert "HIGH" in result
@@ -315,9 +367,13 @@ class TestCspAnalyzerTool:
 
     def test_unsafe_eval_detected(self):
         """Test detection of unsafe-eval in script-src."""
-        result = self.tool.use(json.dumps({
-            "csp_string": "default-src 'self'; script-src 'unsafe-eval'",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "csp_string": "default-src 'self'; script-src 'unsafe-eval'",
+                }
+            )
+        )
 
         assert "unsafe-eval" in result
         assert "HIGH" in result
@@ -325,27 +381,39 @@ class TestCspAnalyzerTool:
 
     def test_wildcard_detected(self):
         """Test detection of wildcard * in default-src."""
-        result = self.tool.use(json.dumps({
-            "csp_string": "default-src *",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "csp_string": "default-src *",
+                }
+            )
+        )
 
         assert "Wildcard" in result or "wildcard" in result
         assert "HIGH" in result
 
     def test_missing_base_uri(self):
         """Test warning when CSP has no base-uri directive."""
-        result = self.tool.use(json.dumps({
-            "csp_string": "default-src 'self'; script-src 'self'",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "csp_string": "default-src 'self'; script-src 'self'",
+                }
+            )
+        )
 
         assert "base-uri" in result
         assert "Missing" in result or "missing" in result
 
     def test_cdn_bypass_detected(self):
         """Test detection and bypass suggestion for cdnjs.cloudflare.com."""
-        result = self.tool.use(json.dumps({
-            "csp_string": "default-src 'self'; script-src 'self' cdnjs.cloudflare.com",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "csp_string": "default-src 'self'; script-src 'self' cdnjs.cloudflare.com",
+                }
+            )
+        )
 
         assert "cdnjs.cloudflare.com" in result
         assert "bypass" in result.lower() or "Angular" in result
@@ -353,9 +421,13 @@ class TestCspAnalyzerTool:
 
     def test_strict_csp(self):
         """Test that a strict CSP is evaluated as LOW risk."""
-        result = self.tool.use(json.dumps({
-            "csp_string": "default-src 'none'; script-src 'nonce-abc123'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "csp_string": "default-src 'none'; script-src 'nonce-abc123'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'",
+                }
+            )
+        )
 
         assert "RISK LEVEL: LOW" in result
 

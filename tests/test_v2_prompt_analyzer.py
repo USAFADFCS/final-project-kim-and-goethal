@@ -16,6 +16,7 @@ from ctf_solver.prompts.templates import DEFAULT_ROLE_DEFINITION, DEFAULT_SYSTEM
 # System prompt content tests
 # -----------------------------------------------------------------------
 
+
 class TestSystemPromptUpdates:
     """Verify DEFAULT_SYSTEM_PROMPT mentions all v2 capability keywords."""
 
@@ -58,6 +59,7 @@ class TestSystemPromptUpdates:
 # Role definition tests
 # -----------------------------------------------------------------------
 
+
 class TestRoleDefinitionUpdates:
     """Verify DEFAULT_ROLE_DEFINITION mentions JSON/multipart."""
 
@@ -68,6 +70,7 @@ class TestRoleDefinitionUpdates:
 # -----------------------------------------------------------------------
 # Failure analyzer tool mapping tests
 # -----------------------------------------------------------------------
+
 
 class TestFailureAnalyzerToolMappings:
     """Verify _TOOL_TO_CATEGORY includes all expected tool names."""
@@ -83,12 +86,17 @@ class TestFailureAnalyzerToolMappings:
         Note: 'encoding' is intentionally included (maps to encoding_obfuscation) because
         it is the primary exploit vector for encoding/obfuscation challenges.
         """
-        generic_tools = ["http_fetch", "form_submit", "regex_search",
-                         "response_search", "hash_identifier"]
+        generic_tools = [
+            "http_fetch",
+            "form_submit",
+            "regex_search",
+            "response_search",
+            "hash_identifier",
+        ]
         for tool in generic_tools:
-            assert tool not in _TOOL_TO_CATEGORY, (
-                f"Generic tool '{tool}' should not be in _TOOL_TO_CATEGORY"
-            )
+            assert (
+                tool not in _TOOL_TO_CATEGORY
+            ), f"Generic tool '{tool}' should not be in _TOOL_TO_CATEGORY"
 
     def test_encoding_tool_mapped_to_encoding_obfuscation(self):
         """encoding tool is the primary exploit vector for encoding challenges."""

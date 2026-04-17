@@ -11,18 +11,33 @@ from typing import Any, Dict, List, Optional, Set
 
 import requests
 
-
 # Built-in GraphQL types to filter out of custom type listings
 _BUILTIN_TYPES: Set[str] = {
-    "__Schema", "__Type", "__Field", "__InputValue", "__EnumValue",
-    "__Directive", "__DirectiveLocation",
-    "String", "Int", "Float", "Boolean", "ID",
+    "__Schema",
+    "__Type",
+    "__Field",
+    "__InputValue",
+    "__EnumValue",
+    "__Directive",
+    "__DirectiveLocation",
+    "String",
+    "Int",
+    "Float",
+    "Boolean",
+    "ID",
 }
 
 # Type names that are interesting for CTF challenges
 _INTERESTING_TYPE_NAMES: Set[str] = {
-    "user", "admin", "flag", "secret", "password",
-    "token", "key", "credential", "config",
+    "user",
+    "admin",
+    "flag",
+    "secret",
+    "password",
+    "token",
+    "key",
+    "credential",
+    "config",
 }
 
 # Common CTF flag patterns
@@ -316,7 +331,11 @@ class GraphqlIntrospectionTool:
         for m in re.finditer(r'"(\w+)"', text):
             name = m.group(1)
             if name not in suggestions and name not in (
-                "query", "mutation", "message", "errors", "data",
+                "query",
+                "mutation",
+                "message",
+                "errors",
+                "data",
             ):
                 suggestions.append(name)
         return suggestions
@@ -362,7 +381,9 @@ class GraphqlIntrospectionTool:
         bypass_log: List[str] = []
 
         try:
-            resp = self._send_graphql(url, _INTROSPECTION_QUERY, method, headers, timeout)
+            resp = self._send_graphql(
+                url, _INTROSPECTION_QUERY, method, headers, timeout
+            )
         except Exception as exc:
             return (
                 f"[GraphqlIntrospectionTool] Error sending introspection query "
@@ -431,7 +452,9 @@ class GraphqlIntrospectionTool:
         # ----------------------------------------------------------
         alt_method = "GET" if method == "POST" else "POST"
         try:
-            resp = self._send_graphql(url, _INTROSPECTION_QUERY, alt_method, headers, timeout)
+            resp = self._send_graphql(
+                url, _INTROSPECTION_QUERY, alt_method, headers, timeout
+            )
             if self._is_introspection_success(resp):
                 schema = resp.json()["data"]["__schema"]
                 report = self._format_schema(schema)
@@ -451,8 +474,17 @@ class GraphqlIntrospectionTool:
         # Attempt 5: __type queries for common root type names
         # ----------------------------------------------------------
         discovered_types: Dict[str, Dict] = {}
-        probe_names = ["Query", "Mutation", "Subscription", "User", "Admin",
-                       "Flag", "Secret", "Token", "Config"]
+        probe_names = [
+            "Query",
+            "Mutation",
+            "Subscription",
+            "User",
+            "Admin",
+            "Flag",
+            "Secret",
+            "Token",
+            "Config",
+        ]
         for probe_name in probe_names:
             type_query = (
                 f'{{ __type(name: "{probe_name}") {{ '
@@ -487,7 +519,7 @@ class GraphqlIntrospectionTool:
             suggestion_fields = self._extract_suggestions(text)
             if suggestion_fields:
                 bypass_log.append(
-                    f"Field suggestion probe: found suggestions: "
+                    "Field suggestion probe: found suggestions: "
                     + ", ".join(suggestion_fields)
                 )
             else:
@@ -524,7 +556,9 @@ class GraphqlIntrospectionTool:
 
                 # Highlight interesting
                 if t_name.lower() in _INTERESTING_TYPE_NAMES:
-                    lines.append(f"    ** INTERESTING: {t_name} may contain sensitive data **")
+                    lines.append(
+                        f"    ** INTERESTING: {t_name} may contain sensitive data **"
+                    )
             lines.append("")
 
         # Report field suggestions
@@ -545,9 +579,7 @@ class GraphqlIntrospectionTool:
                 "  - Try querying the suggested field names with graphql_query."
             )
         if not discovered_types and not suggestion_fields:
-            lines.append(
-                "  - Introspection fully blocked and no type info recovered."
-            )
+            lines.append("  - Introspection fully blocked and no type info recovered.")
             lines.append(
                 "  - Try guessing common query names (users, flag, me, login) "
                 "with graphql_query."
@@ -705,11 +737,13 @@ class GraphqlQueryTool:
                         alias = f"a{i + j}"
                         result = resp_data.get(alias)
                         if result is not None and result != {} and result != []:
-                            interesting_results.append({
-                                "value": val,
-                                "alias": alias,
-                                "result": result,
-                            })
+                            interesting_results.append(
+                                {
+                                    "value": val,
+                                    "alias": alias,
+                                    "result": result,
+                                }
+                            )
 
                     if resp_errors:
                         lines.append(
@@ -751,9 +785,7 @@ class GraphqlQueryTool:
                     f"  Value: {r['value']} -> {json.dumps(r['result'])[:300]}"
                 )
             if len(interesting_results) > 20:
-                lines.append(
-                    f"  ... and {len(interesting_results) - 20} more"
-                )
+                lines.append(f"  ... and {len(interesting_results) - 20} more")
             lines.append("")
         else:
             lines.append("No interesting results found.")
@@ -869,22 +901,29 @@ class GraphqlQueryTool:
                 if operation_name:
                     params["operationName"] = operation_name
                 resp = self.session.get(
-                    url, params=params, headers=headers, timeout=timeout,
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=timeout,
                 )
             else:  # POST
                 if batch:
                     batch_payload = [dict(payload) for _ in range(batch_count)]
                     resp = self.session.post(
-                        url, json=batch_payload, headers=headers, timeout=timeout,
+                        url,
+                        json=batch_payload,
+                        headers=headers,
+                        timeout=timeout,
                     )
                 else:
                     resp = self.session.post(
-                        url, json=payload, headers=headers, timeout=timeout,
+                        url,
+                        json=payload,
+                        headers=headers,
+                        timeout=timeout,
                     )
         except Exception as exc:
-            return (
-                f"[GraphqlQueryTool] Error sending query to {url!r}: {exc!r}"
-            )
+            return f"[GraphqlQueryTool] Error sending query to {url!r}: {exc!r}"
 
         # --- Parse response ---
         raw_text = resp.text or ""

@@ -20,7 +20,6 @@ from ctf_solver.tools.misc_probe_tools import (
     OpenRedirectProbeTool,
 )
 
-
 # ==============================================================================
 # Helpers
 # ==============================================================================
@@ -103,12 +102,16 @@ class TestRaceConditionTool:
             tool.session = MagicMock()
             tool.session.cookies = MagicMock()
 
-            result = tool.use(json.dumps({
-                "url": "http://target.local/transfer",
-                "method": "POST",
-                "data": {"amount": "100"},
-                "concurrency": 5,
-            }))
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://target.local/transfer",
+                        "method": "POST",
+                        "data": {"amount": "100"},
+                        "concurrency": 5,
+                    }
+                )
+            )
 
         assert "Results" in result or "Result" in result
         assert "200" in result
@@ -133,10 +136,14 @@ class TestRaceConditionTool:
             tool.session = MagicMock()
             tool.session.cookies = MagicMock()
 
-            result = tool.use(json.dumps({
-                "url": "http://target.local/transfer",
-                "concurrency": 100,
-            }))
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://target.local/transfer",
+                        "concurrency": 100,
+                    }
+                )
+            )
 
         # The output header should show "Concurrency: 50" (capped)
         assert "Concurrency: 50" in result
@@ -161,11 +168,15 @@ class TestRaceConditionTool:
             tool.session = MagicMock()
             tool.session.cookies = MagicMock()
 
-            result = tool.use(json.dumps({
-                "url": "http://target.local/transfer",
-                "repeat": 10,
-                "concurrency": 2,
-            }))
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://target.local/transfer",
+                        "repeat": 10,
+                        "concurrency": 2,
+                    }
+                )
+            )
 
         # The output header should show "Rounds: 5" (capped from 10)
         assert "Rounds: 5" in result
@@ -189,19 +200,27 @@ class TestRequestRepeaterTool:
 
     def test_missing_url(self):
         """url is required; omitting it should return an error."""
-        result = self.tool.use(json.dumps({
-            "param": "password",
-            "values": ["test"],
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "param": "password",
+                    "values": ["test"],
+                }
+            )
+        )
         assert "Error" in result
         assert "url" in result.lower()
 
     def test_missing_param_and_body_template(self):
         """Either param or body_template is required."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/login",
-            "values": ["test"],
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/login",
+                    "values": ["test"],
+                }
+            )
+        )
         assert "Error" in result
         assert "param" in result.lower()
 
@@ -226,13 +245,17 @@ class TestRequestRepeaterTool:
 
         self.session.post.side_effect = mock_post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/login",
-            "method": "POST",
-            "param": "password",
-            "values": ["admin", "test", "pass"],
-            "data": {"username": "admin"},
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/login",
+                    "method": "POST",
+                    "param": "password",
+                    "values": ["admin", "test", "pass"],
+                    "data": {"username": "admin"},
+                }
+            )
+        )
 
         assert "Values tested: 3" in result
         assert "admin" in result
@@ -241,12 +264,16 @@ class TestRequestRepeaterTool:
 
     def test_builtin_wordlist_common_passwords(self):
         """Pass wordlist='common_passwords', verify built-in list is used."""
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/login",
-            "method": "POST",
-            "param": "password",
-            "wordlist": "common_passwords",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/login",
+                    "method": "POST",
+                    "param": "password",
+                    "wordlist": "common_passwords",
+                }
+            )
+        )
 
         # The built-in common_passwords list contains "admin" and "password"
         assert "admin" in result
@@ -262,20 +289,25 @@ class TestRequestRepeaterTool:
             value = data.get("password", "")
             if value == "secret":
                 return _make_mock_response(
-                    text="Redirecting", status_code=302,
-                    headers={"Location": "/dashboard"}
+                    text="Redirecting",
+                    status_code=302,
+                    headers={"Location": "/dashboard"},
                 )
             return _make_mock_response(text="Invalid", status_code=200)
 
         self.session.post.side_effect = mock_post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/login",
-            "method": "POST",
-            "param": "password",
-            "values": ["admin", "test", "secret", "pass"],
-            "match_status": 302,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/login",
+                    "method": "POST",
+                    "param": "password",
+                    "values": ["admin", "test", "secret", "pass"],
+                    "match_status": 302,
+                }
+            )
+        )
 
         # The filtered results section should show only "secret" (302)
         # Total values tested is still 4
@@ -288,12 +320,16 @@ class TestRequestRepeaterTool:
         """Pass 300 values, verify capped at 200."""
         values_300 = [f"val_{i}" for i in range(300)]
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/login",
-            "method": "POST",
-            "param": "password",
-            "values": values_300,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/login",
+                    "method": "POST",
+                    "param": "password",
+                    "values": values_300,
+                }
+            )
+        )
 
         # Should be capped at 200
         assert "Values tested: 200" in result
@@ -336,13 +372,15 @@ class TestCrlfProbeTool:
     def test_crlf_detected(self):
         """Mock response with 'Injected-Header' in response headers to detect CRLF."""
         baseline_resp = _make_mock_response(
-            text="Baseline", status_code=200,
+            text="Baseline",
+            status_code=200,
             headers={"Content-Type": "text/html"},
         )
 
         # Response with injected header
         crlf_resp = _make_mock_response(
-            text="Injected", status_code=200,
+            text="Injected",
+            status_code=200,
             headers={
                 "Content-Type": "text/html",
                 "Injected-Header": "true",
@@ -361,27 +399,36 @@ class TestCrlfProbeTool:
 
         self.session.get.side_effect = mock_get_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/redirect",
-            "param": "url",
-            "method": "GET",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/redirect",
+                    "param": "url",
+                    "method": "GET",
+                }
+            )
+        )
 
         assert "VULNERABLE" in result or "vulnerable" in result.lower()
 
     def test_no_crlf_found(self):
         """Mock responses with no header injection; should report no vulnerabilities."""
         normal_resp = _make_mock_response(
-            text="Normal Response", status_code=200,
+            text="Normal Response",
+            status_code=200,
             headers={"Content-Type": "text/html"},
         )
         self.session.get.return_value = normal_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/redirect",
-            "param": "url",
-            "method": "GET",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/redirect",
+                    "param": "url",
+                    "method": "GET",
+                }
+            )
+        )
 
         assert "No CRLF injection vulnerabilities detected" in result
 
@@ -409,10 +456,14 @@ class TestPhpTypeJugglingTool:
 
     def test_magic_hashes_md5(self):
         """operation='magic_hashes', hash_type='md5' should contain known MD5 magic values."""
-        result = self.tool.use(json.dumps({
-            "operation": "magic_hashes",
-            "hash_type": "md5",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "magic_hashes",
+                    "hash_type": "md5",
+                }
+            )
+        )
 
         assert "240610708" in result
         assert "QNKCDZO" in result
@@ -420,10 +471,14 @@ class TestPhpTypeJugglingTool:
 
     def test_magic_hashes_sha1(self):
         """operation='magic_hashes', hash_type='sha1' should contain SHA1 magic values."""
-        result = self.tool.use(json.dumps({
-            "operation": "magic_hashes",
-            "hash_type": "sha1",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "magic_hashes",
+                    "hash_type": "sha1",
+                }
+            )
+        )
 
         assert "SHA1" in result
         # Verify specific SHA1 magic hash values from the tool's MAGIC_HASHES_SHA1
@@ -432,9 +487,13 @@ class TestPhpTypeJugglingTool:
 
     def test_strcmp_bypass(self):
         """operation='strcmp_bypass' should return array bypass payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "strcmp_bypass",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "strcmp_bypass",
+                }
+            )
+        )
 
         assert "strcmp" in result
         assert "password[]=" in result
@@ -442,9 +501,13 @@ class TestPhpTypeJugglingTool:
 
     def test_loose_comparison(self):
         """operation='loose_comparison' should return comparison table entries."""
-        result = self.tool.use(json.dumps({
-            "operation": "loose_comparison",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "loose_comparison",
+                }
+            )
+        )
 
         assert "Loose Comparison" in result
         # Check for specific comparison table entries
@@ -453,9 +516,13 @@ class TestPhpTypeJugglingTool:
 
     def test_type_coercion(self):
         """operation='type_coercion' should return intval/is_numeric bypass payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "type_coercion",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "type_coercion",
+                }
+            )
+        )
 
         assert "intval" in result
         assert "is_numeric" in result
@@ -493,10 +560,12 @@ class TestPrototypePollutionTool:
     def test_pollution_detected(self):
         """Mock different response for pollution payload vs baseline."""
         baseline_resp = _make_mock_response(
-            text='{"status":"ok"}', status_code=200,
+            text='{"status":"ok"}',
+            status_code=200,
         )
         polluted_resp = _make_mock_response(
-            text='{"status":"ok","polluted":"true"}', status_code=200,
+            text='{"status":"ok","polluted":"true"}',
+            status_code=200,
         )
 
         call_count = [0]
@@ -509,28 +578,45 @@ class TestPrototypePollutionTool:
 
         self.session.post.side_effect = mock_post_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/api/merge",
-            "method": "POST",
-            "content_type": "application/json",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/api/merge",
+                    "method": "POST",
+                    "content_type": "application/json",
+                }
+            )
+        )
 
         # Should detect that responses changed after pollution payloads
-        assert "CHANGE DETECTED" in result or "change" in result.lower() or "different" in result.lower()
+        assert (
+            "CHANGE DETECTED" in result
+            or "change" in result.lower()
+            or "different" in result.lower()
+        )
 
     def test_no_pollution(self):
         """Mock all identical responses; should report no pollution."""
         normal_resp = _make_mock_response(
-            text='{"status":"ok"}', status_code=200,
+            text='{"status":"ok"}',
+            status_code=200,
         )
         self.session.post.return_value = normal_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/api/merge",
-            "method": "POST",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/api/merge",
+                    "method": "POST",
+                }
+            )
+        )
 
-        assert "No prototype pollution" in result or "no changes" in result.lower() or "no pollution" in result.lower()
+        assert (
+            "No prototype pollution" in result
+            or "no changes" in result.lower()
+            or "no pollution" in result.lower()
+        )
 
 
 # ==============================================================================
@@ -569,9 +655,12 @@ class TestIdorEnumeratorTool:
 
     def test_idor_enumeration_sequential(self):
         """Test sequential ID enumeration with different responses per ID."""
+
         def mock_get_side_effect(url, **kwargs):
             if "/user/0" in url:
-                return _make_mock_response(text='{"error":"not found"}', status_code=404)
+                return _make_mock_response(
+                    text='{"error":"not found"}', status_code=404
+                )
             elif "/user/1" in url:
                 return _make_mock_response(
                     text='{"id":1,"name":"admin","email":"admin@test.com"}',
@@ -583,17 +672,23 @@ class TestIdorEnumeratorTool:
                     status_code=200,
                 )
             else:
-                return _make_mock_response(text='{"error":"not found"}', status_code=404)
+                return _make_mock_response(
+                    text='{"error":"not found"}', status_code=404
+                )
 
         self.session.get.side_effect = mock_get_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/api/user/1",
-            "param": "1",
-            "param_type": "path",
-            "range_start": 0,
-            "range_end": 3,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/api/user/1",
+                    "param": "1",
+                    "param_type": "path",
+                    "range_start": 0,
+                    "range_end": 3,
+                }
+            )
+        )
 
         assert "admin" in result
         assert "user" in result
@@ -602,6 +697,7 @@ class TestIdorEnumeratorTool:
 
     def test_flag_detection_in_response(self):
         """Test that flag patterns are highlighted in IDOR results."""
+
         def mock_get_side_effect(url, **kwargs):
             if "/user/5" in url:
                 return _make_mock_response(
@@ -612,13 +708,17 @@ class TestIdorEnumeratorTool:
 
         self.session.get.side_effect = mock_get_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/api/user/1",
-            "param": "1",
-            "param_type": "path",
-            "range_start": 4,
-            "range_end": 6,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/api/user/1",
+                    "param": "1",
+                    "param_type": "path",
+                    "range_start": 4,
+                    "range_end": 6,
+                }
+            )
+        )
 
         assert "FLAG{idor_found_123}" in result
         assert "flag" in result.lower() or "interesting" in result.lower()
@@ -628,13 +728,17 @@ class TestIdorEnumeratorTool:
         normal_resp = _make_mock_response(text='{"error":"not found"}', status_code=404)
         self.session.get.return_value = normal_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/api/user/1",
-            "param": "1",
-            "param_type": "path",
-            "range_start": 0,
-            "range_end": 500,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/api/user/1",
+                    "param": "1",
+                    "param_type": "path",
+                    "range_start": 0,
+                    "range_end": 500,
+                }
+            )
+        )
 
         # The tool should cap the range at 100
         # Check that we didn't enumerate all 500
@@ -680,13 +784,15 @@ class TestOpenRedirectProbeTool:
         """Mock response with status 302 and Location containing 'evil.com'."""
         # Baseline: normal redirect to example.com
         baseline_resp = _make_mock_response(
-            text="Redirecting", status_code=302,
+            text="Redirecting",
+            status_code=302,
             headers={"Location": "https://example.com"},
         )
 
         # Payload responses: redirect to evil.com
         evil_resp = _make_mock_response(
-            text="Redirecting", status_code=302,
+            text="Redirecting",
+            status_code=302,
             headers={"Location": "https://evil.com"},
         )
 
@@ -701,26 +807,35 @@ class TestOpenRedirectProbeTool:
 
         self.session.get.side_effect = mock_get_side_effect
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/redirect",
-            "param": "url",
-            "method": "GET",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/redirect",
+                    "param": "url",
+                    "method": "GET",
+                }
+            )
+        )
 
         assert "VULNERABLE" in result or "vulnerable" in result.lower()
 
     def test_no_redirect(self):
         """Mock all responses with status 200, no Location header."""
         normal_resp = _make_mock_response(
-            text="Normal page", status_code=200,
+            text="Normal page",
+            status_code=200,
             headers={},
         )
         self.session.get.return_value = normal_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://target.local/redirect",
-            "param": "url",
-            "method": "GET",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://target.local/redirect",
+                    "param": "url",
+                    "method": "GET",
+                }
+            )
+        )
 
         assert "No open redirect vulnerabilities detected" in result

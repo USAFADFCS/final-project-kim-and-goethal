@@ -68,31 +68,70 @@ class RequestRepeaterTool:
     FUZZ_MARKER: str = "\u00a7FUZZ\u00a7"
 
     COMMON_PASSWORDS: List[str] = [
-        "admin", "password", "123456", "password123", "admin123",
-        "letmein", "welcome", "monkey", "dragon", "master",
-        "qwerty", "login", "pass", "test", "guest",
-        "root", "toor", "changeme", "secret", "1234",
-        "12345", "123456789", "password1", "iloveyou", "sunshine",
-        "princess", "football", "charlie", "shadow", "michael",
-        "654321", "111111",
+        "admin",
+        "password",
+        "123456",
+        "password123",
+        "admin123",
+        "letmein",
+        "welcome",
+        "monkey",
+        "dragon",
+        "master",
+        "qwerty",
+        "login",
+        "pass",
+        "test",
+        "guest",
+        "root",
+        "toor",
+        "changeme",
+        "secret",
+        "1234",
+        "12345",
+        "123456789",
+        "password1",
+        "iloveyou",
+        "sunshine",
+        "princess",
+        "football",
+        "charlie",
+        "shadow",
+        "michael",
+        "654321",
+        "111111",
     ]
 
     COMMON_USERNAMES: List[str] = [
-        "admin", "administrator", "root", "user", "test",
-        "guest", "info", "webmaster", "sysadmin", "backup",
-        "operator", "manager", "support", "demo", "ftp",
-        "oracle", "postgres", "mysql",
+        "admin",
+        "administrator",
+        "root",
+        "user",
+        "test",
+        "guest",
+        "info",
+        "webmaster",
+        "sysadmin",
+        "backup",
+        "operator",
+        "manager",
+        "support",
+        "demo",
+        "ftp",
+        "oracle",
+        "postgres",
+        "mysql",
     ]
 
     SQLI_AUTH_BYPASS: List[str] = [
         "' OR 1=1--",
         "' OR '1'='1",
         "admin'--",
-        "\" OR 1=1--",
+        '" OR 1=1--',
         "' OR 1=1#",
         "') OR 1=1--",
         "' OR 'a'='a",
-        "\" OR \"a\"=\"a",
+        '" OR "a"="a',
         "') OR ('a'='a",
         "admin' #",
         "1' OR '1'='1' --",
@@ -157,7 +196,9 @@ class RequestRepeaterTool:
         if not isinstance(form_data, dict):
             return "[RequestRepeaterTool] Error: 'data' must be a JSON object (dict)."
         if not isinstance(headers, dict):
-            return "[RequestRepeaterTool] Error: 'headers' must be a JSON object (dict)."
+            return (
+                "[RequestRepeaterTool] Error: 'headers' must be a JSON object (dict)."
+            )
 
         try:
             timeout = int(timeout)
@@ -241,32 +282,38 @@ class RequestRepeaterTool:
                 if len(resp_text) > 100:
                     body_preview += "..."
 
-                results.append({
-                    "value": value,
-                    "status": resp.status_code,
-                    "length": resp_length,
-                    "time_ms": elapsed_ms,
-                    "preview": body_preview,
-                    "error": None,
-                })
+                results.append(
+                    {
+                        "value": value,
+                        "status": resp.status_code,
+                        "length": resp_length,
+                        "time_ms": elapsed_ms,
+                        "preview": body_preview,
+                        "error": None,
+                    }
+                )
             except requests.exceptions.Timeout:
-                results.append({
-                    "value": value,
-                    "status": 0,
-                    "length": 0,
-                    "time_ms": timeout * 1000,
-                    "preview": "(timeout)",
-                    "error": "timeout",
-                })
+                results.append(
+                    {
+                        "value": value,
+                        "status": 0,
+                        "length": 0,
+                        "time_ms": timeout * 1000,
+                        "preview": "(timeout)",
+                        "error": "timeout",
+                    }
+                )
             except Exception as exc:
-                results.append({
-                    "value": value,
-                    "status": 0,
-                    "length": 0,
-                    "time_ms": 0,
-                    "preview": f"(error: {exc})",
-                    "error": str(exc),
-                })
+                results.append(
+                    {
+                        "value": value,
+                        "status": 0,
+                        "length": 0,
+                        "time_ms": 0,
+                        "preview": f"(error: {exc})",
+                        "error": str(exc),
+                    }
+                )
 
         # --- Apply match/filter criteria ---
         filtered_results: List[Dict] = []
@@ -321,9 +368,7 @@ class RequestRepeaterTool:
         anomalies: List[str] = []
         for r in results:
             if r["error"] is not None:
-                anomalies.append(
-                    f'[!] "{r["value"]}" caused an error: {r["error"]}'
-                )
+                anomalies.append(f'[!] "{r["value"]}" caused an error: {r["error"]}')
                 continue
             if majority_status is not None and r["status"] != majority_status:
                 anomalies.append(
@@ -347,7 +392,7 @@ class RequestRepeaterTool:
         # --- Build output ---
         mode_str = "body_template" if use_body_template else "param"
         output_lines = [
-            f"[RequestRepeaterTool] Parameter Fuzzing Results",
+            "[RequestRepeaterTool] Parameter Fuzzing Results",
             "=" * 50,
             f"URL: {url}",
             f"Method: {method}",
@@ -397,7 +442,9 @@ class RequestRepeaterTool:
         if all_times:
             min_length = min(r["length"] for r in results if r["error"] is None)
             max_length = max(r["length"] for r in results if r["error"] is None)
-            output_lines.append(f"Response length range: {min_length} - {max_length} bytes")
+            output_lines.append(
+                f"Response length range: {min_length} - {max_length} bytes"
+            )
             output_lines.append(f"Average response time: {avg_time}ms")
 
         error_count = sum(1 for r in results if r["error"] is not None)

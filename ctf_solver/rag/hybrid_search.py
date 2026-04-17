@@ -9,7 +9,7 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -74,7 +74,7 @@ class BM25Index:
 
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize text into lowercase terms."""
-        return re.findall(r'\b[a-z0-9]+\b', text.lower())
+        return re.findall(r"\b[a-z0-9]+\b", text.lower())
 
     def index(self, documents: List[Any]) -> None:
         """
@@ -329,9 +329,7 @@ class HybridSearcher:
             # RRF-based combination
             rrf_vector = 1.0 / (self.rrf_k + scores["vector_rank"])
             rrf_bm25 = 1.0 / (self.rrf_k + scores["bm25_rank"])
-            combined = (
-                self.vector_weight * rrf_vector + self.bm25_weight * rrf_bm25
-            )
+            combined = self.vector_weight * rrf_vector + self.bm25_weight * rrf_bm25
 
             results.append(
                 HybridResult(

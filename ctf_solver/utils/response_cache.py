@@ -10,14 +10,15 @@ import hashlib
 import json
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional, Tuple
 from collections import OrderedDict
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 @dataclass
 class CacheEntry:
     """A single cache entry with value, timestamp, and metadata."""
+
     value: Any
     timestamp: float
     hits: int = 0
@@ -256,7 +257,8 @@ class ResponseCache:
 
         with self._lock:
             expired_keys = [
-                key for key, entry in self._cache.items()
+                key
+                for key, entry in self._cache.items()
                 if now - entry.timestamp > self.ttl
             ]
             for key in expired_keys:
@@ -329,7 +331,9 @@ class RequestDeduplicator:
             enabled: Whether deduplication is enabled
         """
         self.enabled = enabled
-        self._pending: Dict[str, Tuple[threading.Event, Optional[Any], Optional[Exception]]] = {}
+        self._pending: Dict[
+            str, Tuple[threading.Event, Optional[Any], Optional[Exception]]
+        ] = {}
         self._lock = threading.Lock()
 
         # Statistics
@@ -483,7 +487,11 @@ class CachedSession:
         self.session = session
         # Use explicit None check since ResponseCache.__len__ can make empty cache falsy
         self.cache = cache if cache is not None else ResponseCache(enabled=False)
-        self.deduplicator = deduplicator if deduplicator is not None else RequestDeduplicator(enabled=False)
+        self.deduplicator = (
+            deduplicator
+            if deduplicator is not None
+            else RequestDeduplicator(enabled=False)
+        )
 
     def _make_request(
         self,
@@ -519,7 +527,9 @@ class CachedSession:
             elif method.upper() == "POST":
                 return self.session.post(url, data=data, headers=headers, **kwargs)
             else:
-                return self.session.request(method, url, params=params, data=data, headers=headers, **kwargs)
+                return self.session.request(
+                    method, url, params=params, data=data, headers=headers, **kwargs
+                )
 
         # Execute with deduplication
         if self.deduplicator.enabled:
@@ -533,15 +543,33 @@ class CachedSession:
 
         return response
 
-    def get(self, url: str, params: Optional[Dict] = None, headers: Optional[Dict] = None, **kwargs):
+    def get(
+        self,
+        url: str,
+        params: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+        **kwargs,
+    ):
         """Cached GET request."""
         return self._make_request("GET", url, params=params, headers=headers, **kwargs)
 
-    def head(self, url: str, params: Optional[Dict] = None, headers: Optional[Dict] = None, **kwargs):
+    def head(
+        self,
+        url: str,
+        params: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+        **kwargs,
+    ):
         """Cached HEAD request."""
         return self._make_request("HEAD", url, params=params, headers=headers, **kwargs)
 
-    def post(self, url: str, data: Optional[Dict] = None, headers: Optional[Dict] = None, **kwargs):
+    def post(
+        self,
+        url: str,
+        data: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+        **kwargs,
+    ):
         """POST request (not cached by default, but deduplicated)."""
         return self._make_request("POST", url, data=data, headers=headers, **kwargs)
 

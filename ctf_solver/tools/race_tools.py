@@ -13,7 +13,7 @@ import ssl
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
@@ -75,7 +75,9 @@ class RaceConditionTool:
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
-    def _build_thread_session(self, extra_cookies: Optional[Dict[str, str]] = None) -> requests.Session:
+    def _build_thread_session(
+        self, extra_cookies: Optional[Dict[str, str]] = None
+    ) -> requests.Session:
         """Create a per-thread session with cookies copied from the main session."""
         thread_session = requests.Session()
         thread_session.cookies.update(self.session.cookies)
@@ -108,7 +110,10 @@ class RaceConditionTool:
                     kwargs["data"] = body
                     # Ensure Content-Type is set for raw JSON
                     if "Content-Type" not in headers and "content-type" not in headers:
-                        kwargs["headers"] = {**headers, "Content-Type": "application/json"}
+                        kwargs["headers"] = {
+                            **headers,
+                            "Content-Type": "application/json",
+                        }
                 elif data is not None:
                     kwargs["data"] = data
                 resp = thread_session.post(url, **kwargs)
@@ -164,6 +169,7 @@ class RaceConditionTool:
             content_type = "application/json"
         elif data is not None and method == "POST":
             from urllib.parse import urlencode
+
             body_bytes = urlencode(data).encode("utf-8")
             content_type = "application/x-www-form-urlencoded"
 
@@ -254,15 +260,17 @@ class RaceConditionTool:
                 connections.append(sock)
             except Exception as exc:
                 connections.append(None)
-                results.append({
-                    "index": i + 1,
-                    "status": None,
-                    "length": 0,
-                    "body": "",
-                    "body_preview": "",
-                    "elapsed_ms": 0,
-                    "error": f"Connection failed: {exc}",
-                })
+                results.append(
+                    {
+                        "index": i + 1,
+                        "status": None,
+                        "length": 0,
+                        "body": "",
+                        "body_preview": "",
+                        "elapsed_ms": 0,
+                        "error": f"Connection failed: {exc}",
+                    }
+                )
 
         # Step 2: Send the last byte simultaneously on all connections
         start = time.time()
@@ -310,28 +318,32 @@ class RaceConditionTool:
                     # Extract body after double CRLF
                     body_sep = response_text.find("\r\n\r\n")
                     if body_sep >= 0:
-                        body_text = response_text[body_sep + 4:]
+                        body_text = response_text[body_sep + 4 :]
 
-                results.append({
-                    "index": i + 1,
-                    "status": status,
-                    "length": len(body_text),
-                    "body": body_text,
-                    "body_preview": body_text[:200],
-                    "elapsed_ms": round(elapsed_ms, 1),
-                    "error": None,
-                })
+                results.append(
+                    {
+                        "index": i + 1,
+                        "status": status,
+                        "length": len(body_text),
+                        "body": body_text,
+                        "body_preview": body_text[:200],
+                        "elapsed_ms": round(elapsed_ms, 1),
+                        "error": None,
+                    }
+                )
             except Exception as exc:
                 elapsed_ms = (time.time() - start) * 1000
-                results.append({
-                    "index": i + 1,
-                    "status": None,
-                    "length": 0,
-                    "body": "",
-                    "body_preview": "",
-                    "elapsed_ms": round(elapsed_ms, 1),
-                    "error": str(exc),
-                })
+                results.append(
+                    {
+                        "index": i + 1,
+                        "status": None,
+                        "length": 0,
+                        "body": "",
+                        "body_preview": "",
+                        "elapsed_ms": round(elapsed_ms, 1),
+                        "error": str(exc),
+                    }
+                )
             finally:
                 try:
                     sock.close()
@@ -386,7 +398,14 @@ class RaceConditionTool:
             )
 
         # 3. Check for multiple "success" responses (possible double-spend)
-        success_keywords = ["success", "transferred", "completed", "approved", "done", "ok"]
+        success_keywords = [
+            "success",
+            "transferred",
+            "completed",
+            "approved",
+            "done",
+            "ok",
+        ]
         success_count = 0
         for r in valid:
             body_lower = r["body"].lower()
@@ -412,8 +431,12 @@ class RaceConditionTool:
                 lines.append(f"[!] {indicator}")
         else:
             lines.append("[ ] No obvious race condition indicators detected.")
-            lines.append("    All responses appear identical. Try increasing concurrency or check")
-            lines.append("    if the endpoint is actually vulnerable to race conditions.")
+            lines.append(
+                "    All responses appear identical. Try increasing concurrency or check"
+            )
+            lines.append(
+                "    if the endpoint is actually vulnerable to race conditions."
+            )
 
         if errors:
             lines.append(f"[*] {len(errors)} request(s) failed with errors.")
@@ -449,7 +472,9 @@ class RaceConditionTool:
 
         # Validate mutual exclusivity
         if form_data is not None and body is not None:
-            return "[RaceConditionTool] Error: 'data' and 'body' are mutually exclusive."
+            return (
+                "[RaceConditionTool] Error: 'data' and 'body' are mutually exclusive."
+            )
 
         if not isinstance(headers, dict):
             return "[RaceConditionTool] Error: 'headers' must be a JSON object (dict)."
@@ -499,8 +524,14 @@ class RaceConditionTool:
             if mode == "single_packet":
                 # Single-packet race attack (last-byte synchronization)
                 results = self._single_packet_attack(
-                    url, method, form_data, body, headers,
-                    cookies if cookies else None, concurrency, timeout,
+                    url,
+                    method,
+                    form_data,
+                    body,
+                    headers,
+                    cookies if cookies else None,
+                    concurrency,
+                    timeout,
                 )
             else:
                 # Standard ThreadPoolExecutor approach
@@ -523,15 +554,17 @@ class RaceConditionTool:
                         try:
                             results.append(future.result())
                         except Exception as exc:
-                            results.append({
-                                "index": -1,
-                                "status": None,
-                                "length": 0,
-                                "body": "",
-                                "body_preview": "",
-                                "elapsed_ms": 0,
-                                "error": str(exc),
-                            })
+                            results.append(
+                                {
+                                    "index": -1,
+                                    "status": None,
+                                    "length": 0,
+                                    "body": "",
+                                    "body_preview": "",
+                                    "elapsed_ms": 0,
+                                    "error": str(exc),
+                                }
+                            )
 
             # Sort results by index for consistent display
             results.sort(key=lambda r: r["index"])
@@ -593,7 +626,9 @@ class RaceConditionTool:
             max_display = 500
             display_body = body_text[:max_display]
             if len(body_text) > max_display:
-                display_body += f"\n  ...[truncated, full length: {len(body_text)} chars]..."
+                display_body += (
+                    f"\n  ...[truncated, full length: {len(body_text)} chars]..."
+                )
             output_lines.append(f"[Body {idx}] (seen {count} times):")
             output_lines.append(f"  {display_body}")
             output_lines.append("")

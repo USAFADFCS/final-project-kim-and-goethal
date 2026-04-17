@@ -41,11 +41,9 @@ class TestDeserializationProbeTool:
 
     def test_invalid_method(self):
         """Test handling of invalid HTTP method."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "param": "data",
-            "method": "PATCH"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com", "param": "data", "method": "PATCH"})
+        )
         assert "Error" in result
         assert "GET" in result or "POST" in result
 
@@ -54,10 +52,7 @@ class TestDeserializationProbeTool:
     def test_baseline_failure(self):
         """Test handling when baseline request fails."""
         self.mock_session.get.side_effect = Exception("Connection refused")
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "param": "data"
-        }))
+        result = self.tool.use(json.dumps({"url": "http://test.com", "param": "data"}))
         assert "Error" in result
         assert "baseline" in result.lower() or "Connection" in result
 
@@ -72,11 +67,11 @@ class TestDeserializationProbeTool:
         mock_resp.headers.items.return_value = []
         self.mock_session.get.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/vuln",
-            "param": "data",
-            "format": "php"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"url": "http://test.com/vuln", "param": "data", "format": "php"}
+            )
+        )
 
         assert "PHP" in result
         assert "unserialize()" in result
@@ -90,11 +85,11 @@ class TestDeserializationProbeTool:
         mock_resp.headers.items.return_value = []
         self.mock_session.get.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/vuln",
-            "param": "data",
-            "format": "python"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"url": "http://test.com/vuln", "param": "data", "format": "python"}
+            )
+        )
 
         assert "PYTHON" in result
         assert "pickle" in result
@@ -102,17 +97,19 @@ class TestDeserializationProbeTool:
     def test_java_indicators_detected(self):
         """Test detection of Java deserialization indicators in response."""
         mock_resp = MagicMock()
-        mock_resp.text = "java.io.ObjectInputStream: ClassNotFoundException for class Exploit"
+        mock_resp.text = (
+            "java.io.ObjectInputStream: ClassNotFoundException for class Exploit"
+        )
         mock_resp.status_code = 500
         mock_resp.cookies.items.return_value = []
         mock_resp.headers.items.return_value = []
         self.mock_session.get.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/vuln",
-            "param": "data",
-            "format": "java"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"url": "http://test.com/vuln", "param": "data", "format": "java"}
+            )
+        )
 
         assert "JAVA" in result
         assert "ObjectInputStream" in result
@@ -120,17 +117,19 @@ class TestDeserializationProbeTool:
     def test_dotnet_indicators_detected(self):
         """Test detection of .NET deserialization indicators in response body."""
         mock_resp = MagicMock()
-        mock_resp.text = '<input type="hidden" name="__VIEWSTATE" value="AAEAAAD/////..." />'
+        mock_resp.text = (
+            '<input type="hidden" name="__VIEWSTATE" value="AAEAAAD/////..." />'
+        )
         mock_resp.status_code = 200
         mock_resp.cookies.items.return_value = []
         mock_resp.headers.items.return_value = []
         self.mock_session.get.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/vuln",
-            "param": "data",
-            "format": "dotnet"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"url": "http://test.com/vuln", "param": "data", "format": "dotnet"}
+            )
+        )
 
         assert "DOTNET" in result or ".NET" in result
         assert "__VIEWSTATE" in result
@@ -144,12 +143,14 @@ class TestDeserializationProbeTool:
         mock_resp.headers.items.return_value = []
         self.mock_session.get.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/safe",
-            "param": "data"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/safe", "param": "data"})
+        )
 
-        assert "No deserialization vulnerabilities detected" in result or "No deserialization indicators" in result
+        assert (
+            "No deserialization vulnerabilities detected" in result
+            or "No deserialization indicators" in result
+        )
 
     def test_auto_format_detection(self):
         """Test that 'auto' format scans all formats."""
@@ -160,11 +161,11 @@ class TestDeserializationProbeTool:
         mock_resp.headers.items.return_value = []
         self.mock_session.get.return_value = mock_resp
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/vuln",
-            "param": "data",
-            "format": "auto"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"url": "http://test.com/vuln", "param": "data", "format": "auto"}
+            )
+        )
 
         # Auto mode should detect indicators from multiple formats
         assert "PHP" in result
@@ -186,10 +187,9 @@ class TestDeserializationProbeTool:
 
         self.mock_session.get.side_effect = [mock_baseline] + [mock_flag_resp] * 30
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/vuln",
-            "param": "data"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com/vuln", "param": "data"})
+        )
 
         assert "FLAG" in result
         assert "flag{deserialize_me_123}" in result
@@ -211,14 +211,16 @@ class TestDeserializationProbeTool:
         # First call is baseline, rest are malformed payload tests
         self.mock_session.get.side_effect = [mock_baseline] + [mock_error_resp] * 30
 
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/vuln",
-            "param": "data",
-            "format": "php"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"url": "http://test.com/vuln", "param": "data", "format": "php"}
+            )
+        )
 
         assert "differential" in result.lower() or "status" in result.lower()
-        assert "POTENTIAL DESERIALIZATION VULNERABILITY" in result or "200->500" in result
+        assert (
+            "POTENTIAL DESERIALIZATION VULNERABILITY" in result or "200->500" in result
+        )
 
 
 class TestDeserializationPayloadGenerator:
@@ -260,7 +262,7 @@ class TestDeserializationPayloadGenerator:
         """Test that PHP payloads include serialized object notation."""
         result = self.tool.use(json.dumps({"operation": "php_payloads"}))
         assert "O:" in result
-        assert 's:' in result
+        assert "s:" in result
 
     # --- Python payloads ---
 
@@ -277,10 +279,9 @@ class TestDeserializationPayloadGenerator:
 
     def test_python_payloads_with_custom_command(self):
         """Test that Python payloads use the custom command."""
-        result = self.tool.use(json.dumps({
-            "operation": "python_payloads",
-            "command": "cat /flag.txt"
-        }))
+        result = self.tool.use(
+            json.dumps({"operation": "python_payloads", "command": "cat /flag.txt"})
+        )
         assert "cat /flag.txt" in result
 
     # --- Java references ---
@@ -312,7 +313,9 @@ class TestDeserializationPayloadGenerator:
         assert "cookie" in result.lower()
         assert "hidden" in result.lower()
         # Should cover indicators
-        assert "Content-Type" in result or "application/x-java-serialized-object" in result
+        assert (
+            "Content-Type" in result or "application/x-java-serialized-object" in result
+        )
 
     # --- All operations return content ---
 
@@ -323,4 +326,6 @@ class TestDeserializationPayloadGenerator:
             # The word "Error" may appear in payload descriptions (e.g., "Error messages:")
             # so we check for the error prefix instead
             assert "[DeserializationPayloadGenerator] Error:" not in result
-            assert len(result) > 100, f"Operation '{operation}' returned too little content"
+            assert (
+                len(result) > 100
+            ), f"Operation '{operation}' returned too little content"

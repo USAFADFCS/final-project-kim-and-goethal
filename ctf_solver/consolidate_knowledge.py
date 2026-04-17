@@ -296,7 +296,9 @@ def _extract_takeaways_from_lessons_doc(content: str) -> List[str]:
 
 def _extract_quick_path_from_lessons_doc(content: str) -> str:
     """Extract the Quick Exploitation Path section from a lessons_*.md doc."""
-    m = re.search(r"## Quick Exploitation Path\n\n(.+?)(?:\n\n##|\Z)", content, re.DOTALL)
+    m = re.search(
+        r"## Quick Exploitation Path\n\n(.+?)(?:\n\n##|\Z)", content, re.DOTALL
+    )
     return m.group(1).strip() if m else ""
 
 
@@ -305,7 +307,11 @@ def _extract_exploit_inputs_from_lessons_doc(content: str) -> List[str]:
     m = re.search(r"## Key Exploit Inputs\n\n.+?\n\n((?:- .+\n?)+)", content, re.DOTALL)
     if not m:
         return []
-    return [line[2:].strip() for line in m.group(1).strip().splitlines() if line.startswith("- ")]
+    return [
+        line[2:].strip()
+        for line in m.group(1).strip().splitlines()
+        if line.startswith("- ")
+    ]
 
 
 def _extract_failed_approaches_from_lessons_doc(content: str) -> List[str]:
@@ -315,7 +321,11 @@ def _extract_failed_approaches_from_lessons_doc(content: str) -> List[str]:
     )
     if not m:
         return []
-    return [line[2:].strip() for line in m.group(1).strip().splitlines() if line.startswith("- ")]
+    return [
+        line[2:].strip()
+        for line in m.group(1).strip().splitlines()
+        if line.startswith("- ")
+    ]
 
 
 def _extract_template_engine_from_lessons_doc(content: str) -> str:
@@ -403,24 +413,41 @@ def _generate_consolidated_lessons_doc(
     ]
 
     if best_path:
-        lines += ["", "## Best Exploitation Path (from most recent success)", "", best_path]
+        lines += [
+            "",
+            "## Best Exploitation Path (from most recent success)",
+            "",
+            best_path,
+        ]
 
     if top_takeaways:
         lines += [
-            "", "## Key Takeaways (ranked by frequency across runs)", "",
+            "",
+            "## Key Takeaways (ranked by frequency across runs)",
+            "",
         ]
         for i, t in enumerate(top_takeaways, 1):
             lines.append(f"{i}. {t}")
 
     if all_exploit_inputs:
-        lines += ["", "## Confirmed Winning Inputs", "",
-                  "These exact requests produced the flag:", ""]
+        lines += [
+            "",
+            "## Confirmed Winning Inputs",
+            "",
+            "These exact requests produced the flag:",
+            "",
+        ]
         for inp in all_exploit_inputs[:4]:
             lines.append(f"- {inp}")
 
     if top_failed:
-        lines += ["", "## What Does NOT Work (Negative Knowledge)", "",
-                  "Avoid these approaches — consistently failed:", ""]
+        lines += [
+            "",
+            "## What Does NOT Work (Negative Knowledge)",
+            "",
+            "Avoid these approaches — consistently failed:",
+            "",
+        ]
         for fa in top_failed:
             lines.append(f"- {fa}")
 
@@ -493,8 +520,7 @@ def consolidate_lessons_knowledge(
         if existing:
             consolidated_mtime = existing[-1].stat().st_mtime
             source_mtimes = [
-                doc_path.stat().st_mtime
-                for doc_path in docs_dir.glob("lessons_*.md")
+                doc_path.stat().st_mtime for doc_path in docs_dir.glob("lessons_*.md")
             ]
             if source_mtimes and max(source_mtimes) <= consolidated_mtime:
                 continue  # No new source docs since last consolidation

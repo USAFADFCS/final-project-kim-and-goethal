@@ -9,7 +9,6 @@ Appeared in: RWCTF 2023 ChatUWU, m0leCon 2023 goldinospizza2.
 
 import json
 import re
-import time
 from typing import Any, Dict, List, Optional
 
 # Optional websocket-client dependency
@@ -73,8 +72,12 @@ class WebSocketProbeTool:
     ]
 
     FLAG_PATTERNS: List[str] = [
-        r"(picoCTF\{[^}]+\})", r"(HTB\{[^}]+\})", r"(THM\{[^}]+\})",
-        r"(FLAG\{[^}]+\})", r"(flag\{[^}]+\})", r"(CTF\{[^}]+\})",
+        r"(picoCTF\{[^}]+\})",
+        r"(HTB\{[^}]+\})",
+        r"(THM\{[^}]+\})",
+        r"(FLAG\{[^}]+\})",
+        r"(flag\{[^}]+\})",
+        r"(CTF\{[^}]+\})",
     ]
 
     def _extract_flags(self, text: str) -> List[str]:
@@ -95,9 +98,16 @@ class WebSocketProbeTool:
     ) -> Dict[str, Any]:
         """Connect to WebSocket, optionally send a message, receive response."""
         if not HAS_WEBSOCKET:
-            return {"error": "websocket-client library not installed. pip install websocket-client"}
+            return {
+                "error": "websocket-client library not installed. pip install websocket-client"
+            }
 
-        result: Dict[str, Any] = {"connected": False, "sent": None, "received": [], "error": None}
+        result: Dict[str, Any] = {
+            "connected": False,
+            "sent": None,
+            "received": [],
+            "error": None,
+        }
 
         try:
             header_list = []
@@ -191,11 +201,14 @@ class WebSocketProbeTool:
 
         lines.append("")
         connected_count = sum(
-            1 for o in evil_origins
+            1
+            for o in evil_origins
             if self._ws_connect_send(url, None, headers, o, timeout)["connected"]
         )
         if connected_count > 0:
-            lines.append("  [!] CSWSH LIKELY: WebSocket accepts connections from arbitrary origins!")
+            lines.append(
+                "  [!] CSWSH LIKELY: WebSocket accepts connections from arbitrary origins!"
+            )
         else:
             lines.append("  [-] Origin validation appears to be enforced.")
 
@@ -221,9 +234,7 @@ class WebSocketProbeTool:
 
         return "\n".join(lines)
 
-    def _operation_injection(
-        self, url: str, headers: Dict, timeout: int
-    ) -> str:
+    def _operation_injection(self, url: str, headers: Dict, timeout: int) -> str:
         """Test injection payloads via WebSocket."""
         lines = ["--- Injection Test ---"]
 

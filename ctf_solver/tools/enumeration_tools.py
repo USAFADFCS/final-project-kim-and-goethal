@@ -48,70 +48,229 @@ class PathEnumeratorTool:
     # Built-in wordlists for different scenarios
     WORDLISTS: Dict[str, List[str]] = {
         "common": [
-            "robots.txt", "sitemap.xml", ".htaccess", ".htpasswd",
-            "admin", "login", "dashboard", "panel", "console",
-            "backup", "old", "test", "dev", "staging",
-            "config", "configuration", "settings", "setup",
-            "upload", "uploads", "files", "images", "media",
-            "api", "v1", "v2", "graphql", "rest",
-            "user", "users", "account", "profile",
-            "flag", "flag.txt", "secret", "secrets",
-            "debug", "trace", "status", "health", "info",
-            "index", "home", "main", "default",
-            "js", "css", "static", "assets", "public",
-            "include", "includes", "lib", "libs", "vendor",
-            "tmp", "temp", "cache", "logs", "log",
+            "robots.txt",
+            "sitemap.xml",
+            ".htaccess",
+            ".htpasswd",
+            "admin",
+            "login",
+            "dashboard",
+            "panel",
+            "console",
+            "backup",
+            "old",
+            "test",
+            "dev",
+            "staging",
+            "config",
+            "configuration",
+            "settings",
+            "setup",
+            "upload",
+            "uploads",
+            "files",
+            "images",
+            "media",
+            "api",
+            "v1",
+            "v2",
+            "graphql",
+            "rest",
+            "user",
+            "users",
+            "account",
+            "profile",
+            "flag",
+            "flag.txt",
+            "secret",
+            "secrets",
+            "debug",
+            "trace",
+            "status",
+            "health",
+            "info",
+            "index",
+            "home",
+            "main",
+            "default",
+            "js",
+            "css",
+            "static",
+            "assets",
+            "public",
+            "include",
+            "includes",
+            "lib",
+            "libs",
+            "vendor",
+            "tmp",
+            "temp",
+            "cache",
+            "logs",
+            "log",
         ],
         "backup": [
-            "backup.zip", "backup.tar.gz", "backup.sql", "backup.bak",
-            "site.zip", "site.tar.gz", "www.zip", "www.tar.gz",
-            "db.sql", "database.sql", "dump.sql", "mysql.sql",
-            "config.bak", "config.old", "config.php.bak", "config.php~",
-            ".backup", "~backup", "backup~",
-            "index.php.bak", "index.php~", "index.bak",
-            "web.config.bak", "web.config.old",
-            ".old", ".bak", ".backup", ".save", ".swp",
-            "1", "2", "old", "new", "test", "copy",
+            "backup.zip",
+            "backup.tar.gz",
+            "backup.sql",
+            "backup.bak",
+            "site.zip",
+            "site.tar.gz",
+            "www.zip",
+            "www.tar.gz",
+            "db.sql",
+            "database.sql",
+            "dump.sql",
+            "mysql.sql",
+            "config.bak",
+            "config.old",
+            "config.php.bak",
+            "config.php~",
+            ".backup",
+            "~backup",
+            "backup~",
+            "index.php.bak",
+            "index.php~",
+            "index.bak",
+            "web.config.bak",
+            "web.config.old",
+            ".old",
+            ".bak",
+            ".backup",
+            ".save",
+            ".swp",
+            "1",
+            "2",
+            "old",
+            "new",
+            "test",
+            "copy",
         ],
         "git": [
-            ".git", ".git/HEAD", ".git/config", ".git/index",
-            ".git/logs/HEAD", ".git/refs/heads/master", ".git/refs/heads/main",
-            ".git/objects/", ".git/COMMIT_EDITMSG",
-            ".gitignore", ".gitattributes", ".gitmodules",
-            ".svn", ".svn/entries", ".svn/wc.db",
-            ".hg", ".hg/hgrc", ".hg/store",
-            ".bzr", "CVS", "CVS/Root", "CVS/Entries",
+            ".git",
+            ".git/HEAD",
+            ".git/config",
+            ".git/index",
+            ".git/logs/HEAD",
+            ".git/refs/heads/master",
+            ".git/refs/heads/main",
+            ".git/objects/",
+            ".git/COMMIT_EDITMSG",
+            ".gitignore",
+            ".gitattributes",
+            ".gitmodules",
+            ".svn",
+            ".svn/entries",
+            ".svn/wc.db",
+            ".hg",
+            ".hg/hgrc",
+            ".hg/store",
+            ".bzr",
+            "CVS",
+            "CVS/Root",
+            "CVS/Entries",
         ],
         "admin": [
-            "admin", "administrator", "admin.php", "admin.html",
-            "admin/login", "admin/index", "admin/dashboard",
-            "adminpanel", "admin-panel", "admin_panel",
-            "cpanel", "wp-admin", "wp-login.php",
-            "phpmyadmin", "pma", "myadmin", "mysql",
-            "manager", "management", "control", "controlpanel",
-            "backend", "backoffice", "staff", "internal",
-            "root", "superuser", "superadmin", "sysadmin",
-            "moderator", "mod", "editor",
-            "login", "signin", "sign-in", "auth", "authenticate",
+            "admin",
+            "administrator",
+            "admin.php",
+            "admin.html",
+            "admin/login",
+            "admin/index",
+            "admin/dashboard",
+            "adminpanel",
+            "admin-panel",
+            "admin_panel",
+            "cpanel",
+            "wp-admin",
+            "wp-login.php",
+            "phpmyadmin",
+            "pma",
+            "myadmin",
+            "mysql",
+            "manager",
+            "management",
+            "control",
+            "controlpanel",
+            "backend",
+            "backoffice",
+            "staff",
+            "internal",
+            "root",
+            "superuser",
+            "superadmin",
+            "sysadmin",
+            "moderator",
+            "mod",
+            "editor",
+            "login",
+            "signin",
+            "sign-in",
+            "auth",
+            "authenticate",
         ],
         "api": [
-            "api", "api/v1", "api/v2", "api/v3",
-            "rest", "rest/v1", "restapi",
-            "graphql", "graphiql", "playground",
-            "swagger", "swagger.json", "swagger.yaml", "api-docs",
-            "openapi", "openapi.json", "openapi.yaml",
-            "endpoints", "routes", "services",
-            "users", "user", "accounts", "account",
-            "auth", "authenticate", "login", "token", "tokens",
-            "data", "fetch", "query", "search",
-            "admin", "debug", "test", "health", "status", "ping",
-            "export", "import", "upload", "download",
-            "webhook", "webhooks", "callback", "callbacks",
+            "api",
+            "api/v1",
+            "api/v2",
+            "api/v3",
+            "rest",
+            "rest/v1",
+            "restapi",
+            "graphql",
+            "graphiql",
+            "playground",
+            "swagger",
+            "swagger.json",
+            "swagger.yaml",
+            "api-docs",
+            "openapi",
+            "openapi.json",
+            "openapi.yaml",
+            "endpoints",
+            "routes",
+            "services",
+            "users",
+            "user",
+            "accounts",
+            "account",
+            "auth",
+            "authenticate",
+            "login",
+            "token",
+            "tokens",
+            "data",
+            "fetch",
+            "query",
+            "search",
+            "admin",
+            "debug",
+            "test",
+            "health",
+            "status",
+            "ping",
+            "export",
+            "import",
+            "upload",
+            "download",
+            "webhook",
+            "webhooks",
+            "callback",
+            "callbacks",
         ],
     }
 
     # Common file extensions for backup/source detection
-    BACKUP_EXTENSIONS = [".bak", ".backup", ".old", ".orig", ".save", ".swp", "~", ".copy"]
+    BACKUP_EXTENSIONS = [
+        ".bak",
+        ".backup",
+        ".old",
+        ".orig",
+        ".save",
+        ".swp",
+        "~",
+        ".copy",
+    ]
     SOURCE_EXTENSIONS = [".php", ".asp", ".aspx", ".jsp", ".py", ".rb", ".pl"]
 
     # Status codes that indicate interesting finds
@@ -151,13 +310,30 @@ class PathEnumeratorTool:
             urls_to_test.append((full_url, path))
 
             # Test with extensions if provided
-            if extensions and not any(path.endswith(ext) for ext in [".txt", ".xml", ".html", ".php", ".json"]):
+            if extensions and not any(
+                path.endswith(ext) for ext in [".txt", ".xml", ".html", ".php", ".json"]
+            ):
                 for ext in extensions:
                     ext_url = f"{url}/{path}{ext}"
                     urls_to_test.append((ext_url, f"{path}{ext}"))
 
         # Limit total tests
-        urls_to_test = urls_to_test[:max_paths * 2]
+        urls_to_test = urls_to_test[: max_paths * 2]
+
+        # Fetch a baseline "known-404" response to detect catch-all rewrites.
+        # Many PHP apps return 200 with the homepage for ANY path.
+        baseline_size: Optional[int] = None
+        try:
+            bl_resp = self.session.get(
+                f"{url}/__nonexistent_path_8x7z__",
+                timeout=timeout,
+                allow_redirects=False,
+                headers={"User-Agent": "Mozilla/5.0 (CTF Enumeration)"},
+            )
+            if bl_resp.status_code == 200:
+                baseline_size = len(bl_resp.content)
+        except requests.exceptions.RequestException:
+            pass
 
         # Results storage
         found: List[Dict] = []
@@ -170,11 +346,21 @@ class PathEnumeratorTool:
                     test_url,
                     timeout=timeout,
                     allow_redirects=False,
-                    headers={"User-Agent": "Mozilla/5.0 (CTF Enumeration)"}
+                    headers={"User-Agent": "Mozilla/5.0 (CTF Enumeration)"},
                 )
                 tested += 1
 
                 if resp.status_code in self.INTERESTING_CODES:
+                    # Skip false positives from catch-all rewrites: if a
+                    # nonsense path also returns 200 with the same body size,
+                    # this 200 is not a real hit.
+                    if (
+                        baseline_size is not None
+                        and resp.status_code == 200
+                        and abs(len(resp.content) - baseline_size) < 50
+                    ):
+                        continue
+
                     result = {
                         "path": path,
                         "url": test_url,
@@ -204,7 +390,9 @@ class PathEnumeratorTool:
             output_lines.append("=== DISCOVERED PATHS ===")
             for item in found:
                 status_emoji = self._status_emoji(item["status"])
-                output_lines.append(f"{status_emoji} [{item['status']}] {item['path']} ({item['size']} bytes)")
+                output_lines.append(
+                    f"{status_emoji} [{item['status']}] {item['path']} ({item['size']} bytes)"
+                )
                 if item["interesting"]:
                     for note in item["interesting"]:
                         output_lines.append(f"    [!] {note}")
@@ -218,11 +406,17 @@ class PathEnumeratorTool:
         if accessible or redirects or protected:
             output_lines.append("=== SUMMARY ===")
             if accessible:
-                output_lines.append(f"Accessible (200): {[f['path'] for f in accessible]}")
+                output_lines.append(
+                    f"Accessible (200): {[f['path'] for f in accessible]}"
+                )
             if redirects:
-                output_lines.append(f"Redirects (3xx): {[f['path'] for f in redirects]}")
+                output_lines.append(
+                    f"Redirects (3xx): {[f['path'] for f in redirects]}"
+                )
             if protected:
-                output_lines.append(f"Protected (401/403): {[f['path'] for f in protected]}")
+                output_lines.append(
+                    f"Protected (401/403): {[f['path'] for f in protected]}"
+                )
             output_lines.append("")
 
         # Highlight CTF-relevant findings
@@ -281,7 +475,14 @@ class PathEnumeratorTool:
                 notes.append("Backup file accessible")
 
         # Check for sensitive data
-        sensitive_patterns = ["password", "secret", "api_key", "apikey", "token", "credential"]
+        sensitive_patterns = [
+            "password",
+            "secret",
+            "api_key",
+            "apikey",
+            "token",
+            "credential",
+        ]
         for pattern in sensitive_patterns:
             if pattern in content:
                 notes.append(f"Contains '{pattern}'")
@@ -289,7 +490,10 @@ class PathEnumeratorTool:
 
         # Check for admin/login
         if resp.status_code in {401, 403}:
-            if any(kw in resp.request.path_url.lower() for kw in ["admin", "login", "dashboard"]):
+            if any(
+                kw in resp.request.path_url.lower()
+                for kw in ["admin", "login", "dashboard"]
+            ):
                 notes.append("Protected admin area")
 
         return notes
@@ -303,29 +507,47 @@ class PathEnumeratorTool:
         # Git repository detection
         git_paths = {".git", ".git/head", ".git/config"}
         if git_paths & paths_found:
-            hints.append("[*] Git repository detected! Try: git-dumper or manually fetch .git/objects")
+            hints.append(
+                "[*] Git repository detected! Try: git-dumper or manually fetch .git/objects"
+            )
 
         # robots.txt detection
         if "robots.txt" in paths_found:
             hints.append("[*] robots.txt found - check for disallowed paths")
 
         # Backup files
-        backup_found = [f for f in found if any(ext in f["path"] for ext in self.BACKUP_EXTENSIONS)]
+        backup_found = [
+            f for f in found if any(ext in f["path"] for ext in self.BACKUP_EXTENSIONS)
+        ]
         if backup_found:
             hints.append(f"[*] Backup files found: {[b['path'] for b in backup_found]}")
 
         # Admin panels
-        admin_found = [f for f in found if any(kw in f["path"].lower() for kw in ["admin", "login", "dashboard"])]
+        admin_found = [
+            f
+            for f in found
+            if any(kw in f["path"].lower() for kw in ["admin", "login", "dashboard"])
+        ]
         if admin_found:
-            hints.append(f"[*] Admin/login pages found: {[a['path'] for a in admin_found]}")
+            hints.append(
+                f"[*] Admin/login pages found: {[a['path'] for a in admin_found]}"
+            )
 
         # API endpoints
-        api_found = [f for f in found if any(kw in f["path"].lower() for kw in ["api", "graphql", "rest"])]
+        api_found = [
+            f
+            for f in found
+            if any(kw in f["path"].lower() for kw in ["api", "graphql", "rest"])
+        ]
         if api_found:
             hints.append(f"[*] API endpoints found: {[a['path'] for a in api_found]}")
 
         # Flags detected
-        flag_found = [f for f in found if any("flag" in note.lower() for note in f.get("interesting", []))]
+        flag_found = [
+            f
+            for f in found
+            if any("flag" in note.lower() for note in f.get("interesting", []))
+        ]
         if flag_found:
             hints.append(f"[!!!] POSSIBLE FLAGS at: {[f['path'] for f in flag_found]}")
 
@@ -413,6 +635,20 @@ class BackupFileFinder:
                 seen.add(u)
                 unique_urls.append(u)
 
+        # Fetch the original file to get its size for catch-all rewrite detection
+        original_size: Optional[int] = None
+        try:
+            orig_resp = self.session.get(
+                url,
+                timeout=timeout,
+                allow_redirects=False,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            if orig_resp.status_code == 200:
+                original_size = len(orig_resp.content)
+        except requests.exceptions.RequestException:
+            pass
+
         # Test each URL
         found = []
         tested = 0
@@ -423,16 +659,30 @@ class BackupFileFinder:
                     backup_url,
                     timeout=timeout,
                     allow_redirects=False,
-                    headers={"User-Agent": "Mozilla/5.0"}
+                    headers={"User-Agent": "Mozilla/5.0"},
                 )
                 tested += 1
 
                 if resp.status_code == 200:
-                    found.append({
-                        "url": backup_url,
-                        "size": len(resp.content),
-                        "content_preview": resp.text[:200] if resp.text else "(binary)",
-                    })
+                    resp_size = len(resp.content)
+                    # Skip false positives from catch-all rewrites: if
+                    # backup URL returns same size as original, it's the
+                    # same page served for all paths.
+                    if (
+                        original_size is not None
+                        and abs(resp_size - original_size) < 50
+                    ):
+                        continue
+
+                    found.append(
+                        {
+                            "url": backup_url,
+                            "size": resp_size,
+                            "content_preview": (
+                                resp.text[:200] if resp.text else "(binary)"
+                            ),
+                        }
+                    )
 
             except requests.exceptions.RequestException:
                 continue
@@ -455,7 +705,9 @@ class BackupFileFinder:
                     preview = item["content_preview"].replace("\n", " ")[:100]
                     output_lines.append(f"    Preview: {preview}...")
             output_lines.append("")
-            output_lines.append("[!] IMPORTANT: Backup files may contain source code or credentials!")
+            output_lines.append(
+                "[!] IMPORTANT: Backup files may contain source code or credentials!"
+            )
         else:
             output_lines.append("No backup files found.")
 

@@ -15,125 +15,126 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 import requests
-
 from fairlib import (
-    settings,
     OpenAIAdapter,
-    SimpleAgent,
-    ToolRegistry,
-    ToolExecutor,
     ReActPlanner,
-    WorkingMemory,
     RoleDefinition,
+    SimpleAgent,
+    ToolExecutor,
+    ToolRegistry,
+    WorkingMemory,
+    settings,
 )
 from fairlib.core.message import FinalAnswer, Message
 from fairlib.modules.planning.react_planner import SimpleReActPlanner
 
-from ctf_solver.config import SolverConfig, RAGMode, RAG_EXPERIENCE_MODES
-from ctf_solver.tools import (
-    HttpFetchTool,
-    FormSubmitTool,
-    HtmlInspectorTool,
-    JavaScriptSourceTool,
-    RegexSearchTool,
-    ResponseSearchTool,
-    SqlPatternHintTool,
-    RobotsTxtTool,
-    CookieInspectorTool,
-    CookieSetTool,
-    LoggingToolWrapper,
-    EncodingTool,
-    HashIdentifierTool,
-    ResponseDiffTool,
-    TimingCompareTool,
-    ResponseFingerprinter,
-    PathEnumeratorTool,
-    BackupFileFinder,
-    SqliProbeTool,
-    SqliColumnCounter,
-    BlindSqliBooleanTool,
-    BlindSqliTimeTool,
-    SqliDataDumper,
-    JwtTool,
-    SstiProbeTool,
-    SstiExploitSuggester,
-    FileUploadTool,
-    UploadLocationFinder,
-    XxeProbeTool,
-    XxePayloadGenerator,
-    XxeDocTypeBuilder,
-    ShellExecuteTool,
-    XPathProbeTool,
-    XPathBlindBooleanTool,
-    XPathPayloadGenerator,
-    FilterEnumeratorTool,
-    PayloadMutatorTool,
-    SsrfProbeTool,
-    SsrfPayloadGenerator,
-    AttackPlannerTool,
-    LfiProbeTool,
-    LfiPayloadGenerator,
-    NosqlProbeTool,
-    NosqlPayloadGenerator,
-    CommandInjectionProbeTool,
-    CommandInjectionPayloadGenerator,
-    CryptoProbeTool,
-    CryptoAnalyzerTool,
-    CryptoPayloadGenerator,
-    DeserializationProbeTool,
-    DeserializationPayloadGenerator,
-    XssProbeTool,
-    XssPayloadGenerator,
-    CspAnalyzerTool,
-    GraphqlIntrospectionTool,
-    GraphqlQueryTool,
-    RaceConditionTool,
-    RequestRepeaterTool,
-    CrlfProbeTool,
-    PhpTypeJugglingTool,
-    PrototypePollutionTool,
-    IdorEnumeratorTool,
-    OpenRedirectProbeTool,
-    CssInjectionPayloadGenerator,
-    CssExfiltrationBuilder,
-    HttpSmugglingProbeTool,
-    FlaskSessionForgeryTool,
-    DomClobberingPayloadGenerator,
-    OAuthProbeTool,
-    OAuthPayloadGenerator,
-    PhpFilterChainTool,
-    ParserDifferentialProbeTool,
-    WebSocketProbeTool,
-    WasmAnalyzerTool,
-)
-from ctf_solver.rag import (
-    initialize_knowledge_base,
-    build_knowledge_tool,
-    clear_cache,
-    set_active_knowledge_tool,
-)
-from ctf_solver.prompts import (
-    get_role_definition,
-    ROBOTS_EXAMPLE,
-    JS_ANALYSIS_EXAMPLE,
-    SELF_REFLECTION_EXAMPLE,
-    JSON_API_EXAMPLE,
-    COOKIE_BYPASS_EXAMPLE,
-)
 from ctf_solver.classifier import (
-    ChallengeClassifier,
     ClassificationResult,
-    ChallengeCategory,
     create_classifier,
 )
-from ctf_solver.llm import (
-    LLMProvider,
-    create_adapter,
-    create_adapter_from_config,
-    check_provider_available,
+from ctf_solver.config import (
+    RAG_EXPERIENCE_MODES,
+    LLMProviderType,
+    RAGMode,
+    SolverConfig,
 )
-from ctf_solver.config import LLMProviderType
+from ctf_solver.llm import (
+    create_adapter_from_config,
+)
+from ctf_solver.prompts import (
+    COOKIE_BYPASS_EXAMPLE,
+    DEEP_RECON_EXAMPLE,
+    JS_ANALYSIS_EXAMPLE,
+    JSON_API_EXAMPLE,
+    ROBOTS_EXAMPLE,
+    SELF_REFLECTION_EXAMPLE,
+    get_system_prompt,
+)
+from ctf_solver.rag import (
+    build_knowledge_tool,
+    clear_cache,
+    initialize_knowledge_base,
+    set_active_knowledge_tool,
+)
 from ctf_solver.run_tracker import RunTracker, TokenTrackingAdapter
+from ctf_solver.tools import (
+    AttackPlannerTool,
+    BackupFileFinder,
+    BlindSqliBooleanTool,
+    BlindSqliTimeTool,
+    CommandInjectionPayloadGenerator,
+    CommandInjectionProbeTool,
+    CookieInspectorTool,
+    CookieSetTool,
+    CrlfProbeTool,
+    CryptoAnalyzerTool,
+    CryptoPayloadGenerator,
+    CryptoProbeTool,
+    CspAnalyzerTool,
+    CssExfiltrationBuilder,
+    CssInjectionPayloadGenerator,
+    DeepReconTool,
+    DeserializationPayloadGenerator,
+    DeserializationProbeTool,
+    DomClobberingPayloadGenerator,
+    EncodingTool,
+    FileUploadTool,
+    FilterEnumeratorTool,
+    FlaskSessionForgeryTool,
+    FormSubmitTool,
+    GraphqlIntrospectionTool,
+    GraphqlQueryTool,
+    HashIdentifierTool,
+    HtmlInspectorTool,
+    HttpFetchTool,
+    HttpSmugglingProbeTool,
+    IdorEnumeratorTool,
+    JavaScriptSourceTool,
+    JwtTool,
+    LfiPayloadGenerator,
+    LfiProbeTool,
+    LoggingToolWrapper,
+    NosqlPayloadGenerator,
+    NosqlProbeTool,
+    OAuthPayloadGenerator,
+    OAuthProbeTool,
+    OpenRedirectProbeTool,
+    ParserDifferentialProbeTool,
+    PathEnumeratorTool,
+    PayloadMutatorTool,
+    PhpFilterChainTool,
+    PhpTypeJugglingTool,
+    PrototypePollutionTool,
+    RaceConditionTool,
+    RegexSearchTool,
+    RequestRepeaterTool,
+    ResponseDiffTool,
+    ResponseFingerprinter,
+    ResponseSearchTool,
+    RobotsTxtTool,
+    SecurityHeaderAnalyzerTool,
+    ShellExecuteTool,
+    SqliColumnCounter,
+    SqliDataDumper,
+    SqliProbeTool,
+    SqlPatternHintTool,
+    SsrfPayloadGenerator,
+    SsrfProbeTool,
+    SstiExploitSuggester,
+    SstiProbeTool,
+    TimingCompareTool,
+    UploadLocationFinder,
+    WasmAnalyzerTool,
+    WebSocketProbeTool,
+    XPathBlindBooleanTool,
+    XPathPayloadGenerator,
+    XPathProbeTool,
+    XssPayloadGenerator,
+    XssProbeTool,
+    XxeDocTypeBuilder,
+    XxePayloadGenerator,
+    XxeProbeTool,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,8 @@ _RECON_TOOLS = frozenset(
         "backup_file_finder",
         "ctf_knowledge_query",
         "attack_planner",
+        "security_header_analyzer",
+        "deep_recon",
     }
 )
 
@@ -262,7 +265,8 @@ class CTFAgent(SimpleAgent):
         agent = self  # capture reference for the closure
 
         def _robust_parse(response_text: str):
-            from fairlib.core.message import FinalAnswer as FA, Thought, Action
+            from fairlib.core.message import Action, Thought
+            from fairlib.core.message import FinalAnswer as FA
 
             text = response_text.strip()
 
@@ -284,6 +288,7 @@ class CTFAgent(SimpleAgent):
 
             if is_valid_json:
                 # Valid JSON — use original parser directly (happy path)
+                agent._consecutive_format_errors = 0
                 return original_parse(text)
 
             # Step 3: Not valid JSON — try to extract embedded JSON from text
@@ -293,6 +298,7 @@ class CTFAgent(SimpleAgent):
                 result = original_parse(json_obj)
                 # Accept if it parsed into a Thought+Action tuple
                 if not isinstance(result, FA):
+                    agent._consecutive_format_errors = 0
                     return result
                 # Also accept if it's an intentional final_answer tool call
                 try:
@@ -306,19 +312,32 @@ class CTFAgent(SimpleAgent):
             # FinalAnswer (which the original parser would do), inject a format
             # error so the agent loop can re-prompt the LLM.
             agent._format_error_count = getattr(agent, "_format_error_count", 0) + 1
+            agent._consecutive_format_errors = (
+                getattr(agent, "_consecutive_format_errors", 0) + 1
+            )
             agent._log_fn(
                 f"[Parser] LLM returned non-JSON response "
-                f"(format error #{agent._format_error_count}). "
+                f"(format error #{agent._format_error_count}, "
+                f"{agent._consecutive_format_errors} consecutive). "
                 "Injecting format-error continuation instead of treating as FinalAnswer."
             )
 
-            # After 3 format errors, fall back to original parser's behavior
-            # (FinalAnswer) to avoid infinite loops
-            if agent._format_error_count > 3:
+            # After 3 consecutive format errors, force-stop the agent to
+            # prevent a death spiral where format errors + premature FA
+            # guards consume the entire step budget.
+            if agent._consecutive_format_errors >= 3:
                 agent._log_fn(
-                    "[Parser] Too many format errors. Falling back to original parser."
+                    "[Parser] 3 consecutive format errors — force-stopping "
+                    "agent to prevent death spiral."
                 )
-                return original_parse(text)
+                return FA(
+                    text=(
+                        "AGENT STOPPED: Unable to produce valid JSON responses "
+                        "after 3 consecutive format errors. This may be due to "
+                        "content policy restrictions or model-level issues. "
+                        f"Total format errors: {agent._format_error_count}."
+                    )
+                )
 
             # Return a thought + action that triggers a tool-not-found error,
             # which naturally re-enters the loop with a corrective observation
@@ -443,18 +462,35 @@ class CTFAgent(SimpleAgent):
 
     # ── Overridden run loop ─────────────────────────────────────────
     async def arun(self, user_input: str) -> str:  # noqa: C901
-        """ReAct loop with premature-FinalAnswer guard and progress checks."""
+        """ReAct loop with premature-FinalAnswer guard and progress checks.
+
+        Progress checks and premature-FinalAnswer guard blocks inject system
+        messages without consuming a step, so all max_steps are available for
+        actual tool execution.
+        """
         if self.stateless:
             self.memory.clear()
+
+        # Reset per-run state so sequential challenges don't inherit
+        # error counts from previous runs.
+        self._premature_fa_count = 0
+        self._format_error_count = getattr(self, "_format_error_count", 0)
+        self._format_error_count = 0
+        self._consecutive_format_errors = 0
 
         turn_messages: List[Message] = [Message(role="user", content=user_input)]
         current_request = user_input
 
-        for step in range(self.max_steps):
+        step = 0
+        # _llm_calls tracks total LLM invocations (for progress checks)
+        _llm_calls = 0
+
+        while step < self.max_steps:
             print(f"--- Step {step + 1}/{self.max_steps} ---")
 
-            # ── Periodic progress check (every 5 steps) ──
-            if step > 0 and step % 5 == 0 and not self._has_flag():
+            # ── Periodic progress check (every 5 tool calls) ──
+            # Injected as a system message; does NOT consume a step.
+            if _llm_calls > 0 and _llm_calls % 5 == 0 and not self._has_flag():
                 tools_used = self._get_tools_used()
                 tools_summary = (
                     ", ".join(set(tools_used[-10:])) if tools_used else "none"
@@ -478,10 +514,22 @@ class CTFAgent(SimpleAgent):
 
             history = self.memory.get_history()
             plan_result = await self.planner.aplan(history, current_request)
+            _llm_calls += 1
 
             # ── FinalAnswer handling with escalating guard ──
             if isinstance(plan_result, FinalAnswer):
                 final_answer_text = plan_result.text
+
+                # Force-stop signals bypass the premature-answer guard
+                if final_answer_text.startswith("AGENT STOPPED:"):
+                    print(f"Thought: {final_answer_text}")
+                    print("Action: Final Answer (forced stop)")
+                    turn_messages.append(
+                        Message(role="assistant", content=final_answer_text)
+                    )
+                    for msg in turn_messages:
+                        self.memory.add_message(msg)
+                    return final_answer_text
 
                 # Dynamic retry cap: allow more retries if early in the run
                 budget_ratio = (step + 1) / self.max_steps
@@ -513,6 +561,8 @@ class CTFAgent(SimpleAgent):
                         self.memory.add_message(msg)
                     turn_messages = []
                     current_request = ""
+                    # Guard block does NOT consume a step — agent keeps
+                    # its full exploitation budget.
                     continue
 
                 # Genuine final answer (flag found or retries exhausted)
@@ -582,6 +632,9 @@ class CTFAgent(SimpleAgent):
 
             turn_messages = []
             current_request = ""
+
+            # Only actual tool executions consume a step
+            step += 1
 
         final_response = "Agent stopped after reaching max steps."
         self.memory.add_message(Message(role="assistant", content=final_response))
@@ -718,8 +771,11 @@ def build_agent(
     """
     log_fn = log_callback or print
 
-    # Get the LLM provider from config
+    # Get the LLM provider from config, auto-detecting from model name
     provider = getattr(config, "llm_provider", LLMProviderType.OPENAI)
+    if config.model_name and config.model_name.startswith("claude"):
+        provider = LLMProviderType.ANTHROPIC
+        config.llm_provider = LLMProviderType.ANTHROPIC
 
     # Check if provider is available
     if isinstance(provider, str):
@@ -730,17 +786,35 @@ def build_agent(
 
     # Create the LLM adapter based on provider
     if provider == LLMProviderType.OPENAI or provider == "openai":
-        # OpenAI path (original behavior for backward compatibility)
+        # OpenAI-compatible path (OpenAI, Gemini via GENAI.mil, etc.)
         if not config.openai_api_key:
             raise RuntimeError(
-                "OPENAI_API_KEY is not set. Set it in your environment, .env file, or config."
+                "API key is not set. Set OPENAI_API_KEY (or GENAI_API_KEY for Gemini) "
+                "in your environment, .env file, or config."
             )
         settings.api_keys.openai_api_key = config.openai_api_key
         llm = OpenAIAdapter(
             api_key=settings.api_keys.openai_api_key,
             model_name=config.model_name,
         )
-        log_fn(f"[Agent] Using OpenAI adapter with model: {config.model_name}")
+        # Override base_url for GENAI.mil / custom endpoints
+        if getattr(config, "llm_base_url", None):
+            import openai
+
+            llm.sync_client = openai.OpenAI(
+                api_key=config.openai_api_key,
+                base_url=config.llm_base_url,
+            )
+            llm.async_client = openai.AsyncOpenAI(
+                api_key=config.openai_api_key,
+                base_url=config.llm_base_url,
+            )
+            log_fn(
+                f"[Agent] Using OpenAI-compatible adapter with model: "
+                f"{config.model_name} via {config.llm_base_url}"
+            )
+        else:
+            log_fn(f"[Agent] Using OpenAI adapter with model: {config.model_name}")
     else:
         # Use the adapter factory for other providers
         try:
@@ -912,6 +986,10 @@ def build_agent(
     # WASM / Reverse Engineering tools (session-based for fetch)
     wasm_analyzer_tool = WasmAnalyzerTool(session=shared_session)
 
+    # Recon meta-tools
+    security_header_analyzer_tool = SecurityHeaderAnalyzerTool(session=shared_session)
+    deep_recon_tool = DeepReconTool(session=shared_session)
+
     # All tools to register
     tools = [
         http_tool,
@@ -987,6 +1065,8 @@ def build_agent(
         parser_differential_probe_tool,
         websocket_probe_tool,
         wasm_analyzer_tool,
+        security_header_analyzer_tool,
+        deep_recon_tool,
     ]
 
     # Wrap them with LoggingToolWrapper and register
@@ -1060,10 +1140,16 @@ def build_agent(
     # === PromptBuilder Tuning: Role + Few-Shot Examples ===
     pb = planner.prompt_builder
 
-    # 1. Custom RoleDefinition using configurable template
-    role_text = get_role_definition(
+    # Remove FAIR library's default format instructions — the CTF system
+    # prompt (role_text) has its own format rules and they conflict with
+    # the FAIR defaults, causing Claude to produce wrong JSON structure.
+    pb.format_instructions.clear()
+
+    # 1. Full system prompt with format rules, exploitation protocols, flag regex
+    role_text = get_system_prompt(
         platform_name=config.platform_name,
-        custom_role=config.agent_system_prompt,
+        flag_regex=config.flag_regex,
+        custom_prompt=config.agent_system_prompt,
     )
     pb.role_definition = RoleDefinition(role_text)
 
@@ -1076,6 +1162,7 @@ def build_agent(
     pb.examples.append(JS_ANALYSIS_EXAMPLE)
     pb.examples.append(JSON_API_EXAMPLE)
     pb.examples.append(COOKIE_BYPASS_EXAMPLE)
+    pb.examples.append(DEEP_RECON_EXAMPLE)
 
     # === Tool executor, memory, and agent ===
     executor = ToolExecutor(tool_registry)

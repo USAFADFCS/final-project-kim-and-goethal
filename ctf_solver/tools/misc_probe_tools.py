@@ -9,7 +9,6 @@ import hashlib
 import json
 import re
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urlencode, quote
 
 import requests
 
@@ -128,7 +127,9 @@ class CrlfProbeTool:
             return f"[CrlfProbeTool] Error: Invalid JSON input. {exc}"
 
         url = data.get("url", "").strip() if isinstance(data.get("url"), str) else ""
-        param = data.get("param", "").strip() if isinstance(data.get("param"), str) else ""
+        param = (
+            data.get("param", "").strip() if isinstance(data.get("param"), str) else ""
+        )
         method = (data.get("method") or "GET").upper()
         form_data = data.get("data") or {}
         timeout = data.get("timeout", 10)
@@ -136,9 +137,13 @@ class CrlfProbeTool:
         if not url:
             return "[CrlfProbeTool] Error: 'url' is required."
         if not param:
-            return "[CrlfProbeTool] Error: 'param' (parameter to inject into) is required."
+            return (
+                "[CrlfProbeTool] Error: 'param' (parameter to inject into) is required."
+            )
         if method not in ("GET", "POST"):
-            return f"[CrlfProbeTool] Error: 'method' must be GET or POST, got '{method}'."
+            return (
+                f"[CrlfProbeTool] Error: 'method' must be GET or POST, got '{method}'."
+            )
 
         # Get baseline response
         baseline_data = {**form_data, param: "baseline_test_value"}
@@ -192,9 +197,7 @@ class CrlfProbeTool:
                 # Check if CRLF content appears in the response body (response splitting)
                 if detect_value and detect_value in resp.text:
                     is_vulnerable = True
-                    evidence.append(
-                        f"Payload content found in response body"
-                    )
+                    evidence.append("Payload content found in response body")
 
                 # Check for new headers not in baseline
                 for hdr_name in resp.headers:
@@ -212,12 +215,14 @@ class CrlfProbeTool:
                     evidence.append(f"FLAG FOUND: {flag}")
 
                 if is_vulnerable:
-                    vulnerable_payloads.append({
-                        "description": description,
-                        "payload": injected_value,
-                        "status": resp.status_code,
-                        "evidence": evidence,
-                    })
+                    vulnerable_payloads.append(
+                        {
+                            "description": description,
+                            "payload": injected_value,
+                            "status": resp.status_code,
+                            "evidence": evidence,
+                        }
+                    )
 
             except requests.exceptions.Timeout:
                 pass
@@ -226,7 +231,7 @@ class CrlfProbeTool:
 
         # Build output report
         output_lines = [
-            f"[CrlfProbeTool] CRLF / Header Injection Probe Results",
+            "[CrlfProbeTool] CRLF / Header Injection Probe Results",
             "=" * 55,
             f"Target: {url}",
             f"Method: {method}",
@@ -244,7 +249,9 @@ class CrlfProbeTool:
             output_lines.append("")
 
         if vulnerable_payloads:
-            output_lines.append(f"VULNERABLE PAYLOADS ({len(vulnerable_payloads)} found):")
+            output_lines.append(
+                f"VULNERABLE PAYLOADS ({len(vulnerable_payloads)} found):"
+            )
             output_lines.append("-" * 40)
             for item in vulnerable_payloads:
                 output_lines.append(f"  [{item['description']}]")
@@ -261,15 +268,27 @@ class CrlfProbeTool:
         output_lines.append("RECOMMENDATIONS:")
         if vulnerable_payloads:
             output_lines.append("  [!] CRLF injection confirmed!")
-            output_lines.append("  - Try injecting Set-Cookie headers to set arbitrary cookies")
+            output_lines.append(
+                "  - Try injecting Set-Cookie headers to set arbitrary cookies"
+            )
             output_lines.append("  - Try injecting Location headers for open redirect")
-            output_lines.append("  - Try response splitting: inject a full HTTP response body")
-            output_lines.append("  - Try injecting X-Forwarded-For or other trust headers")
+            output_lines.append(
+                "  - Try response splitting: inject a full HTTP response body"
+            )
+            output_lines.append(
+                "  - Try injecting X-Forwarded-For or other trust headers"
+            )
             output_lines.append("  - Combine with XSS via response body injection")
         else:
-            output_lines.append("  - No CRLF injection detected with standard payloads.")
-            output_lines.append("  - Try double-encoding (%250d%250a) or other bypass techniques.")
-            output_lines.append("  - Check if the parameter value is reflected in response headers.")
+            output_lines.append(
+                "  - No CRLF injection detected with standard payloads."
+            )
+            output_lines.append(
+                "  - Try double-encoding (%250d%250a) or other bypass techniques."
+            )
+            output_lines.append(
+                "  - Check if the parameter value is reflected in response headers."
+            )
 
         return "\n".join(output_lines)
 
@@ -306,7 +325,12 @@ class PhpTypeJugglingTool:
         "tables, and exploitation guidance for PHP loose type comparison vulnerabilities."
     )
 
-    VALID_OPERATIONS = ("magic_hashes", "strcmp_bypass", "loose_comparison", "type_coercion")
+    VALID_OPERATIONS = (
+        "magic_hashes",
+        "strcmp_bypass",
+        "loose_comparison",
+        "type_coercion",
+    )
 
     # Magic hashes: values whose hash starts with 0e followed by only digits
     MAGIC_HASHES_MD5: List[Tuple[str, str]] = [
@@ -396,15 +420,21 @@ class PhpTypeJugglingTool:
             lines.append("=== SHA256 Magic Hashes ===")
             lines.append("No practical 0e magic hashes are known for SHA256.")
             lines.append("The probability of finding one is extremely low due to")
-            lines.append("the 64-character hash length requiring all digits after '0e'.")
+            lines.append(
+                "the 64-character hash length requiring all digits after '0e'."
+            )
             lines.append("")
 
         if hash_type not in ("md5", "sha1", "sha256", "all"):
-            lines.append(f"Unknown hash type '{hash_type}'. Supported: md5, sha1, sha256, all.")
+            lines.append(
+                f"Unknown hash type '{hash_type}'. Supported: md5, sha1, sha256, all."
+            )
             lines.append("")
 
         lines.append("=== Usage ===")
-        lines.append("If the server does: if (md5($input) == '0') or if (md5($a) == md5($b))")
+        lines.append(
+            "If the server does: if (md5($input) == '0') or if (md5($a) == md5($b))"
+        )
         lines.append("Send any magic hash value as input to bypass the check.")
         lines.append("")
         lines.append("Example: password=240610708 bypasses md5($password) == '0'")
@@ -478,12 +508,12 @@ class PhpTypeJugglingTool:
             '  "100" == "1E2"      => TRUE  (scientific notation)',
             '  "0e123" == "0e456"  => TRUE  (both are 0 in scientific notation)',
             '  "0" == "0e999"      => TRUE  (0 == 0)',
-            '  null == false       => TRUE',
+            "  null == false       => TRUE",
             '  "" == null          => TRUE',
             '  0 == "any_string"   => TRUE  (PHP 7), FALSE (PHP 8)',
             '  true == "any_string" => TRUE (non-empty string)',
-            '  true == 1           => TRUE',
-            '  true == -1          => TRUE',
+            "  true == 1           => TRUE",
+            "  true == -1          => TRUE",
             "",
             "=== Authentication Bypass Techniques ===",
             "",
@@ -555,7 +585,7 @@ class PhpTypeJugglingTool:
             '  in_array(0, ["a", "b"]) = true         # 0 == "a" (PHP 7)',
             "",
             "  Bypass: if checking user role against allowed list,",
-            '  send 0 or true to match any string in the array',
+            "  send 0 or true to match any string in the array",
             "",
             "=== json_decode() Type Confusion ===",
             "",
@@ -571,7 +601,7 @@ class PhpTypeJugglingTool:
             "=== PHP Version Impact ===",
             "",
             "  PHP 7.x: Many type juggling attacks work (string-to-int coercion)",
-            '  PHP 8.0+: "0 == \'string\'" now returns FALSE (breaking change)',
+            "  PHP 8.0+: \"0 == 'string'\" now returns FALSE (breaking change)",
             "  PHP 8.0+: strcmp() with non-strings throws TypeError",
             "  PHP 8.1+: More strict type handling in built-in functions",
         ]
@@ -694,12 +724,17 @@ class PrototypePollutionTool:
             if "json" in content_type.lower():
                 baseline_body = body_template if body_template else {"test": "baseline"}
                 baseline_resp = self.session.request(
-                    method, url, json=baseline_body,
-                    headers={"Content-Type": content_type}, timeout=timeout,
+                    method,
+                    url,
+                    json=baseline_body,
+                    headers={"Content-Type": content_type},
+                    timeout=timeout,
                 )
             else:
                 baseline_resp = self.session.request(
-                    method, url, data=body_template or {"test": "baseline"},
+                    method,
+                    url,
+                    data=body_template or {"test": "baseline"},
                     timeout=timeout,
                 )
             baseline_status = baseline_resp.status_code
@@ -722,13 +757,20 @@ class PrototypePollutionTool:
 
                 try:
                     resp = self.session.request(
-                        method, url, json=merged,
-                        headers={"Content-Type": content_type}, timeout=timeout,
+                        method,
+                        url,
+                        json=merged,
+                        headers={"Content-Type": content_type},
+                        timeout=timeout,
                     )
 
                     changes = self._detect_changes(
-                        baseline_status, baseline_length, baseline_body_text,
-                        resp.status_code, len(resp.text), resp.text
+                        baseline_status,
+                        baseline_length,
+                        baseline_body_text,
+                        resp.status_code,
+                        len(resp.text),
+                        resp.text,
                     )
                     error_msgs = self._check_error_patterns(resp.text)
 
@@ -758,13 +800,20 @@ class PrototypePollutionTool:
 
                 try:
                     resp = self.session.request(
-                        method, url, json=merged,
-                        headers={"Content-Type": content_type}, timeout=timeout,
+                        method,
+                        url,
+                        json=merged,
+                        headers={"Content-Type": content_type},
+                        timeout=timeout,
                     )
 
                     changes = self._detect_changes(
-                        baseline_status, baseline_length, baseline_body_text,
-                        resp.status_code, len(resp.text), resp.text
+                        baseline_status,
+                        baseline_length,
+                        baseline_body_text,
+                        resp.status_code,
+                        len(resp.text),
+                        resp.text,
                     )
                     error_msgs = self._check_error_patterns(resp.text)
 
@@ -790,8 +839,12 @@ class PrototypePollutionTool:
                     resp = self.session.request(method, test_url, timeout=timeout)
 
                     changes = self._detect_changes(
-                        baseline_status, baseline_length, baseline_body_text,
-                        resp.status_code, len(resp.text), resp.text
+                        baseline_status,
+                        baseline_length,
+                        baseline_body_text,
+                        resp.status_code,
+                        len(resp.text),
+                        resp.text,
                     )
                     error_msgs = self._check_error_patterns(resp.text)
 
@@ -825,7 +878,9 @@ class PrototypePollutionTool:
             output_lines.append(f"POTENTIAL FINDINGS ({len(findings)}):")
             output_lines.append("-" * 40)
             for finding in findings:
-                output_lines.append(f"  [{finding['type'].upper()}] {finding['description']}")
+                output_lines.append(
+                    f"  [{finding['type'].upper()}] {finding['description']}"
+                )
                 output_lines.append(f"    Payload: {finding['payload']}")
                 output_lines.append(f"    Status: {finding['status']}")
                 if finding["changes"]:
@@ -843,16 +898,26 @@ class PrototypePollutionTool:
         output_lines.append("RECOMMENDATIONS:")
         if findings:
             output_lines.append("  [!] Potential prototype pollution detected!")
-            output_lines.append("  - Try __proto__.isAdmin = true for privilege escalation")
+            output_lines.append(
+                "  - Try __proto__.isAdmin = true for privilege escalation"
+            )
             output_lines.append("  - Try __proto__.role = 'admin' for role injection")
-            output_lines.append("  - Try __proto__.constructor to modify object behavior")
-            output_lines.append("  - Check if server uses lodash.merge(), Object.assign(), or similar")
-            output_lines.append("  - For Python: try __class__.__init__.__globals__ traversal")
+            output_lines.append(
+                "  - Try __proto__.constructor to modify object behavior"
+            )
+            output_lines.append(
+                "  - Check if server uses lodash.merge(), Object.assign(), or similar"
+            )
+            output_lines.append(
+                "  - For Python: try __class__.__init__.__globals__ traversal"
+            )
         else:
             output_lines.append("  - No pollution detected with standard payloads.")
-            output_lines.append("  - Try nested JSON: {\"a\": {\"__proto__\": {\"b\": 1}}}")
+            output_lines.append('  - Try nested JSON: {"a": {"__proto__": {"b": 1}}}')
             output_lines.append("  - Try different content types or request methods.")
-            output_lines.append("  - Check if the application uses deep merge libraries.")
+            output_lines.append(
+                "  - Check if the application uses deep merge libraries."
+            )
 
         return "\n".join(output_lines)
 
@@ -873,7 +938,9 @@ class PrototypePollutionTool:
 
         length_diff = abs(resp_length - baseline_length)
         if length_diff > 50:
-            changes.append(f"Length changed: {baseline_length} -> {resp_length} (diff: {length_diff})")
+            changes.append(
+                f"Length changed: {baseline_length} -> {resp_length} (diff: {length_diff})"
+            )
 
         if resp_body != baseline_body and not changes:
             # Body changed but length similar - content difference
@@ -1017,8 +1084,15 @@ class IdorEnumeratorTool:
         for id_value in id_values:
             try:
                 resp = self._make_request(
-                    url, method, param, param_type, param_name,
-                    id_value, headers, form_data, timeout,
+                    url,
+                    method,
+                    param,
+                    param_type,
+                    param_name,
+                    id_value,
+                    headers,
+                    form_data,
+                    timeout,
                 )
 
                 resp_text = resp.text
@@ -1026,12 +1100,18 @@ class IdorEnumeratorTool:
                 resp_length = len(resp_text)
                 preview = resp_text[:150].replace("\n", " ").replace("\r", "")
 
-                results_table.append({
-                    "id": id_value if id_type == "sequential" else f"{id_value[:8]}... (md5 of {id_values.index(id_value) + range_start})",
-                    "status": resp_status,
-                    "length": resp_length,
-                    "preview": preview,
-                })
+                results_table.append(
+                    {
+                        "id": (
+                            id_value
+                            if id_type == "sequential"
+                            else f"{id_value[:8]}... (md5 of {id_values.index(id_value) + range_start})"
+                        ),
+                        "status": resp_status,
+                        "length": resp_length,
+                        "preview": preview,
+                    }
+                )
                 response_lengths.append(resp_length)
 
                 # Check for flags
@@ -1049,27 +1129,38 @@ class IdorEnumeratorTool:
                         break  # Only report first match per ID
 
             except requests.exceptions.Timeout:
-                results_table.append({
-                    "id": id_value,
-                    "status": "TIMEOUT",
-                    "length": 0,
-                    "preview": "(request timed out)",
-                })
+                results_table.append(
+                    {
+                        "id": id_value,
+                        "status": "TIMEOUT",
+                        "length": 0,
+                        "preview": "(request timed out)",
+                    }
+                )
             except Exception as exc:
-                results_table.append({
-                    "id": id_value,
-                    "status": "ERROR",
-                    "length": 0,
-                    "preview": str(exc)[:100],
-                })
+                results_table.append(
+                    {
+                        "id": id_value,
+                        "status": "ERROR",
+                        "length": 0,
+                        "preview": str(exc)[:100],
+                    }
+                )
 
         # Detect anomalies (responses that differ significantly from average)
         if response_lengths:
             avg_length = sum(response_lengths) / len(response_lengths)
             for entry in results_table:
-                if isinstance(entry["status"], int) and entry["status"] not in (404, 403):
+                if isinstance(entry["status"], int) and entry["status"] not in (
+                    404,
+                    403,
+                ):
                     length_diff = abs(entry["length"] - avg_length)
-                    if length_diff > avg_length * 0.5 and avg_length > 0 and entry["length"] > 0:
+                    if (
+                        length_diff > avg_length * 0.5
+                        and avg_length > 0
+                        and entry["length"] > 0
+                    ):
                         interesting_findings.append(
                             f"ID {entry['id']}: Response differs significantly "
                             f"({entry['length']} bytes vs ~{avg_length:.0f} avg)"
@@ -1105,7 +1196,9 @@ class IdorEnumeratorTool:
             status_str = str(entry["status"])
             length_str = str(entry["length"])
             preview_str = entry["preview"][:60]
-            output_lines.append(f"{id_str:<12} {status_str:<8} {length_str:<8} {preview_str}")
+            output_lines.append(
+                f"{id_str:<12} {status_str:<8} {length_str:<8} {preview_str}"
+            )
 
         output_lines.append("")
 
@@ -1113,7 +1206,7 @@ class IdorEnumeratorTool:
         if interesting_findings:
             # Deduplicate
             unique_findings = list(dict.fromkeys(interesting_findings))
-            output_lines.append(f"=== Interesting Findings ===")
+            output_lines.append("=== Interesting Findings ===")
             for finding in unique_findings:
                 if "flag" in finding.lower():
                     output_lines.append(f"[!] {finding}")
@@ -1273,7 +1366,9 @@ class OpenRedirectProbeTool:
             return f"[OpenRedirectProbeTool] Error: Invalid JSON input. {exc}"
 
         url = data.get("url", "").strip() if isinstance(data.get("url"), str) else ""
-        param = data.get("param", "").strip() if isinstance(data.get("param"), str) else ""
+        param = (
+            data.get("param", "").strip() if isinstance(data.get("param"), str) else ""
+        )
         method = (data.get("method") or "GET").upper()
         form_data = data.get("data") or {}
         timeout = data.get("timeout", 10)
@@ -1335,27 +1430,41 @@ class OpenRedirectProbeTool:
                 # Check for meta refresh redirect in body
                 meta_refresh = re.search(
                     r'<meta[^>]*http-equiv=["\']?refresh["\']?[^>]*content=["\']?[^"\']*url=([^"\'>\s]+)',
-                    resp.text, re.IGNORECASE
+                    resp.text,
+                    re.IGNORECASE,
                 )
                 if meta_refresh:
                     redirect_url = meta_refresh.group(1)
-                    if "evil.com" in redirect_url.lower() or "evil" in redirect_url.lower():
+                    if (
+                        "evil.com" in redirect_url.lower()
+                        or "evil" in redirect_url.lower()
+                    ):
                         is_vulnerable = True
                         evidence.append(f"Meta refresh redirect to: {redirect_url}")
 
                 # Check for JavaScript redirect in body
                 js_redirect = re.search(
                     r'(?:window\.location|location\.href|location\.replace)\s*[=(]\s*["\']([^"\']+)["\']',
-                    resp.text, re.IGNORECASE
+                    resp.text,
+                    re.IGNORECASE,
                 )
                 if js_redirect:
                     redirect_url = js_redirect.group(1)
-                    if "evil.com" in redirect_url.lower() or "evil" in redirect_url.lower():
+                    if (
+                        "evil.com" in redirect_url.lower()
+                        or "evil" in redirect_url.lower()
+                    ):
                         is_vulnerable = True
                         evidence.append(f"JavaScript redirect to: {redirect_url}")
 
                 # Check for JavaScript scheme execution
-                if payload.startswith("javascript:") and resp.status_code in (301, 302, 303, 307, 308):
+                if payload.startswith("javascript:") and resp.status_code in (
+                    301,
+                    302,
+                    303,
+                    307,
+                    308,
+                ):
                     if "javascript:" in location.lower():
                         is_vulnerable = True
                         evidence.append(f"JavaScript URI in redirect: {location}")
@@ -1367,13 +1476,15 @@ class OpenRedirectProbeTool:
                     evidence.append(f"FLAG FOUND: {flag}")
 
                 if is_vulnerable:
-                    vulnerable_payloads.append({
-                        "description": description,
-                        "payload": payload,
-                        "status": resp.status_code,
-                        "location": location,
-                        "evidence": evidence,
-                    })
+                    vulnerable_payloads.append(
+                        {
+                            "description": description,
+                            "payload": payload,
+                            "status": resp.status_code,
+                            "location": location,
+                            "evidence": evidence,
+                        }
+                    )
 
             except requests.exceptions.Timeout:
                 pass
@@ -1400,7 +1511,9 @@ class OpenRedirectProbeTool:
             output_lines.append("")
 
         if vulnerable_payloads:
-            output_lines.append(f"VULNERABLE PAYLOADS ({len(vulnerable_payloads)} found):")
+            output_lines.append(
+                f"VULNERABLE PAYLOADS ({len(vulnerable_payloads)} found):"
+            )
             output_lines.append("-" * 40)
             for item in vulnerable_payloads:
                 output_lines.append(f"  [{item['description']}]")
@@ -1419,16 +1532,34 @@ class OpenRedirectProbeTool:
         output_lines.append("RECOMMENDATIONS:")
         if vulnerable_payloads:
             output_lines.append("  [!] Open redirect confirmed!")
-            output_lines.append("  - Use for phishing: redirect users to a clone of the target site")
-            output_lines.append("  - Chain with OAuth flows to steal authorization codes")
-            output_lines.append("  - Chain with SSRF if the redirect URL is fetched server-side")
-            output_lines.append("  - Use to bypass URL allowlists/filters in other parameters")
-            output_lines.append("  - Try escalating to XSS via javascript: or data: URIs")
+            output_lines.append(
+                "  - Use for phishing: redirect users to a clone of the target site"
+            )
+            output_lines.append(
+                "  - Chain with OAuth flows to steal authorization codes"
+            )
+            output_lines.append(
+                "  - Chain with SSRF if the redirect URL is fetched server-side"
+            )
+            output_lines.append(
+                "  - Use to bypass URL allowlists/filters in other parameters"
+            )
+            output_lines.append(
+                "  - Try escalating to XSS via javascript: or data: URIs"
+            )
         else:
-            output_lines.append("  - No open redirects detected with standard payloads.")
+            output_lines.append(
+                "  - No open redirects detected with standard payloads."
+            )
             output_lines.append("  - Try double URL encoding: %2568ttps://evil.com")
-            output_lines.append("  - Try using the target's own domain as a redirect chain.")
-            output_lines.append("  - Check for redirect endpoints in JavaScript source code.")
-            output_lines.append("  - Try different parameter names (next, return, redirect, goto, dest).")
+            output_lines.append(
+                "  - Try using the target's own domain as a redirect chain."
+            )
+            output_lines.append(
+                "  - Check for redirect endpoints in JavaScript source code."
+            )
+            output_lines.append(
+                "  - Try different parameter names (next, return, redirect, goto, dest)."
+            )
 
         return "\n".join(output_lines)

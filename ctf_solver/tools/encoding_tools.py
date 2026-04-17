@@ -5,7 +5,6 @@ Provides utilities for common encoding schemes encountered in CTF challenges.
 """
 
 import base64
-import binascii
 import html
 import json
 import urllib.parse
@@ -109,7 +108,9 @@ class EncodingTool:
         except Exception as exc:
             return f"[EncodingTool] Error performing '{operation}': {exc}"
 
-    def _perform_operation(self, text: str, operation: str, *, key: Optional[str] = None) -> str:
+    def _perform_operation(
+        self, text: str, operation: str, *, key: Optional[str] = None
+    ) -> str:
         """Perform the specified encoding/decoding operation."""
 
         if operation == "base64_encode":
@@ -189,6 +190,7 @@ class EncodingTool:
 
         elif operation == "unicode_normalize":
             import unicodedata
+
             return unicodedata.normalize("NFKC", text)
 
         elif operation == "unicode_escape":
@@ -220,10 +222,11 @@ class EncodingTool:
             except ValueError:
                 # Treat key as raw string
                 key_bytes = key.encode("utf-8")
+            if not key_bytes:
+                return "[EncodingTool] Error: XOR key cannot be empty."
             text_bytes = text.encode("utf-8")
             result_bytes = bytes(
-                b ^ key_bytes[i % len(key_bytes)]
-                for i, b in enumerate(text_bytes)
+                b ^ key_bytes[i % len(key_bytes)] for i, b in enumerate(text_bytes)
             )
             try:
                 return result_bytes.decode("utf-8")
@@ -236,6 +239,7 @@ class EncodingTool:
         elif operation == "octal_decode":
             # Parse octal sequences like \101\102\103 or space-separated 101 102 103
             import re
+
             # Try \NNN format first
             octal_matches = re.findall(r"\\(\d{1,3})", text)
             if octal_matches:
@@ -300,7 +304,9 @@ class EncodingTool:
             sig = parts[2]
             result += f"\n\n=== SIGNATURE ===\n[Present, {len(sig)} chars]"
             if not sig or sig in ["", "."]:
-                result += "\n[WARNING: Empty signature - possible alg:none vulnerability!]"
+                result += (
+                    "\n[WARNING: Empty signature - possible alg:none vulnerability!]"
+                )
 
         return result
 

@@ -15,10 +15,10 @@ from ctf_solver.classifier import (
     APPROACH_SUGGESTIONS,
 )
 
-
 # =============================================================================
 # ChallengeCategory Tests
 # =============================================================================
+
 
 class TestChallengeCategory:
     """Tests for ChallengeCategory enum."""
@@ -37,8 +37,15 @@ class TestChallengeCategory:
     def test_key_categories_exist(self):
         """Test that key categories exist."""
         expected = [
-            "sql_injection", "xss", "ssti", "xxe", "file_upload",
-            "jwt", "authentication", "command_injection", "ssrf",
+            "sql_injection",
+            "xss",
+            "ssti",
+            "xxe",
+            "file_upload",
+            "jwt",
+            "authentication",
+            "command_injection",
+            "ssrf",
         ]
         category_values = [c.value for c in ChallengeCategory]
         for exp in expected:
@@ -48,6 +55,7 @@ class TestChallengeCategory:
 # =============================================================================
 # ClassificationResult Tests
 # =============================================================================
+
 
 class TestClassificationResult:
     """Tests for ClassificationResult dataclass."""
@@ -113,6 +121,7 @@ class TestClassificationResult:
 # =============================================================================
 # PatternMatcher Tests
 # =============================================================================
+
 
 class TestPatternMatcher:
     """Tests for PatternMatcher class."""
@@ -231,9 +240,7 @@ class TestPatternMatcher:
     def test_analyze_url_structure_path_hints(self):
         """Test detection of path hints."""
         matcher = PatternMatcher()
-        analysis = matcher.analyze_url_structure(
-            "http://example.com/admin/dashboard"
-        )
+        analysis = matcher.analyze_url_structure("http://example.com/admin/dashboard")
 
         assert "admin" in analysis["path_hints"]
 
@@ -279,6 +286,7 @@ class TestPatternMatcher:
 # ChallengeClassifier Tests
 # =============================================================================
 
+
 class TestChallengeClassifier:
     """Tests for ChallengeClassifier class."""
 
@@ -296,9 +304,7 @@ class TestChallengeClassifier:
     def test_classify_sql_injection_description(self):
         """Test classifying SQL injection from description."""
         classifier = ChallengeClassifier()
-        result = classifier.classify(
-            description="Bypass the login using SQL injection"
-        )
+        result = classifier.classify(description="Bypass the login using SQL injection")
 
         assert result.primary_category == ChallengeCategory.SQL_INJECTION
         assert result.confidence > 0.3
@@ -319,9 +325,7 @@ class TestChallengeClassifier:
     def test_classify_ssti_description(self):
         """Test classifying SSTI challenge."""
         classifier = ChallengeClassifier()
-        result = classifier.classify(
-            description="Jinja2 template injection to get RCE"
-        )
+        result = classifier.classify(description="Jinja2 template injection to get RCE")
 
         assert result.primary_category == ChallengeCategory.SSTI
         assert "ssti_probe" in result.suggested_tools
@@ -329,9 +333,7 @@ class TestChallengeClassifier:
     def test_classify_from_url(self):
         """Test classifying from URL patterns."""
         classifier = ChallengeClassifier()
-        result = classifier.classify(
-            url="http://ctf.example.com/user?id=1"
-        )
+        result = classifier.classify(url="http://ctf.example.com/user?id=1")
 
         # Should detect SQL injection potential
         assert result.primary_category in [
@@ -376,9 +378,7 @@ class TestChallengeClassifier:
     def test_classify_xxe(self):
         """Test classifying XXE challenge."""
         classifier = ChallengeClassifier()
-        result = classifier.classify(
-            description="Parse XML and read the flag file"
-        )
+        result = classifier.classify(description="Parse XML and read the flag file")
 
         assert result.primary_category == ChallengeCategory.XXE
         assert "xxe_probe" in result.suggested_tools
@@ -386,9 +386,7 @@ class TestChallengeClassifier:
     def test_classify_unknown(self):
         """Test classifying ambiguous challenge."""
         classifier = ChallengeClassifier()
-        result = classifier.classify(
-            description="Find the flag"
-        )
+        result = classifier.classify(description="Find the flag")
 
         # Should return unknown or reconnaissance
         assert result.primary_category in [
@@ -415,8 +413,10 @@ class TestChallengeClassifier:
         categories = [result.primary_category] + [
             c for c, _ in result.secondary_categories
         ]
-        assert ChallengeCategory.AUTHENTICATION in categories or \
-               result.primary_category != ChallengeCategory.UNKNOWN
+        assert (
+            ChallengeCategory.AUTHENTICATION in categories
+            or result.primary_category != ChallengeCategory.UNKNOWN
+        )
 
     def test_secondary_categories(self):
         """Test that secondary categories are populated."""
@@ -434,9 +434,7 @@ class TestChallengeClassifier:
     def test_suggested_approach_populated(self):
         """Test that suggested approach is populated."""
         classifier = ChallengeClassifier()
-        result = classifier.classify(
-            description="SQL injection challenge"
-        )
+        result = classifier.classify(description="SQL injection challenge")
 
         assert len(result.suggested_approach) > 0
         assert "1." in result.suggested_approach
@@ -444,9 +442,7 @@ class TestChallengeClassifier:
     def test_matched_keywords_tracked(self):
         """Test that matched keywords are tracked."""
         classifier = ChallengeClassifier()
-        result = classifier.classify(
-            description="SQL injection UNION attack"
-        )
+        result = classifier.classify(description="SQL injection UNION attack")
 
         # Should have some matched keywords
         if result.confidence > 0.2:
@@ -480,9 +476,7 @@ class TestChallengeClassifier:
     def test_suggest_initial_tools_basic(self):
         """Test suggesting initial tools."""
         classifier = ChallengeClassifier()
-        result = classifier.classify(
-            description="SQL injection challenge"
-        )
+        result = classifier.classify(description="SQL injection challenge")
         tools = classifier.suggest_initial_tools(result, max_tools=5)
 
         assert len(tools) <= 5
@@ -530,6 +524,7 @@ class TestChallengeClassifier:
 # Tool Priority Mapping Tests
 # =============================================================================
 
+
 class TestToolPriorities:
     """Tests for TOOL_PRIORITIES mapping."""
 
@@ -575,6 +570,7 @@ class TestToolPriorities:
 # Approach Suggestions Tests
 # =============================================================================
 
+
 class TestApproachSuggestions:
     """Tests for APPROACH_SUGGESTIONS mapping."""
 
@@ -603,6 +599,7 @@ class TestApproachSuggestions:
 # =============================================================================
 # Integration Tests
 # =============================================================================
+
 
 class TestClassifierIntegration:
     """Integration tests for the classifier."""
@@ -636,9 +633,7 @@ class TestClassifierIntegration:
         """Test handling ambiguous challenges."""
         classifier = ChallengeClassifier()
 
-        result = classifier.classify(
-            description="Bypass security to get the flag"
-        )
+        result = classifier.classify(description="Bypass security to get the flag")
 
         # Should handle gracefully
         assert result.primary_category is not None
@@ -649,14 +644,12 @@ class TestClassifierIntegration:
         classifier = ChallengeClassifier()
 
         # Without response content
-        result1 = classifier.classify(
-            description="A web challenge"
-        )
+        result1 = classifier.classify(description="A web challenge")
 
         # With response content containing SQL-related keywords
         result2 = classifier.classify(
             description="A web challenge",
-            response_content="MySQL error: syntax error near 'ORDER BY' in SQL query"
+            response_content="MySQL error: syntax error near 'ORDER BY' in SQL query",
         )
 
         # Response content should influence result

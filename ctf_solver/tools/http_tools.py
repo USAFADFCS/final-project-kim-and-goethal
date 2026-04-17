@@ -95,7 +95,9 @@ class HttpFetchTool:
         "4000), 'timeout' (optional int, default 10), 'follow_redirects' (optional "
         "bool, default true — set to false to inspect redirects), and 'auth' "
         "(optional [username, password] for HTTP Basic Auth). Returns status, "
-        "headers, Set-Cookie info, and a truncated response body."
+        "headers, Set-Cookie info, and a truncated response body. Use "
+        "'insecure' (optional bool, default false) to skip SSL certificate "
+        "verification for self-signed or invalid certificates."
     )
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
@@ -126,6 +128,7 @@ class HttpFetchTool:
         timeout = data.get("timeout", 10)
         follow_redirects = data.get("follow_redirects", True)
         auth = data.get("auth")
+        insecure = data.get("insecure", False)
 
         if not isinstance(params, dict):
             return "[HttpFetchTool] Error: 'params' must be a JSON object (dict)."
@@ -150,12 +153,19 @@ class HttpFetchTool:
         if auth and isinstance(auth, (list, tuple)) and len(auth) == 2:
             auth_tuple = (str(auth[0]), str(auth[1]))
 
+        # Suppress InsecureRequestWarning when using insecure mode
+        if insecure:
+            import urllib3
+
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
         try:
             request_kwargs = {
                 "params": params,
                 "headers": headers,
                 "timeout": timeout,
                 "allow_redirects": bool(follow_redirects),
+                "verify": not bool(insecure),
             }
             if auth_tuple:
                 request_kwargs["auth"] = auth_tuple
@@ -408,7 +418,25 @@ class FormSubmitTool:
                                 "content_type", "application/octet-stream"
                             )
                             if isinstance(content, str):
-                                content = content.encode("utf-8")
+                                # Try base64 decode for binary files:
+                                # only attempt if the string looks like
+                                # base64 (long, valid charset, padded).
+                                import base64
+                                import binascii
+                                import re as _re
+
+                                _b64_pat = _re.compile(r"^[A-Za-z0-9+/\n\r]+=*$")
+                                if len(content) >= 20 and _b64_pat.match(content):
+                                    try:
+                                        decoded = base64.b64decode(content)
+                                        if len(decoded) > 0:
+                                            content = decoded
+                                        else:
+                                            content = content.encode("utf-8")
+                                    except (binascii.Error, ValueError):
+                                        content = content.encode("utf-8")
+                                else:
+                                    content = content.encode("utf-8")
                             files_dict[field_name] = (filename, content, ct)
                         elif isinstance(file_info, str):
                             files_dict[field_name] = (

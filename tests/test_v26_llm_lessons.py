@@ -21,8 +21,16 @@ from ctf_solver.failure_analyzer import (
 FLAG = "CTF{test_flag_value}"
 
 TOOL_CALL_LOG = [
-    {"tool": "http_fetch", "input": '{"url": "http://t/"}', "output": "<html>Hello</html>"},
-    {"tool": "ssti_probe", "input": '{"url": "http://t/", "data": {"n": "{{7*7}}"}}', "output": "Hello 49!"},
+    {
+        "tool": "http_fetch",
+        "input": '{"url": "http://t/"}',
+        "output": "<html>Hello</html>",
+    },
+    {
+        "tool": "ssti_probe",
+        "input": '{"url": "http://t/", "data": {"n": "{{7*7}}"}}',
+        "output": "Hello 49!",
+    },
     {
         "tool": "form_submit",
         "input": '{"url": "http://t/", "data": {"n": "{{config.items()}}"}}',
@@ -109,7 +117,9 @@ def test_llm_enhance_doc_updates_reflexion_summary():
 def test_llm_enhance_doc_updates_causal_diagnosis():
     doc = _make_doc()
     mock_response = MagicMock()
-    mock_response.content = _make_llm_json(causal="Template variable evaluated server-side.")
+    mock_response.content = _make_llm_json(
+        causal="Template variable evaluated server-side."
+    )
 
     with patch("ctf_solver.llm.create_adapter") as mock_create:
         mock_adapter = MagicMock()
@@ -124,7 +134,9 @@ def test_llm_enhance_doc_updates_causal_diagnosis():
 def test_llm_enhance_doc_updates_rule_causal_explanations():
     doc = _make_doc()
     mock_response = MagicMock()
-    mock_response.content = _make_llm_json(rule_explanations=["Rule 0 LLM.", "Rule 1 LLM."])
+    mock_response.content = _make_llm_json(
+        rule_explanations=["Rule 0 LLM.", "Rule 1 LLM."]
+    )
 
     with patch("ctf_solver.llm.create_adapter") as mock_create:
         mock_adapter = MagicMock()
@@ -320,8 +332,13 @@ def test_analyze_run_calls_llm_enhance_when_enabled():
     with patch("ctf_solver.failure_analyzer._llm_enhance_doc") as mock_enhance:
         mock_enhance.side_effect = lambda doc, *a, **kw: doc  # pass-through
         analyze_run(
-            config_data, tracker_data, TOOL_CALL_LOG, None, [FLAG],
-            use_llm=True, openai_api_key="sk-test",
+            config_data,
+            tracker_data,
+            TOOL_CALL_LOG,
+            None,
+            [FLAG],
+            use_llm=True,
+            openai_api_key="sk-test",
         )
     mock_enhance.assert_called_once()
 
@@ -332,7 +349,11 @@ def test_analyze_run_skips_llm_when_disabled():
 
     with patch("ctf_solver.failure_analyzer._llm_enhance_doc") as mock_enhance:
         analyze_run(
-            config_data, tracker_data, TOOL_CALL_LOG, None, [FLAG],
+            config_data,
+            tracker_data,
+            TOOL_CALL_LOG,
+            None,
+            [FLAG],
             use_llm=False,
         )
     mock_enhance.assert_not_called()
@@ -344,8 +365,13 @@ def test_analyze_run_skips_llm_when_no_api_key():
 
     with patch("ctf_solver.failure_analyzer._llm_enhance_doc") as mock_enhance:
         analyze_run(
-            config_data, tracker_data, TOOL_CALL_LOG, None, [FLAG],
-            use_llm=True, openai_api_key="",
+            config_data,
+            tracker_data,
+            TOOL_CALL_LOG,
+            None,
+            [FLAG],
+            use_llm=True,
+            openai_api_key="",
         )
     mock_enhance.assert_not_called()
 
@@ -359,9 +385,15 @@ def test_pipeline_passes_use_llm_to_analyze_run(tmp_path):
     config_data = {"challenge_url": "http://t/", "challenge_name": "SSTI1"}
     tracker_data = {"tool_calls": {"http_fetch": 1, "ssti_probe": 1, "form_submit": 1}}
 
-    with patch("ctf_solver.failure_analyzer.analyze_run", wraps=analyze_run) as mock_analyze:
+    with patch(
+        "ctf_solver.failure_analyzer.analyze_run", wraps=analyze_run
+    ) as mock_analyze:
         run_lessons_learned_pipeline(
-            config_data, tracker_data, TOOL_CALL_LOG, None, [FLAG],
+            config_data,
+            tracker_data,
+            TOOL_CALL_LOG,
+            None,
+            [FLAG],
             lessons_docs_dir=str(tmp_path),
             use_llm=True,
             openai_api_key="sk-test",
@@ -377,9 +409,15 @@ def test_pipeline_use_llm_false_by_default(tmp_path):
     config_data = {"challenge_url": "http://t/", "challenge_name": "SSTI1"}
     tracker_data = {"tool_calls": {"http_fetch": 1, "ssti_probe": 1, "form_submit": 1}}
 
-    with patch("ctf_solver.failure_analyzer.analyze_run", wraps=analyze_run) as mock_analyze:
+    with patch(
+        "ctf_solver.failure_analyzer.analyze_run", wraps=analyze_run
+    ) as mock_analyze:
         run_lessons_learned_pipeline(
-            config_data, tracker_data, TOOL_CALL_LOG, None, [FLAG],
+            config_data,
+            tracker_data,
+            TOOL_CALL_LOG,
+            None,
+            [FLAG],
             lessons_docs_dir=str(tmp_path),
         )
     call_kwargs = mock_analyze.call_args.kwargs

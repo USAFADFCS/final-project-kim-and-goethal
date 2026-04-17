@@ -251,6 +251,7 @@ class QueryExpander:
         # Remove terms already in original query
         query_lower = query.lower()
         new_terms = [exp for exp in expansions if exp.lower() not in query_lower]
+        new_terms = new_terms[:8]  # Cap total expansions to prevent query dilution
 
         if new_terms:
             # Append expansions to original query

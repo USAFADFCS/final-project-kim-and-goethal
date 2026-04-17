@@ -11,7 +11,7 @@ Appeared in: PortSwigger 2023, corCTF 2023, HTB Uni 2023 (PhantomFeed).
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import urlparse
 
 import requests
 
@@ -77,8 +77,12 @@ class OAuthProbeTool:
 
     # Common flag patterns
     FLAG_PATTERNS: List[str] = [
-        r"(picoCTF\{[^}]+\})", r"(HTB\{[^}]+\})", r"(THM\{[^}]+\})",
-        r"(FLAG\{[^}]+\})", r"(flag\{[^}]+\})", r"(CTF\{[^}]+\})",
+        r"(picoCTF\{[^}]+\})",
+        r"(HTB\{[^}]+\})",
+        r"(THM\{[^}]+\})",
+        r"(FLAG\{[^}]+\})",
+        r"(flag\{[^}]+\})",
+        r"(CTF\{[^}]+\})",
     ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
@@ -126,14 +130,16 @@ class OAuthProbeTool:
                 accepted = is_redirect and manipulated in location
 
                 if accepted or resp.status_code == 200:
-                    findings.append({
-                        "test": "redirect_uri",
-                        "manipulation": desc,
-                        "payload": manipulated,
-                        "status": resp.status_code,
-                        "location": location[:200],
-                        "accepted": accepted,
-                    })
+                    findings.append(
+                        {
+                            "test": "redirect_uri",
+                            "manipulation": desc,
+                            "payload": manipulated,
+                            "status": resp.status_code,
+                            "location": location[:200],
+                            "accepted": accepted,
+                        }
+                    )
             except Exception:
                 pass
 
@@ -162,12 +168,14 @@ class OAuthProbeTool:
                 url, params=params_no_state, timeout=timeout, allow_redirects=False
             )
             if resp.status_code != 400:
-                findings.append({
-                    "test": "state",
-                    "desc": "No state parameter - request not rejected",
-                    "status": resp.status_code,
-                    "vulnerability": "CSRF via missing state enforcement",
-                })
+                findings.append(
+                    {
+                        "test": "state",
+                        "desc": "No state parameter - request not rejected",
+                        "status": resp.status_code,
+                        "vulnerability": "CSRF via missing state enforcement",
+                    }
+                )
         except Exception:
             pass
 
@@ -198,13 +206,15 @@ class OAuthProbeTool:
                 )
                 # If the server doesn't reject elevated scopes, it's interesting
                 if resp.status_code not in (400, 403, 401):
-                    findings.append({
-                        "test": "scope",
-                        "desc": desc,
-                        "scope": scope_value,
-                        "status": resp.status_code,
-                        "accepted": True,
-                    })
+                    findings.append(
+                        {
+                            "test": "scope",
+                            "desc": desc,
+                            "scope": scope_value,
+                            "status": resp.status_code,
+                            "accepted": True,
+                        }
+                    )
             except Exception:
                 pass
 
@@ -238,12 +248,14 @@ class OAuthProbeTool:
                 )
                 location = resp.headers.get("Location", "")
                 if resp.status_code in (301, 302, 303, 307, 308) and "evil" in location:
-                    findings.append({
-                        "test": "open_redirect",
-                        "payload": evil_uri,
-                        "status": resp.status_code,
-                        "location": location[:200],
-                    })
+                    findings.append(
+                        {
+                            "test": "open_redirect",
+                            "payload": evil_uri,
+                            "status": resp.status_code,
+                            "location": location[:200],
+                        }
+                    )
             except Exception:
                 pass
 
@@ -276,7 +288,9 @@ class OAuthProbeTool:
             all_findings.extend(findings)
 
         if "scope" in tests:
-            findings = self._test_scope_escalation(url, client_id, redirect_uri, timeout)
+            findings = self._test_scope_escalation(
+                url, client_id, redirect_uri, timeout
+            )
             all_findings.extend(findings)
 
         if "open_redirect" in tests:
@@ -319,15 +333,23 @@ class OAuthProbeTool:
         has_scope = any(f["test"] == "scope" for f in all_findings)
 
         if has_redirect:
-            lines.append("  - Redirect URI validation is weak! Try chaining with token theft.")
-            lines.append("  - Use oauth_payload_generator for advanced redirect_uri payloads.")
+            lines.append(
+                "  - Redirect URI validation is weak! Try chaining with token theft."
+            )
+            lines.append(
+                "  - Use oauth_payload_generator for advanced redirect_uri payloads."
+            )
         if has_state:
             lines.append("  - Missing state enforcement allows CSRF on OAuth flow.")
         if has_scope:
-            lines.append("  - Scope escalation possible — try requesting admin privileges.")
+            lines.append(
+                "  - Scope escalation possible — try requesting admin privileges."
+            )
         if not all_findings:
             lines.append("  - Try different client_id values or endpoints.")
-            lines.append("  - Check /.well-known/openid-configuration for endpoint discovery.")
+            lines.append(
+                "  - Check /.well-known/openid-configuration for endpoint discovery."
+            )
 
         return "\n".join(lines)
 
@@ -348,13 +370,14 @@ class OAuthPayloadGenerator:
     )
 
     VALID_OPERATIONS = {
-        "redirect_uri_bypass", "token_theft", "scope_escalation",
-        "pkce_bypass", "discovery",
+        "redirect_uri_bypass",
+        "token_theft",
+        "scope_escalation",
+        "pkce_bypass",
+        "discovery",
     }
 
-    def _generate_redirect_uri_bypass(
-        self, redirect_uri: str, target: str
-    ) -> str:
+    def _generate_redirect_uri_bypass(self, redirect_uri: str, target: str) -> str:
         parsed = urlparse(redirect_uri)
         host = parsed.hostname or "target.com"
         scheme = parsed.scheme or "https"

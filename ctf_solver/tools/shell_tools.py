@@ -9,7 +9,6 @@ Works on macOS and Linux (any POSIX system).
 
 import json
 import os
-import signal
 import subprocess
 from typing import Optional
 

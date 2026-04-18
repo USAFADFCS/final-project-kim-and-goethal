@@ -80,7 +80,7 @@ def _find_and_load_dotenv() -> None:
 # - PREFIX{content} where PREFIX is alphanumeric/underscore (e.g., picoCTF{}, flag{}, HTB{})
 # - {content} alone (rare but possible)
 # - Content limited to 200 chars, no nested braces or newlines
-DEFAULT_FLAG_REGEX = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}"
+DEFAULT_FLAG_REGEX = r"[A-Za-z0-9_]+\{[^\n\r{}]{1,200}\}"
 
 # Common CTF flag patterns for reference
 COMMON_FLAG_PATTERNS = {
@@ -124,6 +124,42 @@ def _is_placeholder_flag(candidate: str) -> bool:
         return False
     inner = candidate[brace_open + 1 : brace_close].strip().lower()
     return inner in _PLACEHOLDER_FLAG_CONTENTS
+
+
+# Content-shape patterns that identify agent-generated noise (JSON, CSS, PHP).
+# Observed in the 2026-04-17 MetaCTF batch — e.g. Socket.IO frames like
+# 0{"sid":"…"} had valid alphanumeric prefixes but JSON-object shape inside.
+_JSON_KEY_RE = re.compile(r'"[^"]{1,60}"\s*:')
+_CSS_PROP_RE = re.compile(
+    r"\b(?:opacity|transform|margin|padding|color|display|position|"
+    r"background|font|width|height|border|flex|grid)\s*:",
+    re.IGNORECASE,
+)
+_PHP_SHAPE_RE = re.compile(
+    r"\$_(?:GET|POST|REQUEST|COOKIE|SERVER|FILES)\b|"
+    r"\bsystem\(|\bshell_exec\(|\beval\(|\bpassthru\("
+)
+
+
+def _is_noise_flag(candidate: str) -> bool:
+    """Return True if *candidate* is either a placeholder OR a shape-matched
+    non-flag (JSON object, CSS rule, PHP payload). Extends
+    ``_is_placeholder_flag`` with content-aware heuristics that catch the
+    false positives observed in live CTF runs."""
+    if _is_placeholder_flag(candidate):
+        return True
+    brace_open = candidate.find("{")
+    brace_close = candidate.rfind("}")
+    if brace_open == -1 or brace_close == -1 or brace_close <= brace_open:
+        return False
+    inner = candidate[brace_open + 1 : brace_close]
+    if _JSON_KEY_RE.search(inner):
+        return True
+    if _CSS_PROP_RE.search(inner):
+        return True
+    if _PHP_SHAPE_RE.search(inner):
+        return True
+    return False
 
 
 @dataclass
@@ -433,7 +469,7 @@ def extract_candidate_flags(text: str, regex: str = DEFAULT_FLAG_REGEX) -> List[
     try:
         pattern = re.compile(regex)
         raw = pattern.findall(text)
-        return [m for m in raw if not _is_placeholder_flag(m)]
+        return [m for m in raw if not _is_noise_flag(m)]
     except re.error:
         return []
 
@@ -449,7 +485,7 @@ def is_valid_flag(candidate: str, regex: str = DEFAULT_FLAG_REGEX) -> bool:
     Returns:
         True if the candidate matches the pattern
     """
-    if _is_placeholder_flag(candidate):
+    if _is_noise_flag(candidate):
         return False
     try:
         pattern = re.compile(f"^{regex}$")

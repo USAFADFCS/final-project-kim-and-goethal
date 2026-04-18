@@ -91,6 +91,70 @@ class TestFlagExtraction:
         assert flags == ["picoCTF{sp3c!al_ch4rs_&_stuff}"]
 
 
+class TestFlagNoiseFilter:
+    """Gap A: generic flag regex must reject CSS/JSON/PHP/bare-brace noise
+    while still accepting real prefixed flags. Observed false-positive sources
+    come from the 2026-04-17 MetaCTF batch (see out/batch_20260417/)."""
+
+    def test_rejects_bare_brace_php_payload(self):
+        """Agent-generated PHP payload must not be mistaken for a flag."""
+        assert extract_candidate_flags("{system($_GET['cmd']);}") == []
+
+    def test_rejects_css_rule(self):
+        """CSS keyframe / transform rules matched {opacity:0;} under v2.5."""
+        noise = ".foo { opacity: 0; transform: translateY(20px); }"
+        assert extract_candidate_flags(noise) == []
+
+    def test_rejects_plain_json_object(self):
+        """Livestream surfaced 34 JSON false positives in a single run."""
+        noise = '{"user":"Administrator","isAdmin":true}'
+        assert extract_candidate_flags(noise) == []
+
+    def test_rejects_socketio_framed_json(self):
+        """Socket.IO frames have a numeric prefix (e.g. '0', '40', '42')
+        followed by JSON. Prefix matches [A-Za-z0-9_]+ so the regex alone
+        cannot catch them — the content-shape filter must."""
+        noise = '0{"sid":"ABC","pingInterval":25000}'
+        assert extract_candidate_flags(noise) == []
+
+    def test_rejects_empty_json_results(self):
+        """From Microdosing run #14: {"results":[]}."""
+        assert extract_candidate_flags('{"results":[]}') == []
+
+    def test_accepts_real_metactf_flag(self):
+        """Exact flag observed in Snowfall Wishes run #8."""
+        text = "flag was MetaCTF{c0ld_h4nds_w4rm_h34rts} in the source"
+        flags = extract_candidate_flags(text)
+        assert "MetaCTF{c0ld_h4nds_w4rm_h34rts}" in flags
+
+    def test_accepts_picoctf_with_underscores(self):
+        """Underscores and digits inside braces must still pass."""
+        text = "picoCTF{wh4t_1s_7h3_fl4g}"
+        flags = extract_candidate_flags(text)
+        assert "picoCTF{wh4t_1s_7h3_fl4g}" in flags
+
+    def test_accepts_metactf_with_question_mark_and_punctuation(self):
+        """Observed in Dot-Matrix Destruction: MetaCTF{y3ah_xxe_d0e5_r0ck_d0esnt_it?}."""
+        text = "MetaCTF{y3ah_xxe_d0e5_r0ck_d0esnt_it?}"
+        flags = extract_candidate_flags(text)
+        assert "MetaCTF{y3ah_xxe_d0e5_r0ck_d0esnt_it?}" in flags
+
+    def test_is_valid_flag_rejects_css_noise(self):
+        """is_valid_flag must share the same filter."""
+        assert is_valid_flag("{opacity:0;}") is False
+
+    def test_is_valid_flag_rejects_json_noise(self):
+        assert is_valid_flag('0{"sid":"xyz"}') is False
+
+    def test_custom_regex_bare_brace_still_works_when_user_opts_in(self):
+        """Users who genuinely want bare-brace flags can override via a
+        custom regex. Content filter still runs, so pure CSS noise still
+        rejected — but plain {letters} is allowed through."""
+        custom = r"\{[a-z_]+\}"
+        flags = extract_candidate_flags("value is {realflag} here", custom)
+        assert "{realflag}" in flags
+
+
 class TestIsValidFlag:
     """Tests for flag validation function."""
 

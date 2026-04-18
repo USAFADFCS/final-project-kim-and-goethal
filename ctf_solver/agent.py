@@ -291,6 +291,9 @@ class CTFAgent(SimpleAgent):
         self._stall_checks: int = 0
         self._seen_paths: Set[str] = set()
         self._seen_statuses: Set[int] = set()
+        # Tool-call history for Gap C: flags 3rd+ identical invocations
+        # as redundant so the stall clock ignores them.
+        self._tool_call_history: List[Tuple[str, str]] = []
         self._patch_planner_parsing()
 
     # ── Stall detection ────────────────────────────────────────────
@@ -303,12 +306,55 @@ class CTFAgent(SimpleAgent):
     _STALL_THRESHOLD: int = 5
     _URL_PATTERN = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
     _STATUS_PATTERN = re.compile(r"Status:\s*(\d{3})")
+    _REPEAT_THRESHOLD: int = 2  # 3rd call (0-indexed: 2 prior seen) is redundant
 
-    def _observation_shows_progress(self, observation: str) -> bool:
+    def _input_repetition_hash(self, tool_input: str) -> str:
+        """Produce a stable hash-key for a tool invocation so repeats can be
+        detected. Parses JSON when possible so whitespace-only differences
+        collapse; falls back to the raw string. Result is bounded to 80
+        chars to keep history comparisons cheap."""
+        try:
+            parsed = json.loads(tool_input)
+        except (ValueError, TypeError):
+            return (tool_input or "")[:80]
+        if isinstance(parsed, dict):
+            # Sorted-keys JSON re-serialisation gives a canonical form.
+            return json.dumps(parsed, sort_keys=True, separators=(",", ":"))[:80]
+        return str(parsed)[:80]
+
+    def _record_tool_call_for_progress(self, tool_name: str, input_hash: str) -> bool:
+        """Append ``(tool_name, input_hash)`` to the call history and
+        return True if THIS call is redundant (3rd+ identical
+        invocation). Increments ``tracker.redundant_tool_calls`` on
+        redundancy so batch-analysis can see loop behavior even in runs
+        where no stall nudge fired."""
+        tuple_key = (tool_name, input_hash)
+        prior_count = sum(1 for t in self._tool_call_history if t == tuple_key)
+        self._tool_call_history.append(tuple_key)
+        is_redundant = prior_count >= self._REPEAT_THRESHOLD
+        if is_redundant and self._tracker is not None:
+            try:
+                self._tracker.redundant_tool_calls += 1
+            except AttributeError:
+                pass
+        return is_redundant
+
+    def _observation_shows_progress(
+        self, observation: str, is_redundant: bool = False
+    ) -> bool:
         """Return True if ``observation`` surfaces at least one signal
         (URL path, HTTP status, or flag match) the agent hasn't seen
         before. Side-effect: records newly-seen paths and statuses on
-        ``self``."""
+        ``self``.
+
+        If ``is_redundant`` is True (the caller is re-invoking the same
+        tool+input for the 3rd+ time), return False regardless of the
+        observation contents. This catches loops where new upload
+        filenames or HTML page markup keep surfacing "new URLs" despite
+        the agent making no real progress — see Gap C in the
+        2026-04-17 MetaCTF batch analysis."""
+        if is_redundant:
+            return False
         if not observation:
             return False
         progressed = False
@@ -1178,6 +1224,7 @@ class CTFAgent(SimpleAgent):
         self._stall_checks = 0
         self._seen_paths = set()
         self._seen_statuses = set()
+        self._tool_call_history = []
 
         # Pre-loop deterministic recon (no-op when no opener pack configured).
         if self._opener_pack:
@@ -1361,7 +1408,15 @@ class CTFAgent(SimpleAgent):
 
             # Update stall-detection signals. Progress in THIS step resets
             # the counter; first RAG query is recorded for diagnostics.
-            if self._observation_shows_progress(str(observation_output)):
+            # A 3rd+ identical (tool_name, input) invocation is marked
+            # redundant and cannot advance the progress clock.
+            input_hash = self._input_repetition_hash(str(action.tool_input))
+            is_redundant = self._record_tool_call_for_progress(
+                action.tool_name, input_hash
+            )
+            if self._observation_shows_progress(
+                str(observation_output), is_redundant=is_redundant
+            ):
                 self._last_progress_step = step + 1
             self._record_rag_query_step(step, action.tool_name)
 

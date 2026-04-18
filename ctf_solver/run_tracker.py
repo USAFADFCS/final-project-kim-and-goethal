@@ -89,6 +89,12 @@ class RunTracker:
     stall_nudges_fired: List[int] = field(default_factory=list)
     first_rag_query_step: Optional[int] = None
 
+    # Number of tool invocations where the same (tool_name, normalized_input)
+    # tuple had already been seen 2+ times — the 3rd+ identical call is
+    # marked redundant and does NOT advance the progress clock. Lets
+    # post-run analysis spot loop behavior even when nudges didn't fire.
+    redundant_tool_calls: int = 0
+
     # Detailed tool call log for failure analysis
     tool_call_log: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -168,6 +174,7 @@ class RunTracker:
             "moderation_hits": self.moderation_hits,
             "stall_nudges_fired": list(self.stall_nudges_fired),
             "first_rag_query_step": self.first_rag_query_step,
+            "redundant_tool_calls": self.redundant_tool_calls,
         }
 
 

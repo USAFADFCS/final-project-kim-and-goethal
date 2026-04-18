@@ -210,14 +210,75 @@ class TestRunTrackerStallFields:
         t = RunTracker()
         assert t.stall_nudges_fired == []
         assert t.first_rag_query_step is None
+        assert t.redundant_tool_calls == 0
 
     def test_serialized_in_to_dict(self):
         t = RunTracker()
         t.stall_nudges_fired = [6, 11, 16]
         t.first_rag_query_step = 7
+        t.redundant_tool_calls = 4
         d = t.to_dict()
         assert d["stall_nudges_fired"] == [6, 11, 16]
         assert d["first_rag_query_step"] == 7
+        assert d["redundant_tool_calls"] == 4
+
+
+class TestRepetitionAntiProgress:
+    """Gap C: the same (tool_name, normalized_input) invoked 3+ times in
+    a run counts as ANTI-progress. Observed in MetaCTF run #4: 15 file_upload
+    calls including pure repeats of (file_upload, shell.php) that still
+    advanced _last_progress_step because the observation mentioned new URLs."""
+
+    def test_input_hash_stable_across_whitespace(self):
+        agent = _agent_with_tracker()
+        h1 = agent._input_repetition_hash('{"url": "http://x/a"}')
+        h2 = agent._input_repetition_hash('{ "url":"http://x/a" }')
+        assert h1 == h2
+
+    def test_input_hash_distinguishes_different_urls(self):
+        agent = _agent_with_tracker()
+        h1 = agent._input_repetition_hash('{"url":"http://x/a"}')
+        h2 = agent._input_repetition_hash('{"url":"http://x/b"}')
+        assert h1 != h2
+
+    def test_input_hash_handles_non_json_fallback(self):
+        agent = _agent_with_tracker()
+        h1 = agent._input_repetition_hash("raw_non_json_input")
+        h2 = agent._input_repetition_hash("raw_non_json_input")
+        assert h1 == h2
+        assert h1 != agent._input_repetition_hash("different_raw")
+
+    def test_repeat_tool_call_third_time_is_redundant(self):
+        agent = _agent_with_tracker()
+        key = ("file_upload", agent._input_repetition_hash('{"file":"shell.php"}'))
+        # First call → not redundant.
+        assert agent._record_tool_call_for_progress(*key) is False
+        # Second call → not redundant yet (counter at 2, threshold is 3).
+        assert agent._record_tool_call_for_progress(*key) is False
+        # Third call → redundant.
+        assert agent._record_tool_call_for_progress(*key) is True
+        # Tracker recorded the redundant hit.
+        assert agent._tracker.redundant_tool_calls == 1
+
+    def test_different_invocations_not_redundant(self):
+        agent = _agent_with_tracker()
+        k_a = ("file_upload", agent._input_repetition_hash('{"file":"a.php"}'))
+        k_b = ("file_upload", agent._input_repetition_hash('{"file":"b.php"}'))
+        k_c = ("file_upload", agent._input_repetition_hash('{"file":"c.php"}'))
+        assert agent._record_tool_call_for_progress(*k_a) is False
+        assert agent._record_tool_call_for_progress(*k_b) is False
+        assert agent._record_tool_call_for_progress(*k_c) is False
+
+    def test_redundant_call_blocks_progress_advance(self):
+        """If the call is redundant, _observation_shows_progress must
+        return False even if the observation text contains new URLs."""
+        agent = _agent_with_tracker()
+        obs = "Status: 200 http://target/newly-seen-path"
+        # On the redundant path, the signal must be suppressed.
+        assert agent._observation_shows_progress(obs, is_redundant=True) is False
+        # Normal path: same observation still counts.
+        agent2 = _agent_with_tracker()
+        assert agent2._observation_shows_progress(obs) is True
 
 
 # Touching the Message import keeps the stub readable for reviewers who

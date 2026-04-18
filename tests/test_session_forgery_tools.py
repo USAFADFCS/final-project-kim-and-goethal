@@ -322,6 +322,121 @@ class TestFlaskSessionForgeryTool:
         assert "Express" in result or "Django" in result or "JWT" in result
 
 
+class TestFlaskWordlistExpansion:
+    """Gap E1: COMMON_SECRETS had 112 entries — MetaCTF run #14 (Microdosing,
+    2026-04-17) brute-forced a Flask cookie and couldn't crack the secret
+    because the real key was in flask-unsign's bundled list but not ours."""
+
+    def test_common_secrets_covers_at_least_400_entries(self):
+        """The expanded list must include flask-unsign top-200 entries
+        plus CTF-flavored and framework defaults. Exact count may grow
+        over time; 400 is the minimum we commit to."""
+        assert len(FlaskSessionForgeryTool.COMMON_SECRETS) >= 400
+
+    def test_common_secrets_has_no_duplicates(self):
+        seen = set()
+        for s in FlaskSessionForgeryTool.COMMON_SECRETS:
+            assert s not in seen, f"duplicate secret: {s!r}"
+            seen.add(s)
+
+    def test_common_secrets_includes_framework_defaults(self):
+        """Sanity check: 'changeme-in-production' is in flask-unsign's
+        default list and is a classic CTF target."""
+        assert "changeme-in-production" in FlaskSessionForgeryTool.COMMON_SECRETS
+
+    def test_brute_finds_expanded_list_secret(self):
+        """A secret that was NOT in the original 112-entry list but IS
+        in the expanded 400+ list should now be crackable."""
+        tool = FlaskSessionForgeryTool()
+        # Use a framework default that was added in Gap E.
+        forged = tool._sign_payload({"admin": False}, "changeme-in-production")
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "brute_secret",
+                    "cookie": forged,
+                }
+            )
+        )
+        assert "SECRET FOUND" in result
+        assert "changeme-in-production" in result
+
+
+class TestFlaskDebugEndpointProbe:
+    """Gap E2: new debug_endpoint_probe operation. MetaCTF run #14 had no
+    way to check /console (Werkzeug), /debug, /_debug_toolbar — these
+    exposed endpoints can leak the secret or allow direct RCE."""
+
+    def test_operation_registered(self):
+        assert "debug_endpoint_probe" in FlaskSessionForgeryTool.VALID_OPERATIONS
+
+    def test_requires_url(self):
+        tool = FlaskSessionForgeryTool()
+        result = tool.use(json.dumps({"operation": "debug_endpoint_probe"}))
+        assert "Error" in result
+        assert "url" in result.lower()
+
+    def test_reports_open_endpoints(self):
+        """When a probe returns non-404, the tool reports the status
+        and first body snippet so the agent can follow up."""
+        import unittest.mock as _mock
+
+        tool = FlaskSessionForgeryTool()
+
+        def _fake_head(url, *args, **kwargs):
+            resp = _mock.Mock()
+            if "/console" in url:
+                resp.status_code = 200
+                resp.text = "Werkzeug Interactive Debugger console"
+            else:
+                resp.status_code = 404
+                resp.text = "Not Found"
+            return resp
+
+        with _mock.patch(
+            "ctf_solver.tools.session_forgery_tools.requests.head",
+            side_effect=_fake_head,
+        ):
+            result = tool.use(
+                json.dumps(
+                    {
+                        "operation": "debug_endpoint_probe",
+                        "url": "http://target.example/",
+                    }
+                )
+            )
+
+        assert "/console" in result
+        assert "200" in result
+        assert "Werkzeug" in result
+
+    def test_reports_all_closed_when_all_404(self):
+        import unittest.mock as _mock
+
+        tool = FlaskSessionForgeryTool()
+
+        def _fake_head(url, *args, **kwargs):
+            resp = _mock.Mock()
+            resp.status_code = 404
+            resp.text = "Not Found"
+            return resp
+
+        with _mock.patch(
+            "ctf_solver.tools.session_forgery_tools.requests.head",
+            side_effect=_fake_head,
+        ):
+            result = tool.use(
+                json.dumps(
+                    {
+                        "operation": "debug_endpoint_probe",
+                        "url": "http://target.example/",
+                    }
+                )
+            )
+
+        assert "no debug endpoints" in result.lower()
+
+
 # ==============================================================================
 # DomClobberingPayloadGenerator Tests
 # ==============================================================================

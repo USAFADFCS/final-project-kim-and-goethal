@@ -131,12 +131,81 @@ Challenge loads .wasm binary?
 ├── YES: Run javascript_source to find WASM URL
 │   ├── Got WASM URL → wasm_analyzer (analyze)
 │   │   ├── Flag in plaintext ASCII? → Submit flag
-│   │   └── Data is binary (non-ASCII)?
-│   │       ├── 'key' export exists? → wasm_analyzer (xor_decode) → Submit
-│   │       └── No key export → wasm_analyzer (xor_decode) brute-forces single-byte XOR
+│   │   ├── Data is binary (non-ASCII)?
+│   │   │   ├── 'key' export exists? → wasm_analyzer (xor_decode) → Submit
+│   │   │   └── No key export → wasm_analyzer (xor_decode) brute-forces single-byte XOR
+│   │   └── Module exports copy_char + check_flag (validator pattern)?
+│   │       ├── wasm_analyzer (probe_exports) → confirm arities + check for strcmp
+│   │       ├── strcmp exported? → wasm_analyzer (oracle_brute_force) with
+│   │       │                      strategy=strcmp_delta (one probe per position)
+│   │       └── No strcmp? → wasm_analyzer (memory_diff) to locate the
+│   │                        transform's scratch buffer, then recover manually
 │   └── No WASM URL → check for JS validation (javascript_source)
 └── NO: Different challenge type → see other docs
 ```
+
+---
+
+## 5a. RUNTIME ORACLE RECOVERY
+
+When static decoding fails — specifically when the flag is derived by
+*executing* a validator function rather than stored in a data segment —
+use the runtime oracle operations on `wasm_analyzer`. These require the
+`wasmtime` Python package (declared in `requirements.txt`).
+
+**When to pick this path over `xor_decode`:**
+
+- Module exports `copy_char(c, idx)` and `check_flag()` — the picoCTF
+  "Some Assembly Required" validator pattern.
+- Data segment appears binary but **XOR decoding finds nothing**: the
+  transform isn't a simple XOR, it's a per-byte function compiled into
+  `check_flag` itself.
+- `analyze` shows a `strcmp` export alongside `check_flag` — that's the
+  tell for strcmp_delta's one-probe-per-position recovery.
+
+**Ops in order:**
+
+1. `probe_exports` — lists every export with its parameter/result arity,
+   so you know whether `copy_char` is `(char, idx)` or `(idx, char)`
+   without guessing (the transcript of the wily_courier run shows an
+   agent burning two turns on exactly this ambiguity).
+2. `memory_diff` — calls one named export and reports every memory
+   region that changed. Useful for finding a transform's scratch
+   comparison buffer when it isn't at the obvious offset.
+3. `oracle_brute_force` — recovers the flag. Auto-selects between:
+   - `strcmp_delta`: one `strcmp` probe per position reveals each flag
+     byte arithmetically. Near-instant on short flags.
+   - `memory_delta`: diagnostic only — reports transform regions so the
+     caller can invert them manually when no strcmp is available.
+
+   **Watch the strcmp_delta log.** If it says *"recovered bytes are
+   identical to data segment content at 0x…"*, you have discovered a
+   **stateful in-place transform** — `check_flag` mutates the input
+   buffer before comparing, so matching raw input to the data segment
+   cannot possibly succeed. Move to step 4.
+
+4. `oracle_script` — batch of `{call, args}` / `{read:[start,length]}` /
+   `{reset:true}` steps executed on a **single persistent** wasmtime
+   instance. Use it to build a transition table (e.g. for each `(b0,
+   b1)` pair, call `copy_char(b0,0); copy_char(b1,1); copy_char(0,2);
+   check_flag(); read [input_ptr, n]` and record `out[0]`), then invert
+   manually. Collapses what would otherwise be 100+ re-instantiations
+   into one tool call. Script capped at 500 steps per invocation.
+
+   Example — probe pair `(A, A)` at positions 0..1:
+   ```json
+   {
+     "operation": "oracle_script",
+     "script": [
+       {"call": "copy_char", "args": [65, 0]},
+       {"call": "copy_char", "args": [65, 1]},
+       {"call": "copy_char", "args": [0, 2]},
+       {"call": "check_flag"},
+       {"read": [1072, 2]},
+       {"reset": true}
+     ]
+   }
+   ```
 
 ---
 

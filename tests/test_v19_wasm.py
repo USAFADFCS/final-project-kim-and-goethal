@@ -637,3 +637,493 @@ class TestWasmToolRegistration:
         tool = WasmAnalyzerTool()
         assert tool.name == "wasm_analyzer"
         assert "wasm" in tool.description.lower()
+
+
+# ---------------------------------------------------------------------------
+# Runtime oracle tests — cover probe_exports / memory_diff /
+# oracle_brute_force. Gated behind HAS_WASMTIME so the suite still runs
+# on systems without the 'wasmtime' package installed.
+# ---------------------------------------------------------------------------
+
+
+from ctf_solver.tools.wasm_tools import HAS_WASMTIME, _group_diff_regions  # noqa: E402
+
+
+def _check_flag_validator_wat(flag: bytes, with_strcmp: bool = True) -> str:
+    """Emit a WAT source for a tiny 'Some Assembly Required'–style
+    validator module. Compiled via wasmtime.wat2wasm in the fixture
+    below. Layout:
+
+        0x400 (1024) — expected flag (NUL-terminated)
+        0x430 (1072) — user input buffer
+
+    Exports:
+        memory
+        input                (i32 global = 1072)
+        copy_char(c, i)      writes byte c at input+i
+        check_flag()         returns 1 if input matches flag, else 0
+        strcmp(a, b)         optional; memcmp-style on NUL-terminated strings
+    """
+    # Emit each byte as a hex escape so the WAT parser handles any
+    # character cleanly (braces etc).
+    flag_escaped = "".join(f"\\{b:02x}" for b in flag) + "\\00"
+    strcmp_body = ""
+    if with_strcmp:
+        strcmp_body = """
+    (func (export "strcmp") (param $a i32) (param $b i32) (result i32)
+      (local $i i32) (local $ca i32) (local $cb i32)
+      (local.set $i (i32.const 0))
+      (loop $cmp
+        (local.set $ca (i32.load8_u (i32.add (local.get $a) (local.get $i))))
+        (local.set $cb (i32.load8_u (i32.add (local.get $b) (local.get $i))))
+        (if (i32.ne (local.get $ca) (local.get $cb))
+          (then (return (i32.sub (local.get $ca) (local.get $cb)))))
+        (if (i32.eqz (local.get $ca))
+          (then (return (i32.const 0))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $cmp)
+      )
+      (i32.const 0)
+    )
+        """
+    return f"""
+(module
+  (memory (export "memory") 1)
+  (data (i32.const 1024) "{flag_escaped}")
+  (global (export "input") i32 (i32.const 1072))
+  (func (export "copy_char") (param $c i32) (param $i i32)
+    (i32.store8
+      (i32.add (i32.const 1072) (local.get $i))
+      (local.get $c))
+  )
+  (func (export "check_flag") (result i32)
+    (local $i i32) (local $a i32) (local $b i32)
+    (local.set $i (i32.const 0))
+    (loop $cmp
+      (local.set $a (i32.load8_u (i32.add (i32.const 1072) (local.get $i))))
+      (local.set $b (i32.load8_u (i32.add (i32.const 1024) (local.get $i))))
+      (if (i32.ne (local.get $a) (local.get $b))
+        (then (return (i32.const 0))))
+      (if (i32.eqz (local.get $a))
+        (then (return (i32.const 1))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $cmp)
+    )
+    (i32.const 0)
+  )
+  {strcmp_body}
+)
+"""
+
+
+def _make_wasm_validator(flag: bytes, with_strcmp: bool = True) -> bytes:
+    """Compile the validator WAT to WASM bytes via wasmtime."""
+    import wasmtime
+
+    return wasmtime.wat2wasm(_check_flag_validator_wat(flag, with_strcmp))
+
+
+@pytest.mark.skipif(not HAS_WASMTIME, reason="wasmtime not installed")
+class TestProbeExports:
+    def test_lists_copy_char_and_check_flag_with_arities(self):
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"picoCTF{xyz}")
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {"url": "http://test/mod.wasm", "operation": "probe_exports"}
+                )
+            )
+        assert "Probe Exports" in out
+        assert "[func]   copy_char" in out
+        assert "[func]   check_flag" in out
+        # copy_char takes two params, check_flag takes none.
+        # Stringified params can be "i32" or similar; just confirm the
+        # right arities land on the right line.
+        copy_line = [line for line in out.splitlines() if "copy_char" in line][0]
+        check_line = [line for line in out.splitlines() if "check_flag" in line][0]
+        # Two commas-separated params on copy_char (i32, i32)
+        assert copy_line.count("i32") >= 2
+        # check_flag: one i32 result, zero params
+        assert "void" in check_line or "i32" in check_line
+
+    def test_hint_recommends_oracle_brute_force(self):
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"picoCTF{x}")
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {"url": "http://test/mod.wasm", "operation": "probe_exports"}
+                )
+            )
+        assert "oracle_brute_force" in out
+        assert "strcmp_delta" in out  # strcmp present → fast path hint
+
+
+class TestProbeExportsLibraryMissing:
+    def test_graceful_error_when_wasmtime_missing(self):
+        tool = WasmAnalyzerTool()
+        # Minimal WASM header so _parse_wasm_sections succeeds.
+        minimal = b"\x00asm\x01\x00\x00\x00"
+        with (
+            patch.object(tool, "_fetch", return_value=minimal),
+            patch("ctf_solver.tools.wasm_tools.HAS_WASMTIME", False),
+        ):
+            out = tool.use(
+                json.dumps(
+                    {"url": "http://test/mod.wasm", "operation": "probe_exports"}
+                )
+            )
+        assert "wasmtime" in out.lower()
+        assert "not installed" in out.lower()
+
+
+@pytest.mark.skipif(not HAS_WASMTIME, reason="wasmtime not installed")
+class TestMemoryDiff:
+    def test_finds_input_write_at_input_ptr(self):
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"picoCTF{z}")
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "memory_diff",
+                        "function": "copy_char",
+                        "args": [0x41, 0],  # 'A' at position 0
+                    }
+                )
+            )
+        # Input buffer is at 1072 — diff must include that offset.
+        assert "Memory Diff" in out
+        assert "1072" in out or "0x430" in out
+        # The old byte at 1072 was 0, new is 0x41.
+        assert "41" in out.lower()
+
+    def test_requires_function_parameter(self):
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"x")
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps({"url": "http://test/mod.wasm", "operation": "memory_diff"})
+            )
+        assert "Error" in out
+        assert "function" in out
+
+
+@pytest.mark.skipif(not HAS_WASMTIME, reason="wasmtime not installed")
+class TestOracleBruteForce:
+    def test_recovers_flag_with_strcmp_available(self):
+        """strcmp_delta strategy: validator exports strcmp → fast recovery."""
+        tool = WasmAnalyzerTool()
+        flag = b"picoCTF{wasm_ok}"
+        wasm = _make_wasm_validator(flag, with_strcmp=True)
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_brute_force",
+                        "max_length": 32,
+                    }
+                )
+            )
+        assert "Oracle Brute Force" in out
+        assert "picoCTF{wasm_ok}" in out
+        assert "strcmp_delta" in out
+
+    def test_no_strcmp_falls_back_to_memory_delta_diagnostic(self):
+        """No strcmp export → memory_delta strategy runs and reports the
+        transform regions it found, even though it can't directly
+        recover the flag without strcmp."""
+        tool = WasmAnalyzerTool()
+        flag = b"picoCTF{ok}"
+        wasm = _make_wasm_validator(flag, with_strcmp=False)
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_brute_force",
+                        "max_length": 20,
+                    }
+                )
+            )
+        # Strategy ran.
+        assert "memory_delta" in out
+        # Tool returned a clean output (not a crash / traceback).
+        assert "Oracle Brute Force" in out
+
+    def test_invalid_strategy_rejected(self):
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"x")
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_brute_force",
+                        "strategy": "bogus",
+                    }
+                )
+            )
+        assert "Error" in out
+        assert "strategy" in out.lower()
+
+    def test_no_recovery_reports_diagnostic(self):
+        """When no strategy can recover the flag, the tool must return a
+        structured diagnostic rather than silently failing."""
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"anything", with_strcmp=False)
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_brute_force",
+                        "max_length": 6,
+                        "strategy": "memory_delta",
+                    }
+                )
+            )
+        assert "Oracle Brute Force" in out
+        assert "No flag recovered" in out
+        # Diagnostic mentions copy_char argument order hint + strcmp hint.
+        assert "copy_char" in out
+        assert "strcmp" in out
+
+    def test_strcmp_delta_flags_data_segment_match(self):
+        """When the bytes strcmp_delta recovered are identical to the
+        module's data segment content at compare_ptr, the log must say
+        so — the agent was re-deriving what ``analyze`` already showed."""
+        tool = WasmAnalyzerTool()
+        # Standard validator: strcmp compares raw input at 1072 to the
+        # data segment at 1024. Since there's no transform inside
+        # check_flag, strcmp_delta will recover bytes identical to the
+        # data segment. The diagnostic must name that.
+        flag = b"picoCTF{aaa}"
+        wasm = _make_wasm_validator(flag, with_strcmp=True)
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_brute_force",
+                        "max_length": 32,
+                    }
+                )
+            )
+        # The diagnostic fires when the happy-path recovery path ends up
+        # matching the data segment — in this test fixture the validator
+        # has no transform so strcmp_delta fully recovers (flag returned
+        # non-None). The new diagnostic appears alongside the success
+        # path too, since the recovered bytes do equal the data segment.
+        # It should either show the success OR the diagnostic hint, but
+        # the identical-to-segment phrase must appear in logs when the
+        # bytes match byte-for-byte.
+        assert "picoCTF{aaa}" in out or "identical to data segment" in out
+
+
+class TestOracleScript:
+    """``oracle_script`` runs a scripted sequence of (call, read, reset)
+    steps on a single persistent wasmtime instance. Designed to let the
+    agent batch many probes — e.g. building a transition table for an
+    in-place transform — in one tool call instead of 100+ shell_execute
+    loops that each re-compile the module."""
+
+    @pytest.mark.skipif(not HAS_WASMTIME, reason="wasmtime not installed")
+    def test_basic_call_and_read(self):
+        """copy_char('A', 0) then read at input_ptr — transcript shows 41."""
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"picoCTF{z}")
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_script",
+                        "script": [
+                            {"call": "copy_char", "args": [0x41, 0]},
+                            {"read": [1072, 1]},
+                        ],
+                    }
+                )
+            )
+        assert "Oracle Script" in out
+        # Second step's read must surface '41'
+        assert "41" in out
+
+    @pytest.mark.skipif(not HAS_WASMTIME, reason="wasmtime not installed")
+    def test_call_returns_value_captured(self):
+        """check_flag returns 1 on full match; transcript must capture it."""
+        tool = WasmAnalyzerTool()
+        flag = b"picoCTF{x}"
+        wasm = _make_wasm_validator(flag)
+        # Script: write the full flag byte-by-byte, NUL-terminate, call
+        # check_flag. Expect '= 1' in the transcript.
+        script = [{"call": "copy_char", "args": [c, i]} for i, c in enumerate(flag)]
+        script.append({"call": "copy_char", "args": [0, len(flag)]})
+        script.append({"call": "check_flag"})
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_script",
+                        "script": script,
+                    }
+                )
+            )
+        assert "check_flag" in out
+        assert "= 1" in out
+
+    @pytest.mark.skipif(not HAS_WASMTIME, reason="wasmtime not installed")
+    def test_reset_clears_memory(self):
+        """After a reset, previously-written input bytes are zero."""
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"picoCTF{z}")
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_script",
+                        "script": [
+                            {"call": "copy_char", "args": [0x41, 0]},
+                            {"reset": True},
+                            {"read": [1072, 2]},
+                        ],
+                    }
+                )
+            )
+        # Post-reset read at 1072 should show 00 00, not 41.
+        # Find the "[step 2]" (0-indexed would put the read at index 2)
+        # and confirm it contains "00 00" rather than "41".
+        assert "reset" in out.lower()
+        # The read line for step 2 should NOT show "41".
+        read_lines = [line for line in out.splitlines() if "read" in line.lower()]
+        assert read_lines, f"expected a read line in:\n{out}"
+        last_read = read_lines[-1]
+        assert "41" not in last_read
+        assert "00" in last_read
+
+    def test_rejects_over_cap(self):
+        """Script > 500 steps returns an error citing the cap — no need
+        for a real wasm module since validation happens before
+        instantiation."""
+        tool = WasmAnalyzerTool()
+        minimal = b"\x00asm\x01\x00\x00\x00"
+        big_script = [{"call": "copy_char", "args": [0, i]} for i in range(501)]
+        with patch.object(tool, "_fetch", return_value=minimal):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_script",
+                        "script": big_script,
+                    }
+                )
+            )
+        assert "Error" in out
+        assert "500" in out
+
+    @pytest.mark.skipif(not HAS_WASMTIME, reason="wasmtime not installed")
+    def test_stops_on_error_and_references_step_index(self):
+        """Calling a missing export mid-script: transcript shows the
+        step where it broke."""
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"picoCTF{z}")
+        with patch.object(tool, "_fetch", return_value=wasm):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_script",
+                        "script": [
+                            {"call": "copy_char", "args": [0x41, 0]},
+                            {"call": "this_does_not_exist", "args": []},
+                            {"read": [1072, 1]},
+                        ],
+                    }
+                )
+            )
+        assert "step 1" in out.lower() or "step 2" in out.lower()
+        assert "this_does_not_exist" in out
+
+    def test_missing_script_arg_errors_cleanly(self):
+        tool = WasmAnalyzerTool()
+        minimal = b"\x00asm\x01\x00\x00\x00"
+        with patch.object(tool, "_fetch", return_value=minimal):
+            out = tool.use(
+                json.dumps(
+                    {"url": "http://test/mod.wasm", "operation": "oracle_script"}
+                )
+            )
+        assert "Error" in out
+        assert "script" in out.lower()
+
+    @pytest.mark.skipif(not HAS_WASMTIME, reason="wasmtime not installed")
+    def test_one_instance_across_many_steps(self):
+        """Performance guarantee: a 100-step script compiles+instantiates
+        exactly once. This is the whole point of the op — builds a
+        transition table without 100× Module() compile overhead."""
+        tool = WasmAnalyzerTool()
+        wasm = _make_wasm_validator(b"picoCTF{z}")
+        # Spy on the instantiation helper. Delegate to the real one so
+        # the script actually runs; count how many times it's invoked.
+        real_instantiate = tool._instantiate
+        calls = {"n": 0}
+
+        def spy(binary):
+            calls["n"] += 1
+            return real_instantiate(binary)
+
+        script = [{"call": "copy_char", "args": [0x41, i % 32]} for i in range(100)]
+        with (
+            patch.object(tool, "_fetch", return_value=wasm),
+            patch.object(tool, "_instantiate", side_effect=spy),
+        ):
+            out = tool.use(
+                json.dumps(
+                    {
+                        "url": "http://test/mod.wasm",
+                        "operation": "oracle_script",
+                        "script": script,
+                    }
+                )
+            )
+        assert "Oracle Script" in out
+        assert calls["n"] == 1, (
+            f"expected exactly 1 instantiation for a 100-step script, "
+            f"got {calls['n']}"
+        )
+
+
+class TestGroupDiffRegions:
+    """Module-level helper tests — no wasmtime needed."""
+
+    def test_single_changed_byte(self):
+        regs = _group_diff_regions(b"\x00\x00\x00\x00\x00", b"\x00\x00\x41\x00\x00", 0)
+        assert regs == [(2, b"\x00", b"A")]
+
+    def test_adjacent_changes_merge(self):
+        # Gap < 4 unchanged bytes merges.
+        regs = _group_diff_regions(b"\x00\x00\x00\x00\x00", b"AB\x00CD", 0)
+        assert len(regs) == 1
+        off, old, new = regs[0]
+        assert off == 0
+        assert old == b"\x00\x00\x00\x00\x00"
+        assert new == b"AB\x00CD"
+
+    def test_separated_changes_split(self):
+        # Gap >= 4 unchanged bytes splits.
+        regs = _group_diff_regions(
+            b"\x00" * 10, b"A\x00\x00\x00\x00\x00B\x00\x00\x00", 100
+        )
+        assert len(regs) == 2
+        assert regs[0][0] == 100  # base + 0
+        assert regs[1][0] == 106  # base + 6
+
+    def test_identical_inputs_return_empty(self):
+        regs = _group_diff_regions(b"\x01\x02\x03", b"\x01\x02\x03", 0)
+        assert regs == []

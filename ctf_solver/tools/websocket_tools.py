@@ -53,12 +53,18 @@ class WebSocketProbeTool:
         "'url' (WebSocket URL, ws:// or wss://), 'operation' (connect, cswsh, "
         "enumerate, injection). For connect: optional 'message' to send, 'headers'. "
         "For cswsh: optional 'origin' (evil origin to test). For enumerate: "
-        "'messages' (list of messages to send). For injection: tests common "
-        "injection payloads via WebSocket. Optional 'timeout' (default 5). "
-        "Requires websocket-client library."
+        "'messages' (list of messages to send, each on its OWN fresh "
+        "connection). For session: 'messages' (list sent on a SINGLE "
+        "persistent connection — required for multi-frame protocols like "
+        "Socket.IO where a handshake frame must precede event frames), "
+        "optional 'read_timeout' (per-message drain, default 2.0s), "
+        "'final_read_timeout' (end-of-session drain, default 5.0s), "
+        "'max_frames_per_read' (cap on frames per recv loop, default 5). "
+        "For injection: tests common injection payloads via WebSocket. "
+        "Optional 'timeout' (default 5). Requires websocket-client library."
     )
 
-    VALID_OPERATIONS = {"connect", "cswsh", "enumerate", "injection"}
+    VALID_OPERATIONS = {"connect", "cswsh", "enumerate", "injection", "session"}
 
     # Common injection payloads for WebSocket messages
     INJECTION_PAYLOADS: List[Dict[str, str]] = [
@@ -234,6 +240,97 @@ class WebSocketProbeTool:
 
         return "\n".join(lines)
 
+    def _operation_session(
+        self,
+        url: str,
+        messages: List[str],
+        headers: Dict,
+        timeout: int,
+        read_timeout: float,
+        final_read_timeout: float,
+        max_frames_per_read: int,
+    ) -> str:
+        """Open ONE websocket, send each message on it, drain between and
+        after. Unlike ``enumerate`` (which opens a fresh connection per
+        message), this preserves server-side session state — required for
+        protocols like Socket.IO where a namespace-connect frame (``40``)
+        must precede event frames (``42[...]``) on the same socket.
+
+        Transcript format:
+            [TX] <sent frame>
+            [RX] <received frame>  (one line per frame)
+            (timeout)               (when drain hits the per-message budget)
+        """
+        lines = ["--- Session Transcript ---"]
+
+        if not messages:
+            lines.append("  Error: 'messages' is required for session operation.")
+            return "\n".join(lines)
+
+        if not HAS_WEBSOCKET:
+            lines.append(
+                "  Error: websocket-client library not installed. "
+                "Install with: pip install websocket-client"
+            )
+            return "\n".join(lines)
+
+        header_list = [f"{k}: {v}" for k, v in (headers or {}).items()]
+
+        ws = None
+        all_rx: List[str] = []
+        try:
+            ws = ws_lib.create_connection(
+                url,
+                header=header_list or None,
+                timeout=timeout,
+            )
+            lines.append(f"  [connected] {url}")
+
+            # Capped to keep output/token footprint bounded.
+            for msg in messages[:20]:
+                ws.send(msg)
+                lines.append(f"  [TX] {str(msg)[:300]}")
+
+                ws.settimeout(read_timeout)
+                for _ in range(max_frames_per_read):
+                    try:
+                        frame = ws.recv()
+                    except Exception:
+                        lines.append("  [timeout]")
+                        break
+                    all_rx.append(str(frame))
+                    lines.append(f"  [RX] {str(frame)[:300]}")
+
+            # Final drain — catch late broadcasts (e.g. Socket.IO server-side
+            # 'action_response' frames that arrive after the last send).
+            ws.settimeout(final_read_timeout)
+            for _ in range(max_frames_per_read * 2):
+                try:
+                    frame = ws.recv()
+                except Exception:
+                    break
+                all_rx.append(str(frame))
+                lines.append(f"  [RX-drain] {str(frame)[:300]}")
+        except Exception as exc:
+            lines.append(f"  Error: {exc}")
+        finally:
+            if ws is not None:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+
+        # Flag scan across all received frames.
+        combined = " ".join(all_rx)
+        flags = self._extract_flags(combined)
+        if flags:
+            lines.append("")
+            lines.append("  !!! FLAGS FOUND !!!")
+            for f in flags:
+                lines.append(f"    {f}")
+
+        return "\n".join(lines)
+
     def _operation_injection(self, url: str, headers: Dict, timeout: int) -> str:
         """Test injection payloads via WebSocket."""
         lines = ["--- Injection Test ---"]
@@ -322,5 +419,30 @@ class WebSocketProbeTool:
             lines.append(self._operation_enumerate(url, messages, headers, timeout))
         elif operation == "injection":
             lines.append(self._operation_injection(url, headers, timeout))
+        elif operation == "session":
+            read_timeout = data.get("read_timeout", 2.0)
+            final_read_timeout = data.get("final_read_timeout", 5.0)
+            max_frames_per_read = data.get("max_frames_per_read", 5)
+            try:
+                read_timeout = float(read_timeout)
+                final_read_timeout = float(final_read_timeout)
+                max_frames_per_read = int(max_frames_per_read)
+            except (TypeError, ValueError):
+                return (
+                    "[WebSocketProbeTool] Error: 'read_timeout', "
+                    "'final_read_timeout', 'max_frames_per_read' must be "
+                    "numeric."
+                )
+            lines.append(
+                self._operation_session(
+                    url,
+                    messages,
+                    headers,
+                    timeout,
+                    read_timeout,
+                    final_read_timeout,
+                    max_frames_per_read,
+                )
+            )
 
         return "\n".join(lines)

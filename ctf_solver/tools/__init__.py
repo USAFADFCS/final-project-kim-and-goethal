@@ -45,13 +45,11 @@ from ctf_solver.tools.http_tools import FormSubmitTool, HttpFetchTool
 from ctf_solver.tools.jwt_tools import JwtTool
 from ctf_solver.tools.lfi_tools import LfiPayloadGenerator, LfiProbeTool
 from ctf_solver.tools.logging_wrapper import LoggingToolWrapper
-from ctf_solver.tools.misc_probe_tools import (
-    CrlfProbeTool,
-    IdorEnumeratorTool,
-    OpenRedirectProbeTool,
-    PhpTypeJugglingTool,
-    PrototypePollutionTool,
-)
+from ctf_solver.tools.crlf_tools import CrlfProbeTool
+from ctf_solver.tools.idor_tools import IdorEnumeratorTool
+from ctf_solver.tools.open_redirect_tools import OpenRedirectProbeTool
+from ctf_solver.tools.php_juggling_tools import PhpTypeJugglingTool
+from ctf_solver.tools.prototype_pollution_tools import PrototypePollutionTool
 from ctf_solver.tools.nosql_tools import NosqlPayloadGenerator, NosqlProbeTool
 from ctf_solver.tools.oauth_tools import OAuthPayloadGenerator, OAuthProbeTool
 from ctf_solver.tools.parser_diff_tools import ParserDifferentialProbeTool

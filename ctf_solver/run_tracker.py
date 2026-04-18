@@ -10,7 +10,7 @@ import re
 import time
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, Iterator, List
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional
 
 from fairlib.core.interfaces.llm import AbstractChatModel
 from fairlib.core.message import Message
@@ -72,6 +72,20 @@ class RunTracker:
     rag_queries_made: int = 0
     outcome: str = "pending"  # "success" | "partial" | "failure"
     site_fingerprint: str = ""  # Content-based page identity for contamination filter
+
+    # Count of turns where the LLM provider's content filter rejected the
+    # prompt (OpenAI 400 "invalid_prompt"). Distinct from format errors —
+    # the model response itself never happened. Tracked so post-run
+    # diagnostics can distinguish "agent gave up" from "API refused".
+    moderation_hits: int = 0
+
+    # Step at which the stall detector injected a [STALLED-DETECTOR] nudge
+    # (5+ tool calls without measurable progress AND zero RAG queries).
+    # None when the nudge never fired. Step at which the first
+    # ctf_knowledge_query landed — lets post-run analysis correlate
+    # nudge firing with behavior change.
+    stall_nudge_fired_at_step: Optional[int] = None
+    first_rag_query_step: Optional[int] = None
 
     # Detailed tool call log for failure analysis
     tool_call_log: List[Dict[str, Any]] = field(default_factory=list)
@@ -149,6 +163,9 @@ class RunTracker:
             "candidate_flags_found": self.candidate_flags_found,
             "failure_doc_generated": self.failure_doc_generated,
             "site_fingerprint": self.site_fingerprint,
+            "moderation_hits": self.moderation_hits,
+            "stall_nudge_fired_at_step": self.stall_nudge_fired_at_step,
+            "first_rag_query_step": self.first_rag_query_step,
         }
 
 

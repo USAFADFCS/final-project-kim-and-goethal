@@ -11,6 +11,7 @@ Tests cover:
 - Config integration
 """
 
+import json
 import pytest
 from unittest.mock import Mock, MagicMock, patch, AsyncMock
 from dataclasses import asdict
@@ -623,6 +624,192 @@ class TestCreateAdapter:
         # OpenAIAdapter is from fairlib, just verify it was created
         assert adapter is not None
         assert hasattr(adapter, "invoke")
+
+    def test_create_openai_adapter_returns_ctf_subclass(self):
+        """Factory must return the CTFOpenAIAdapter subclass that forces JSON."""
+        from ctf_solver.llm.adapters import CTFOpenAIAdapter
+
+        adapter = create_adapter(provider=LLMProvider.OPENAI, api_key="test-key")
+        assert isinstance(adapter, CTFOpenAIAdapter)
+        assert adapter.force_json_output is True
+
+    def test_ctf_openai_adapter_injects_response_format(self):
+        """``invoke`` must pass response_format=json_object to the underlying client."""
+        from ctf_solver.llm.adapters import CTFOpenAIAdapter
+
+        # Construct with a mocked client so we can inspect the create() call.
+        with (
+            patch("fairlib.modules.mal.openai_adapter.OpenAI") as mock_sync_ctor,
+            patch("fairlib.modules.mal.openai_adapter.AsyncOpenAI"),
+        ):
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices[0].message.content = '{"thought": "ok"}'
+            mock_response.choices[0].message.tool_calls = None
+            mock_client.chat.completions.create.return_value = mock_response
+            mock_sync_ctor.return_value = mock_client
+
+            adapter = CTFOpenAIAdapter(api_key="test-key", model_name="gpt-4o-mini")
+            adapter.invoke([Message(role="user", content="hi")])
+
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert call_kwargs["response_format"] == {"type": "json_object"}
+
+    def test_ctf_openai_adapter_respects_caller_override(self):
+        """If the caller passes response_format, don't overwrite it."""
+        from ctf_solver.llm.adapters import CTFOpenAIAdapter
+
+        with (
+            patch("fairlib.modules.mal.openai_adapter.OpenAI") as mock_sync_ctor,
+            patch("fairlib.modules.mal.openai_adapter.AsyncOpenAI"),
+        ):
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices[0].message.content = "text"
+            mock_response.choices[0].message.tool_calls = None
+            mock_client.chat.completions.create.return_value = mock_response
+            mock_sync_ctor.return_value = mock_client
+
+            adapter = CTFOpenAIAdapter(api_key="test-key", model_name="gpt-4o-mini")
+            adapter.invoke(
+                [Message(role="user", content="hi")],
+                response_format={"type": "text"},
+            )
+
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert call_kwargs["response_format"] == {"type": "text"}
+
+    def test_ctf_openai_adapter_detects_moderation_error_invoke(self):
+        """fairlib surfaces 400 invalid_prompt as a stringified error Message.
+        The CTF subclass must detect this and return a synthetic valid-JSON
+        pivot response so the agent's format-error counter is not bumped."""
+        from ctf_solver.llm.adapters import CTFOpenAIAdapter
+
+        with (
+            patch("fairlib.modules.mal.openai_adapter.OpenAI") as mock_sync_ctor,
+            patch("fairlib.modules.mal.openai_adapter.AsyncOpenAI"),
+        ):
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices[0].message.content = (
+                "Error: Error code: 400 - {'error': {'message': "
+                "'Invalid prompt: your prompt was flagged as potentially "
+                "violating our usage policy', 'code': 'invalid_prompt'}}"
+            )
+            mock_response.choices[0].message.tool_calls = None
+            mock_client.chat.completions.create.return_value = mock_response
+            mock_sync_ctor.return_value = mock_client
+
+            adapter = CTFOpenAIAdapter(api_key="test-key", model_name="gpt-4o-mini")
+            result = adapter.invoke([Message(role="user", content="hi")])
+
+            # Result must be valid JSON with the moderation pivot shape.
+            payload = json.loads(result.content)
+            assert payload["action"]["tool_name"] == "__moderation_blocked__"
+            assert "MODERATION" in payload["thought"]
+
+    def test_ctf_openai_adapter_detects_moderation_error_ainvoke(self):
+        """Same as above but via async ainvoke."""
+        import asyncio
+        from ctf_solver.llm.adapters import CTFOpenAIAdapter
+
+        async def _run():
+            with (
+                patch("fairlib.modules.mal.openai_adapter.OpenAI"),
+                patch(
+                    "fairlib.modules.mal.openai_adapter.AsyncOpenAI"
+                ) as mock_async_ctor,
+            ):
+                mock_client = MagicMock()
+                mock_response = MagicMock()
+                mock_response.choices[0].message.content = (
+                    "Error: Error code: 400 - invalid_prompt usage policy"
+                )
+                mock_response.choices[0].message.tool_calls = None
+
+                async def _async_create(*a, **kw):
+                    return mock_response
+
+                mock_client.chat.completions.create = _async_create
+                mock_async_ctor.return_value = mock_client
+
+                adapter = CTFOpenAIAdapter(api_key="test-key", model_name="gpt-4o-mini")
+                return await adapter.ainvoke([Message(role="user", content="hi")])
+
+        result = asyncio.run(_run())
+        payload = json.loads(result.content)
+        assert payload["action"]["tool_name"] == "__moderation_blocked__"
+
+    def test_ctf_openai_adapter_generic_error_passes_through(self):
+        """A non-moderation error ("Error: timeout") must NOT be rewritten."""
+        from ctf_solver.llm.adapters import CTFOpenAIAdapter
+
+        with (
+            patch("fairlib.modules.mal.openai_adapter.OpenAI") as mock_sync_ctor,
+            patch("fairlib.modules.mal.openai_adapter.AsyncOpenAI"),
+        ):
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices[0].message.content = "Error: network timeout"
+            mock_response.choices[0].message.tool_calls = None
+            mock_client.chat.completions.create.return_value = mock_response
+            mock_sync_ctor.return_value = mock_client
+
+            adapter = CTFOpenAIAdapter(api_key="test-key", model_name="gpt-4o-mini")
+            result = adapter.invoke([Message(role="user", content="hi")])
+
+            # Untouched — no moderation rewrite.
+            assert result.content == "Error: network timeout"
+            assert "__moderation_blocked__" not in result.content
+
+    def test_ctf_openai_adapter_normal_response_passes_through(self):
+        """Happy-path JSON response must not be mistaken for moderation."""
+        from ctf_solver.llm.adapters import CTFOpenAIAdapter
+
+        with (
+            patch("fairlib.modules.mal.openai_adapter.OpenAI") as mock_sync_ctor,
+            patch("fairlib.modules.mal.openai_adapter.AsyncOpenAI"),
+        ):
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices[0].message.content = (
+                '{"thought": "ok", "action": {"tool_name": "http_fetch"}}'
+            )
+            mock_response.choices[0].message.tool_calls = None
+            mock_client.chat.completions.create.return_value = mock_response
+            mock_sync_ctor.return_value = mock_client
+
+            adapter = CTFOpenAIAdapter(api_key="test-key", model_name="gpt-4o-mini")
+            result = adapter.invoke([Message(role="user", content="hi")])
+
+            # Must not be rewritten.
+            payload = json.loads(result.content)
+            assert payload["action"]["tool_name"] == "http_fetch"
+
+    def test_ctf_openai_adapter_opt_out_disables_forcing(self):
+        """force_json_output=False preserves fairlib's default behavior."""
+        from ctf_solver.llm.adapters import CTFOpenAIAdapter
+
+        with (
+            patch("fairlib.modules.mal.openai_adapter.OpenAI") as mock_sync_ctor,
+            patch("fairlib.modules.mal.openai_adapter.AsyncOpenAI"),
+        ):
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.choices[0].message.content = "text"
+            mock_response.choices[0].message.tool_calls = None
+            mock_client.chat.completions.create.return_value = mock_response
+            mock_sync_ctor.return_value = mock_client
+
+            adapter = CTFOpenAIAdapter(
+                api_key="test-key",
+                model_name="gpt-4o-mini",
+                force_json_output=False,
+            )
+            adapter.invoke([Message(role="user", content="hi")])
+
+            call_kwargs = mock_client.chat.completions.create.call_args[1]
+            assert "response_format" not in call_kwargs
 
     def test_create_adapter_string_provider(self):
         """Test creating adapter with string provider."""

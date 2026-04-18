@@ -374,6 +374,176 @@ class TestSqliProbeTool:
 
         assert "TIMEOUT" in result or "timed out" in result.lower()
 
+    # === Success-Indicator Baseline-Filter Regression Tests ===
+
+    def test_authenticated_page_baseline_suppresses_false_success(self):
+        """Baseline nav bar contains dashboard/logout; a byte-identical payload
+        response must NOT be flagged as an auth bypass."""
+        auth_body = (
+            "<nav><a href='/dashboard'>Dashboard</a>"
+            "<a href='/logout'>Logout</a></nav>"
+            "<h1>Expenses</h1><p>No expenses yet.</p>"
+        )
+        baseline_response = Mock()
+        baseline_response.text = auth_body
+        baseline_response.status_code = 200
+
+        payload_response = Mock()
+        payload_response.text = auth_body
+        payload_response.status_code = 200
+
+        mock_session = Mock()
+        mock_session.get.side_effect = [baseline_response, payload_response]
+
+        tool = SqliProbeTool(session=mock_session)
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/expenses",
+                    "method": "GET",
+                    "param": "page",
+                    "payload_set": "custom",
+                    "custom_payloads": ["' OR 1=1 --"],
+                }
+            )
+        )
+
+        assert "Success Bypasses: 0" in result
+        assert "Authentication bypass may have succeeded" not in result
+
+    def test_genuine_bypass_still_detected_when_baseline_has_no_success_words(
+        self,
+    ):
+        """Baseline is a failed-login page; payload response reveals a fresh
+        success word AND a length/content differential — must flag."""
+        baseline_response = Mock()
+        baseline_response.text = "Invalid login"
+        baseline_response.status_code = 200
+
+        payload_response = Mock()
+        payload_response.text = (
+            "Welcome admin! Dashboard loaded. Here is your profile page."
+        )
+        payload_response.status_code = 200
+
+        mock_session = Mock()
+        mock_session.post.side_effect = [baseline_response, payload_response]
+
+        tool = SqliProbeTool(session=mock_session)
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/login",
+                    "method": "POST",
+                    "param": "username",
+                    "payload_set": "custom",
+                    "custom_payloads": ["' OR '1'='1' --"],
+                    "data": {"password": "x"},
+                }
+            )
+        )
+
+        assert "Success Bypasses: 1" in result
+        assert "Authentication bypass may have succeeded" in result
+
+    def test_baseline_success_noted_in_output(self):
+        """When the baseline already contains success indicators, the output
+        must tell the agent the filter was active so it can interpret the
+        'Success Bypasses: 0' count correctly."""
+        auth_body = "<nav>Dashboard Logout</nav>"
+        baseline_response = Mock()
+        baseline_response.text = auth_body
+        baseline_response.status_code = 200
+
+        payload_response = Mock()
+        payload_response.text = auth_body
+        payload_response.status_code = 200
+
+        mock_session = Mock()
+        mock_session.get.side_effect = [baseline_response, payload_response]
+
+        tool = SqliProbeTool(session=mock_session)
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/expenses",
+                    "method": "GET",
+                    "param": "page",
+                    "payload_set": "custom",
+                    "custom_payloads": ["'"],
+                }
+            )
+        )
+
+        assert "NOTE:" in result
+        assert "baseline" in result.lower()
+        assert "dashboard" in result.lower() or "logout" in result.lower()
+
+    def test_length_delta_below_threshold_not_flagged(self):
+        """Tiny length differential with no other signal must not flag."""
+        baseline_body = "A" * 3756
+        payload_body = "A" * 3757  # +1 byte, well under 50-byte threshold
+
+        baseline_response = Mock()
+        baseline_response.text = baseline_body
+        baseline_response.status_code = 200
+
+        payload_response = Mock()
+        payload_response.text = payload_body
+        payload_response.status_code = 200
+
+        mock_session = Mock()
+        mock_session.get.side_effect = [baseline_response, payload_response]
+
+        tool = SqliProbeTool(session=mock_session)
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["'"],
+                }
+            )
+        )
+
+        assert "Success Bypasses: 0" in result
+        assert "SQL Errors Triggered: 0" in result
+        assert "No obviously interesting payloads found" in result
+
+    def test_sql_error_still_flagged_independently(self):
+        """The SQL-error path must remain unaffected by the success-indicator
+        baseline filter."""
+        baseline_response = Mock()
+        baseline_response.text = "Normal page content"
+        baseline_response.status_code = 200
+
+        error_response = Mock()
+        error_response.text = (
+            "Oops: You have an error in your SQL syntax near ''' at line 1"
+        )
+        error_response.status_code = 200
+
+        mock_session = Mock()
+        mock_session.get.side_effect = [baseline_response, error_response]
+
+        tool = SqliProbeTool(session=mock_session)
+        result = tool.use(
+            json.dumps(
+                {
+                    "url": "http://test.com/page",
+                    "method": "GET",
+                    "param": "id",
+                    "payload_set": "custom",
+                    "custom_payloads": ["'"],
+                }
+            )
+        )
+
+        assert "SQL Errors Triggered: 1" in result
+        assert "INTERESTING PAYLOADS" in result
+
 
 class TestSqliColumnCounter:
     """Tests for the SqliColumnCounter class."""

@@ -128,21 +128,20 @@ class TestRAGModeEnum:
         assert RAGMode.LESSONS_WRITE == "lessons_write"
         assert RAGMode.LESSONS_READONLY == "lessons_readonly"
 
-    def test_legacy_modes_still_exist(self):
-        assert RAGMode.AUGMENTED == "augmented"
-        assert RAGMode.AUGMENTED_READONLY == "augmented_readonly"
+    def test_legacy_modes_removed(self):
+        # AUGMENTED / AUGMENTED_READONLY were removed in Batch B alongside
+        # the monolithic failure/success pipeline they were aliases for.
+        assert not hasattr(RAGMode, "AUGMENTED")
+        assert not hasattr(RAGMode, "AUGMENTED_READONLY")
 
     def test_write_modes_set(self):
         assert RAGMode.LESSONS_WRITE in RAG_WRITE_MODES
-        assert RAGMode.AUGMENTED in RAG_WRITE_MODES
         assert RAGMode.LESSONS_READONLY not in RAG_WRITE_MODES
         assert RAGMode.ORIGINAL not in RAG_WRITE_MODES
 
     def test_experience_modes_set(self):
         assert RAGMode.LESSONS_WRITE in RAG_EXPERIENCE_MODES
         assert RAGMode.LESSONS_READONLY in RAG_EXPERIENCE_MODES
-        assert RAGMode.AUGMENTED in RAG_EXPERIENCE_MODES
-        assert RAGMode.AUGMENTED_READONLY in RAG_EXPERIENCE_MODES
         assert RAGMode.ORIGINAL not in RAG_EXPERIENCE_MODES
         assert RAGMode.NONE not in RAG_EXPERIENCE_MODES
 

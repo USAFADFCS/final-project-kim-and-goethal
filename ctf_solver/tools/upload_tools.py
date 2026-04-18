@@ -742,41 +742,53 @@ class FileUploadTool:
     def _check_upload_success(
         self, status: int, text: str, baseline_status: int
     ) -> bool:
-        """Check if upload was successful based on response."""
+        """Check if upload was successful based on response.
+
+        Denial phrases are checked BEFORE success phrases because a body
+        like "Sorry, PHP files are not allowed. Your file was not uploaded."
+        substring-matches "uploaded" but is clearly a failure. Word-boundary
+        regexes on the success list also guard against matches inside
+        "not uploaded" / "unsuccessful" / "reuploaded".
+        """
         # Status code checks
         if status >= 400:
             return False
 
-        # Common success indicators
-        success_indicators = [
-            "success",
-            "uploaded",
-            "file saved",
-            "upload complete",
-            "file uploaded successfully",
-        ]
-
         text_lower = text.lower()
-        for indicator in success_indicators:
-            if indicator in text_lower:
-                return True
 
-        # Common failure indicators
+        # Failure indicators first — a denial anywhere in the body wins
+        # over any ambiguous success word that may appear alongside it.
         failure_indicators = [
             "not allowed",
+            "not uploaded",
+            "was not uploaded",
+            "variations are not allowed",
             "invalid file",
             "invalid extension",
             "blocked",
             "denied",
             "rejected",
             "failed",
+            "unsuccessful",
             "error",
             "forbidden",
         ]
-
         for indicator in failure_indicators:
             if indicator in text_lower:
                 return False
+
+        # Success indicators — matched on word boundaries so "uploaded"
+        # cannot hit inside "not uploaded" / "reuploaded" and "success"
+        # cannot hit inside "unsuccessful".
+        success_patterns = [
+            r"\bsuccess(?:ful(?:ly)?)?\b",
+            r"\buploaded\b",
+            r"\bfile saved\b",
+            r"\bupload complete\b",
+        ]
+        for pattern in success_patterns:
+            if re.search(pattern, text_lower):
+                return True
 
         # If status is OK and no explicit failure, consider it a potential success
         return status == 200 or status == 201 or status == 302

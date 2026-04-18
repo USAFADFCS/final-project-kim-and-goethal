@@ -8,3 +8,4 @@ fair-llm>=0.1 # fair package
 pytest>=8.0.0
 requests>=2.28.0 # HTTP tools (http_fetch, form_submit, etc.)
 beautifulsoup4>=4.12.0 # HTML parsing (html_inspector, js_source)
+wasmtime>=14.0 # WASM runtime oracle (probe_exports, memory_diff, oracle_brute_force)

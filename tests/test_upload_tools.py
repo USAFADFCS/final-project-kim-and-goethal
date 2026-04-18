@@ -1146,3 +1146,50 @@ class TestFileUploadToolIntegration:
 
         assert upload.session.headers.get("X-Custom") == "test"
         assert finder.session.headers.get("X-Custom") == "test"
+
+
+class TestCheckUploadSuccessRegression:
+    """Regression tests for the substring-match false positive seen on the
+    MetaCTF 'Open Application' run — response body literally said
+    'Sorry, PHP files ... not allowed.Sorry, your file was not uploaded.'
+    and the tool still reported SUCCESSFUL because 'uploaded' is a substring
+    of 'not uploaded' and the success check used to run before the failure
+    check."""
+
+    def setup_method(self):
+        self.tool = FileUploadTool()
+
+    def test_not_uploaded_phrase_rejects_success(self):
+        """'was not uploaded' must not be treated as success."""
+        assert (
+            self.tool._check_upload_success(200, "File was not uploaded.", 200) is False
+        )
+
+    def test_not_allowed_phrase_rejects_success_even_when_uploaded_present(self):
+        """Exact observed MetaCTF response body — the bug."""
+        body = (
+            "Sorry, PHP files and its variations are not allowed."
+            "Sorry, your file was not uploaded."
+        )
+        assert self.tool._check_upload_success(200, body, 200) is False
+
+    def test_genuine_upload_success_still_detected(self):
+        """The good path must still be recognised."""
+        body = "The file test.txt has been uploaded. File path: uploads/test.txt"
+        assert self.tool._check_upload_success(200, body, 200) is True
+
+    def test_unsuccessful_phrase_rejects_word_boundary_match(self):
+        """'unsuccessful' currently substring-matches 'success' → bug."""
+        assert self.tool._check_upload_success(200, "Upload unsuccessful", 200) is False
+
+    def test_error_phrase_anywhere_rejects_success(self):
+        """A clear error marker anywhere in body rejects even with
+        ambiguous success-ish words elsewhere."""
+        body = "Upload error: extension blocked. The file was not uploaded."
+        assert self.tool._check_upload_success(200, body, 200) is False
+
+    def test_status_500_still_rejected(self):
+        """Pre-existing contract: 5xx is never success."""
+        assert (
+            self.tool._check_upload_success(500, "The file was uploaded", 200) is False
+        )

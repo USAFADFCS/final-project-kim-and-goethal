@@ -29,10 +29,10 @@ class RAGMode(str, Enum):
 
     NONE = "none"  # No knowledge base at all
     ORIGINAL = "original"  # Only the original docs in docs/
-    # Legacy names kept for backward compat with existing failure/success docs
-    AUGMENTED = "augmented"  # Legacy alias for LESSONS_WRITE
-    AUGMENTED_READONLY = "augmented_readonly"  # Legacy alias for LESSONS_READONLY
-    # New unified lessons-learned modes
+    # Unified lessons-learned modes (the pre-v2.3 AUGMENTED / AUGMENTED_READONLY
+    # aliases were removed when the monolithic failure/success pipeline was
+    # retired; existing disk corpora keep working because _build_rag_config
+    # still reads the legacy failure_docs_dir as an additional source).
     LESSONS_WRITE = "lessons_write"  # Curated docs + experience DB; writes atomic rules after every run
     LESSONS_READONLY = (
         "lessons_readonly"  # Curated docs + experience DB; reads only, never writes
@@ -46,14 +46,12 @@ class RAGMode(str, Enum):
 
 #: Modes that write new experience docs after every run.
 RAG_WRITE_MODES: frozenset = frozenset(
-    {RAGMode.AUGMENTED, RAGMode.LESSONS_WRITE, RAGMode.LESSONS_BUILDONLY}
+    {RAGMode.LESSONS_WRITE, RAGMode.LESSONS_BUILDONLY}
 )
 
 #: Modes that read from the experience database.
 RAG_EXPERIENCE_MODES: frozenset = frozenset(
     {
-        RAGMode.AUGMENTED,
-        RAGMode.AUGMENTED_READONLY,
         RAGMode.LESSONS_WRITE,
         RAGMode.LESSONS_READONLY,
     }
@@ -166,6 +164,39 @@ class SolverConfig:
     # Agent configuration
     agent_system_prompt: Optional[str] = None
     max_steps: int = 20
+    # Optional sliding-window cap on planner history. None = send full memory
+    # (legacy). Set to e.g. 20 to bound per-turn input at ~2k history tokens
+    # for long runs.  First 2 messages (original task + primed context) are
+    # always preserved; only the middle is truncated.
+    history_window_size: Optional[int] = None
+    # Default-on: run a small deterministic recon batch (robots.txt + common
+    # path enumeration) before the LLM loop starts, injecting results as
+    # observations. Saves 2-3 LLM turns on every challenge with a challenge_url.
+    # Short-circuited when challenge_url is None so headless / unit-test paths
+    # are unaffected (see build_agent() in agent.py).
+    enable_opener_pack: bool = True
+    # Opt-in: route LLM calls through the native-tools adapter + multi-tool-per-turn
+    # loop (``_arun_native_tools`` / ``_arun_native_tools_openai``).  Default off
+    # for safety — tests exercise the legacy JSON-ReAct path.
+    enable_parallel_tools: bool = False
+    # Opt-in: wrap the shared ``requests.Session`` with ``CachedSession`` so
+    # repeat GET/HEAD calls hit a TTL cache and concurrent duplicates dedup.
+    # Off by default because caching can mask intentional re-probes (e.g.
+    # checking whether an endpoint changed state).  Enable for idempotent
+    # workloads where you want to shrink tool outputs + save HTTP round-trips.
+    enable_response_cache: bool = False
+    # TTL (seconds) for cached GET/HEAD responses when enable_response_cache=True.
+    response_cache_ttl_seconds: float = 120.0
+    # Max entries in the response cache (LRU eviction above this).
+    response_cache_max_entries: int = 500
+    # Controls the one-shot RAG query that ``runner``/``streamlit_app`` fire
+    # before the agent loop starts.  When True (default, preserves legacy
+    # behavior), relevant knowledge-base hits for the challenge description
+    # are injected into the initial prompt.  When False, the agent retrieves
+    # on demand by calling ``ctf_knowledge_query`` mid-run — saves ~150-400
+    # tokens on the first turn when the proactive retrieval produces no
+    # useful hits.
+    enable_proactive_rag: bool = True
     model_name: str = "gpt-4o"
     llm_provider: Union[str, LLMProviderType] = LLMProviderType.OPENAI
 

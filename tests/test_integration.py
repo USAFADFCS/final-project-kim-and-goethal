@@ -5,9 +5,9 @@ Tests how different components work together as a complete system.
 """
 
 import json
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
 
 # ==============================================================================
 # Tool Integration Tests
@@ -38,7 +38,7 @@ class TestToolIntegration:
         self, mock_session, mock_response_factory
     ):
         """Test typical SQLi workflow: probe then column count."""
-        from ctf_solver.tools.sqli_tools import SqliProbeTool, SqliColumnCounter
+        from ctf_solver.tools.sqli_tools import SqliColumnCounter, SqliProbeTool
 
         # Setup mock responses for probe
         baseline_probe = mock_response_factory(text="Normal page content")
@@ -186,9 +186,10 @@ class TestEncodingChains:
 
     def test_rot13_base64_chain(self):
         """Test ROT13 + base64 combination."""
-        from ctf_solver.tools.encoding_tools import EncodingTool
         import base64
         import codecs
+
+        from ctf_solver.tools.encoding_tools import EncodingTool
 
         tool = EncodingTool()
 
@@ -299,7 +300,6 @@ class TestUtilityIntegration:
     def test_path_enumeration_generates_paths(self):
         """Test path enumeration tool generates valid paths."""
         from ctf_solver.tools.enumeration_tools import PathEnumeratorTool
-        from unittest.mock import Mock
 
         # Create mock session
         mock_session = Mock()
@@ -334,8 +334,8 @@ class TestFullWorkflows:
 
     def test_login_bypass_workflow(self, mock_session, mock_response_factory):
         """Test complete login bypass workflow."""
-        from ctf_solver.tools.sqli_tools import SqliProbeTool
         from ctf_solver.tools.encoding_tools import EncodingTool
+        from ctf_solver.tools.sqli_tools import SqliProbeTool
 
         # Setup: Login page that's vulnerable
         baseline = mock_response_factory(text="Invalid username or password")
@@ -513,9 +513,9 @@ class TestLLMAdapterIntegration:
     def test_adapter_factory_creates_correct_type(self):
         """Test that adapter factory creates correct adapter types."""
         from ctf_solver.llm.adapters import (
-            create_adapter,
-            OllamaAdapter,
             LLMProvider,
+            OllamaAdapter,
+            create_adapter,
         )
 
         # Test Anthropic adapter creation (skip if library not installed)
@@ -541,40 +541,10 @@ class TestLLMAdapterIntegration:
 
 
 # ==============================================================================
-# Async Integration Tests
+# Async Integration Tests removed in Batch C — ``AsyncToolExecutor`` and
+# ``ProgressTracker`` were deleted alongside ``async_executor.py`` because
+# the LLM's native parallel tool use (``_arun_native_tools`` on the
+# Anthropic path, ``_arun_native_tools_openai`` on the OpenAI path) now
+# replaces that abstraction.  See ``tests/test_parallel_tools_loop.py``
+# for the current parallel-execution coverage.
 # ==============================================================================
-
-
-class TestAsyncIntegration:
-    """Test async utility integration."""
-
-    def test_async_executor_basic(self):
-        """Test async executor with simple tasks."""
-        from ctf_solver.utils.async_executor import AsyncToolExecutor
-        from unittest.mock import Mock
-
-        executor = AsyncToolExecutor(max_workers=2)
-
-        # Create mock tool
-        mock_tool = Mock()
-        mock_tool.use = Mock(side_effect=lambda x: f"Result for {x}")
-
-        # Define tasks as (name, tool, input) tuples
-        tasks = [(f"task_{i}", mock_tool, f"input_{i}") for i in range(3)]
-
-        batch_result = executor.execute_batch(tasks)
-
-        assert batch_result.successful >= 0
-        assert len(batch_result.results) == 3
-
-    def test_progress_tracker(self):
-        """Test progress tracker functionality."""
-        from ctf_solver.utils.async_executor import ProgressTracker
-
-        tracker = ProgressTracker(total=10)
-
-        for i in range(5):
-            tracker.update()
-
-        assert tracker.completed == 5
-        assert tracker.progress == 0.5

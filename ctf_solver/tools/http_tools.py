@@ -2,13 +2,19 @@
 HTTP-related tools for CTF solving.
 
 Provides HTTP GET/HEAD requests and form submission capabilities.
+
+Batch D #6: uses ``ctf_solver.tools.core.parse_json_input`` for input
+parsing — proof-of-concept for the broader migration away from per-tool
+JSON boilerplate.  Error strings are byte-for-byte identical to the
+pre-migration version so existing tests are unaffected.
 """
 
-import json
 import re
 from typing import List, Optional
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 # Broad CTF flag pattern: PREFIX{content} — catches most CTF flag formats.
 # Used to scan full response bodies before truncation so flags beyond
@@ -104,14 +110,9 @@ class HttpFetchTool:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[HttpFetchTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
+        data, err = parse_json_input(tool_input, "HttpFetchTool")
+        if err:
+            return err
 
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -360,13 +361,9 @@ class FormSubmitTool:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[FormSubmitTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
+        data, err = parse_json_input(tool_input, "FormSubmitTool")
+        if err:
+            return err
 
         url = data.get("url")
         method = data.get("method")

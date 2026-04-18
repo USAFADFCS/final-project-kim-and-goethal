@@ -401,6 +401,13 @@ class SqliProbeTool:
         # via injection" — that would be a false positive.
         baseline_flag = self._extract_flag(baseline_resp.text)
 
+        # Success/failure words that already appear in the baseline must be
+        # subtracted from per-payload matches. On an authenticated page the
+        # nav bar alone contains "dashboard" and "logout"; without this
+        # filter every payload looks like a bypass.
+        baseline_success = set(self._detect_success(baseline_resp.text))
+        baseline_failure = set(self._detect_failure(baseline_resp.text))
+
         # Test each payload
         results = []
         interesting_payloads = []
@@ -423,6 +430,16 @@ class SqliProbeTool:
                 failure_indicators = self._detect_failure(resp_text)
                 flag = self._extract_flag(resp_text)
 
+                # Filter out indicators that were already in the baseline —
+                # those don't represent a change caused by the payload.
+                new_success = [
+                    s for s in success_indicators if s not in baseline_success
+                ]
+                still_failure = [f for f in failure_indicators if f in baseline_failure]
+                lost_failure_words = baseline_failure - set(failure_indicators)
+                length_diff = abs(resp_length - baseline_length)
+                status_changed = resp_status != baseline_status
+
                 # Determine if this is interesting
                 is_interesting = False
                 reason = []
@@ -433,22 +450,25 @@ class SqliProbeTool:
                     reason.append(f"SQL errors: {', '.join(sql_errors)}")
                     errors_detected[payload] = sql_errors
 
-                # Success indicators without failure indicators
-                if success_indicators and not failure_indicators:
+                # Success indicators: require NEW indicators (not baseline
+                # boilerplate) AND a behavioral differential (status change,
+                # meaningful length delta, or a baseline failure word that
+                # disappeared — the classic "Invalid login" → "Welcome" case).
+                has_behavioral_diff = (
+                    status_changed or length_diff > 50 or bool(lost_failure_words)
+                )
+                if new_success and not still_failure and has_behavioral_diff:
                     is_interesting = True
-                    reason.append(
-                        f"Success indicators: {', '.join(success_indicators)}"
-                    )
-                    successes_detected[payload] = success_indicators
+                    reason.append(f"New success indicators: {', '.join(new_success)}")
+                    successes_detected[payload] = new_success
 
                 # Significant length difference from baseline
-                length_diff = abs(resp_length - baseline_length)
                 if length_diff > 100 and resp_length > baseline_length:
                     is_interesting = True
                     reason.append(f"Length diff: +{length_diff} bytes")
 
                 # Status code change
-                if resp_status != baseline_status and resp_status == 200:
+                if status_changed and resp_status == 200:
                     is_interesting = True
                     reason.append(f"Status changed: {baseline_status} -> {resp_status}")
 
@@ -506,6 +526,18 @@ class SqliProbeTool:
                 "page regardless of SQL injection — it may be hidden by CSS or "
                 "in the HTML source. Consider using http_fetch with a larger "
                 "max_body to view it directly."
+            )
+            output_lines.append("")
+
+        # Success indicators already present in baseline (suppressed from
+        # per-payload matches so the agent knows the filter was active).
+        if baseline_success:
+            output_lines.append(
+                "NOTE: baseline response already contained success indicators "
+                f"({', '.join(sorted(baseline_success))}) — these were "
+                "filtered out when scoring payloads to avoid false positives "
+                "on authenticated pages whose nav bar mentions 'dashboard' / "
+                "'logout'. Only NEW indicators count toward success bypasses."
             )
             output_lines.append("")
 

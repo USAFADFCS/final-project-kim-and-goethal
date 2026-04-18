@@ -134,6 +134,11 @@ class TestSolverConfig:
         assert config.docs_dirs == []
         assert config.kb_files == []
 
+    def test_enable_opener_pack_default_true(self):
+        """Opener pack is opt-out now — saves 2-3 turns on challenges that
+        have a URL, short-circuits when they don't."""
+        assert SolverConfig().enable_opener_pack is True
+
     def test_config_with_custom_values(self):
         """Test configuration with custom values."""
         config = SolverConfig(

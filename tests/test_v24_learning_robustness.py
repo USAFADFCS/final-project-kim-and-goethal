@@ -228,6 +228,16 @@ class TestRunTrackerNewFields:
         assert "unique_tools_used" in d
         assert "site_fingerprint" in d
 
+    def test_moderation_hits_default_and_serialized(self):
+        """moderation_hits starts at 0 and appears in to_dict so post-run
+        diagnostics can distinguish content-filter rejections from
+        format errors."""
+        t = RunTracker()
+        assert t.moderation_hits == 0
+        t.moderation_hits = 2
+        d = t.to_dict()
+        assert d["moderation_hits"] == 2
+
 
 # ---------------------------------------------------------------------------
 # _find_similar_rule_doc

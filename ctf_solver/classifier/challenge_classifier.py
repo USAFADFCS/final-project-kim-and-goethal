@@ -719,7 +719,11 @@ APPROACH_SUGGESTIONS: Dict[ChallengeCategory, str] = {
         "2. javascript_source → deobfuscate to find WASM module path (e.g. ./JIFxzHyW8W)\n"
         "3. wasm_analyzer (analyze) → parse sections, check for plaintext flag in data segments\n"
         "4. If flag is binary/non-ASCII: wasm_analyzer (xor_decode) → auto-detect 'key' export\n"
-        "5. If no key export: wasm_analyzer (xor_decode) with brute-force, or scan_flags"
+        "5. If no key export: wasm_analyzer (xor_decode) with brute-force, or scan_flags\n"
+        "6. If module exports copy_char + check_flag (validator style):\n"
+        "   - wasm_analyzer (probe_exports) to confirm function arities\n"
+        "   - wasm_analyzer (oracle_brute_force) to recover the flag via runtime\n"
+        "     (strcmp_delta strategy is near-instant when strcmp is exported)"
     ),
     ChallengeCategory.RECONNAISSANCE: (
         "1. Check robots.txt and sitemap\n"

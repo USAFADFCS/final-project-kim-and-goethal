@@ -17,7 +17,6 @@ from ctf_solver.config import (
     COMMON_FLAG_PATTERNS,
     RAG_EXPERIENCE_MODES,
     RAG_WRITE_MODES,
-    RAGMode,
     SolverConfig,
     extract_candidate_flags,
 )
@@ -25,9 +24,7 @@ from ctf_solver.consolidate_knowledge import consolidate_lessons_knowledge
 from ctf_solver.failure_analyzer import (
     _detect_partial_successes,
     find_and_compress_prior_lesson,
-    run_failure_analysis_pipeline,
     run_lessons_learned_pipeline,
-    run_success_knowledge_pipeline,
 )
 from ctf_solver.prompts import get_initial_message
 from ctf_solver.rag import get_active_knowledge_tool
@@ -148,11 +145,9 @@ Examples:
         choices=[
             "none",
             "original",
-            "augmented_readonly",
-            "augmented",  # legacy names
             "lessons_readonly",
             "lessons_write",
-            "lessons_buildonly",  # new names
+            "lessons_buildonly",
         ],
         default=None,
         help=(
@@ -161,8 +156,7 @@ Examples:
             "'original': curated docs only. "
             "'lessons_readonly': curated docs + read lessons DB (never writes). "
             "'lessons_write': curated docs + read/write lessons DB (saves atomic rules after every run). "
-            "'lessons_buildonly': curated docs only during run; saves atomic rules after every run (no RAG reads from lessons DB). "
-            "'augmented'/'augmented_readonly': legacy aliases for lessons_write/lessons_readonly."
+            "'lessons_buildonly': curated docs only during run; saves atomic rules after every run (no RAG reads from lessons DB)."
         ),
     )
 
@@ -455,8 +449,10 @@ async def run_agent(config: SolverConfig) -> str:
     # Proactive RAG injection: even when no challenge-specific prior lesson exists,
     # query the knowledge base with the challenge description upfront so the agent
     # always sees relevant prior knowledge before its first action — not just when
-    # it happens to call ctf_knowledge_query mid-run.
-    if config.rag_mode in RAG_EXPERIENCE_MODES:
+    # it happens to call ctf_knowledge_query mid-run.  Gated by
+    # ``enable_proactive_rag`` (default on) so the agent can opt out when it
+    # prefers on-demand retrieval and tighter first-turn prompts.
+    if config.rag_mode in RAG_EXPERIENCE_MODES and config.enable_proactive_rag:
         active_tool = get_active_knowledge_tool()
         if active_tool is not None:
             query = (
@@ -524,8 +520,9 @@ async def run_agent(config: SolverConfig) -> str:
     print("=" * 40 + "\n")
 
     # Write experience-database docs after every run in WRITE modes.
-    # LESSONS_WRITE uses the new unified lessons-learned pipeline (atomic rules).
-    # AUGMENTED uses the legacy failure/success pipeline for backward compat.
+    # All write modes now route through the unified lessons-learned pipeline;
+    # the old AUGMENTED/monolithic pipeline was removed in favor of atomic
+    # rule docs (ExpeL-style).
     if config.rag_mode in RAG_WRITE_MODES:
         experience_data = {
             "challenge_url": config.challenge_url or "",
@@ -533,66 +530,35 @@ async def run_agent(config: SolverConfig) -> str:
             "challenge_name": config.challenge_name or "",
         }
 
-        if config.rag_mode in (RAGMode.LESSONS_WRITE, RAGMode.LESSONS_BUILDONLY):
-            # New unified pipeline: always runs, produces atomic rule docs
-            written_paths = run_lessons_learned_pipeline(
-                config_data=experience_data,
-                tracker_data=tracker.to_dict(),
-                tool_call_log=tracker.tool_call_log,
-                agent_response=response,
-                candidate_flags=candidate_flags,
-                lessons_docs_dir=config.lessons_docs_dir,
-                max_steps=config.max_steps,
-                actual_steps=tracker.steps,
-                flag_regex=config.flag_regex,
-                site_fingerprint=tracker.site_fingerprint,
-                use_llm=config.use_llm_for_lessons,
-                openai_api_key=config.openai_api_key or "",
-                lessons_llm_model=config.lessons_llm_model,
-            )
-            if written_paths:
-                print(f"[Lessons DB] {len(written_paths)} rule doc(s) saved.")
-                # Consolidate lessons by category (fires when ≥2 docs per category)
-                consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
-                if consolidated:
-                    print(
-                        f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated."
-                    )
-                # Rebuild index so new docs are queryable in the same session
-                active_tool = get_active_knowledge_tool()
-                if active_tool is not None:
-                    active_tool.refresh_index()
-            else:
+        written_paths = run_lessons_learned_pipeline(
+            config_data=experience_data,
+            tracker_data=tracker.to_dict(),
+            tool_call_log=tracker.tool_call_log,
+            agent_response=response,
+            candidate_flags=candidate_flags,
+            lessons_docs_dir=config.lessons_docs_dir,
+            max_steps=config.max_steps,
+            actual_steps=tracker.steps,
+            flag_regex=config.flag_regex,
+            site_fingerprint=tracker.site_fingerprint,
+            use_llm=config.use_llm_for_lessons,
+            openai_api_key=config.openai_api_key or "",
+            lessons_llm_model=config.lessons_llm_model,
+        )
+        if written_paths:
+            print(f"[Lessons DB] {len(written_paths)} rule doc(s) saved.")
+            # Consolidate lessons by category (fires when ≥2 docs per category)
+            consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
+            if consolidated:
                 print(
-                    "[Lessons DB] No new rule docs (duplicate run or confidence bumped)."
+                    f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated."
                 )
+            # Rebuild index so new docs are queryable in the same session
+            active_tool = get_active_knowledge_tool()
+            if active_tool is not None:
+                active_tool.refresh_index()
         else:
-            # Legacy AUGMENTED mode: separate failure/success pipeline
-            if not candidate_flags:
-                doc_path = run_failure_analysis_pipeline(
-                    config_data=experience_data,
-                    tracker_data=tracker.to_dict(),
-                    tool_call_log=tracker.tool_call_log,
-                    agent_response=response,
-                    candidate_flags=candidate_flags,
-                    failure_docs_dir=config.failure_docs_dir,
-                    max_steps=config.max_steps,
-                    actual_steps=tracker.steps,
-                    flag_regex=config.flag_regex,
-                )
-                if doc_path:
-                    print(f"[Experience DB] Failure doc saved: {doc_path}")
-            else:
-                doc_path = run_success_knowledge_pipeline(
-                    config_data=experience_data,
-                    tracker_data=tracker.to_dict(),
-                    tool_call_log=tracker.tool_call_log,
-                    agent_response=response,
-                    candidate_flags=candidate_flags,
-                    failure_docs_dir=config.failure_docs_dir,
-                )
-                if doc_path:
-                    print(f"[Experience DB] Success doc saved: {doc_path}")
+            print("[Lessons DB] No new rule docs (duplicate run or confidence bumped).")
 
     return response
 

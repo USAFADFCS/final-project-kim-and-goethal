@@ -3,6 +3,7 @@ Tests for file upload testing tools.
 """
 
 import json
+import re
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
@@ -673,7 +674,9 @@ class TestUploadHtaccessOperation:
             )
         )
 
-        assert ".htaccess Upload Attack" in result
+        # Header mentions .htaccess workflow (title changed in Gap D to add
+        # "+ Verification" — test now accepts either phrasing).
+        assert ".htaccess Upload" in result
         assert "SUCCESS" in result or "payload" in result.lower()
 
     def test_upload_htaccess_exact_filename(self):
@@ -697,13 +700,18 @@ class TestUploadHtaccessOperation:
             )
         )
 
-        # Check that filename is exactly ".htaccess"
+        # Check that at least one upload used the exact filename
+        # ".htaccess" — Gap D added an additional probe upload with
+        # filename "probe_<token>.<ext>", which we skip.
+        seen_htaccess = False
         for call in mock_session.post.call_args_list:
             files = call.kwargs.get("files") or call[1].get("files", {})
             if files:
                 file_tuple = files.get("image")
-                if file_tuple:
-                    assert file_tuple[0] == ".htaccess"
+                if file_tuple and file_tuple[0] == ".htaccess":
+                    seen_htaccess = True
+                    break
+        assert seen_htaccess, ".htaccess filename was never used"
 
     def test_upload_htaccess_custom_extension(self):
         """Test .htaccess upload with custom target extension."""
@@ -727,6 +735,173 @@ class TestUploadHtaccessOperation:
         )
 
         assert ".png" in result
+
+
+class TestUploadHtaccessVerification:
+    """Gap D: upload_htaccess must actively verify that PHP execution was
+    enabled by uploading a probe file and fetching it. Previously the tool
+    reported '.htaccess uploaded' based on HTTP status alone — MetaCTF run
+    #4 (Open Application) could not tell the .htaccess trick was failing."""
+
+    def _mock_session_with_probe(
+        self,
+        upload_status: int = 200,
+        upload_body: str = "saved at /uploads/probe_abc.xyzw",
+        probe_executes: bool = True,
+        probe_returns_source: bool = False,
+    ):
+        """Build a Mock session whose .post uploads succeed (200) and
+        whose .get echoes the probe body back — either the rendered PHP
+        output (execution confirmed) or the raw source (execution
+        missing). The probe body is extracted from the latest POST's
+        file tuple so we don't need to know the random token in advance.
+        """
+        mock_session = Mock()
+
+        post_resp = Mock()
+        post_resp.status_code = upload_status
+        post_resp.text = upload_body
+        post_resp.content = upload_body.encode()
+        mock_session.post.return_value = post_resp
+
+        def _get_side_effect(url, *args, **kwargs):
+            # Find the most recent .post call whose file tuple looked
+            # like a PHP probe (filename starts with 'probe_').
+            probe_source = ""
+            for call in reversed(mock_session.post.call_args_list):
+                files = call.kwargs.get("files") or {}
+                for _, tup in files.items():
+                    if (
+                        isinstance(tup, tuple)
+                        and len(tup) >= 2
+                        and tup[0].startswith("probe_")
+                    ):
+                        probe_source = (
+                            tup[1].decode()
+                            if isinstance(tup[1], bytes)
+                            else str(tup[1])
+                        )
+                        break
+                if probe_source:
+                    break
+            resp = Mock()
+            resp.status_code = 200
+            if probe_returns_source:
+                resp.text = probe_source
+            elif probe_executes:
+                # Simulate Apache rendering the probe. The probe body
+                # splits the marker across string concatenation so we
+                # extract the random token and echo the assembled form.
+                m = re.search(r"ESS_OK_([a-z0-9]+)_", probe_source)
+                token = m.group(1) if m else ""
+                resp.text = f"HTACCESS_OK_{token}_PHP/8.1.0" if token else ""
+            else:
+                resp.text = ""
+            resp.content = resp.text.encode()
+            return resp
+
+        mock_session.get.side_effect = _get_side_effect
+        return mock_session
+
+    def test_verification_succeeds_when_probe_executes(self):
+        """When the probe fetch returns body containing the success
+        token (after PHP execution), verification reports confirmed."""
+        mock_session = self._mock_session_with_probe(probe_executes=True)
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_htaccess",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
+        assert "execution_confirmed: true" in result
+        assert "active_extension:" in result
+
+    def test_verification_fails_when_probe_returns_raw_source(self):
+        """When the probe fetch returns the raw PHP source (common with
+        nginx or AllowOverride None), verification reports unconfirmed
+        with a diagnostic next_action."""
+        mock_session = self._mock_session_with_probe(probe_returns_source=True)
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_htaccess",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
+        assert "execution_confirmed: false" in result
+        # Diagnostic message mentions at least one common cause.
+        assert "AllowOverride" in result or "nginx" in result or "ExecCGI" in result
+
+    def test_verification_skipped_when_htaccess_rejected(self):
+        """If every .htaccess payload upload fails (non-success status),
+        we don't bother running the probe step."""
+        mock_session = self._mock_session_with_probe(
+            upload_status=403, upload_body="forbidden"
+        )
+        tool = FileUploadTool(session=mock_session)
+        result = tool.use(
+            json.dumps(
+                {
+                    "operation": "upload_htaccess",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
+        # Must still emit the verification section with a rejected status.
+        assert "htaccess_status: rejected" in result
+        # The probe GET must NOT have been issued since we had nothing
+        # to verify against.
+        assert mock_session.get.call_count == 0
+
+    def test_verification_emits_random_extension(self):
+        """Two separate calls should produce two different active_extension
+        values so repeated probes don't collide in the same server state."""
+        mock_session_a = self._mock_session_with_probe(probe_executes=True)
+        tool_a = FileUploadTool(session=mock_session_a)
+        result_a = tool_a.use(
+            json.dumps(
+                {
+                    "operation": "upload_htaccess",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
+
+        mock_session_b = self._mock_session_with_probe(probe_executes=True)
+        tool_b = FileUploadTool(session=mock_session_b)
+        result_b = tool_b.use(
+            json.dumps(
+                {
+                    "operation": "upload_htaccess",
+                    "url": "http://test.com/upload",
+                    "file_param": "file",
+                }
+            )
+        )
+
+        # Extract the active_extension lines and confirm they differ.
+        def _get_ext(result: str) -> str:
+            for line in result.splitlines():
+                if line.strip().startswith("active_extension:"):
+                    return line.strip().split(":", 1)[1].strip()
+            return ""
+
+        ext_a = _get_ext(result_a)
+        ext_b = _get_ext(result_b)
+        # Both must be non-empty and different (random suffix collision
+        # probability is ~1 in ~450000 for 4 lowercase chars).
+        assert ext_a
+        assert ext_b
+        assert ext_a != ext_b
 
 
 class TestUploadUseriniOperation:

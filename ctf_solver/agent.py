@@ -281,9 +281,14 @@ class CTFAgent(SimpleAgent):
         self._opener_pack: List[Tuple[str, Dict[str, Any]]] = list(opener_pack or [])
         self._parallel_tools_enabled = enable_parallel_tools
         self._native_system_prompt = native_system_prompt
-        # Stall-detection state (feeds the [STALLED-DETECTOR] RAG nudge).
+        # Stall-detection state (feeds the [STALLED-*] tiered nudge).
+        # Tier starts at 0; ascends to 1, 2, 3 as nudges fire.
+        # ``_stall_checks`` counts threshold-crossing calls regardless of
+        # whether a message was emitted (RAG-suppressed tier 1 still
+        # counts, so the next check can fire tier 2).
         self._last_progress_step: int = 0
-        self._stall_nudge_sent: bool = False
+        self._stall_nudge_tier: int = 0
+        self._stall_checks: int = 0
         self._seen_paths: Set[str] = set()
         self._seen_statuses: Set[int] = set()
         self._patch_planner_parsing()
@@ -330,45 +335,94 @@ class CTFAgent(SimpleAgent):
     def _maybe_inject_stall_nudge(
         self, step: int, turn_messages: List[Message]
     ) -> None:
-        """Append a single [STALLED-DETECTOR] system message to
-        ``turn_messages`` if the agent has gone ≥_STALL_THRESHOLD steps
-        without progress AND has not yet issued a RAG query. Fires at
-        most once per run."""
-        if self._stall_nudge_sent:
+        """Inject a tiered [STALLED-*] system message when the agent stalls.
+
+        Three tiers, escalating. Each fires at most once per run; the stall
+        window resets to ``step`` on every firing so the next tier must wait
+        ``_STALL_THRESHOLD`` more tool calls.
+
+        - Tier 1 ([STALLED-DETECTOR]) — forces the agent's first RAG query.
+          Suppressed (skipped outright) if ``rag_queries_made > 0``: if the
+          agent already consulted retrieval, the nudge is redundant.
+        - Tier 2 ([STALLED-TIER-2]) — pushes the agent off a dead-end
+          vulnerability hypothesis. Fires regardless of RAG usage.
+        - Tier 3 ([STALLED-TIER-3]) — tells the agent to emit Final Answer
+          with its best guess. Fires regardless of RAG usage.
+
+        Post-tier-3, silent. Further stalls produce no nudge — the agent
+        was already told to stop.
+        """
+        if self._stall_nudge_tier >= 3:
             return
         stall = step - self._last_progress_step
         if stall < self._STALL_THRESHOLD:
             return
-        rag_queries = 0
-        if self._tracker is not None:
+        # Every threshold-crossing call counts as a "check". The check
+        # count determines which tier should fire next — so a
+        # RAG-suppressed tier 1 still counts, and the NEXT stall check
+        # will fire tier 2 directly.
+        self._stall_checks += 1
+        next_tier = min(3, self._stall_checks)
+
+        # Tier 1 is suppressed if RAG already queried. In that case the
+        # check is still counted (above) but no message is emitted and
+        # the clock does NOT reset — the agent is not yet nudged, so
+        # the next stall crossing should still see the full window.
+        if next_tier == 1 and self._tracker is not None:
             rag_queries = getattr(self._tracker, "rag_queries_made", 0) or 0
-        if rag_queries > 0:
-            return
-        turn_messages.append(
-            Message(
-                role="system",
-                content=(
-                    "[STALLED-DETECTOR] You have made "
-                    f"{stall} tool calls without any measurable progress "
-                    "(no new URL, new HTTP status, new cookie, or flag "
-                    "found). Before any other action, issue ONE "
-                    "ctf_knowledge_query with your current hypothesis — "
-                    "retrieval may surface a different approach. Do not "
-                    "repeat the same reconnaissance shape you have been "
-                    "using."
-                ),
-            )
-        )
-        self._stall_nudge_sent = True
+            if rag_queries > 0:
+                return
+
+        content = self._stall_nudge_content(next_tier, stall)
+        turn_messages.append(Message(role="system", content=content))
+        self._stall_nudge_tier = next_tier
+        self._last_progress_step = step  # reset clock for the next tier
         self._log_fn(
-            f"[StallDetector] Injected RAG nudge at step {step + 1} "
-            f"(last progress at step {self._last_progress_step})."
+            f"[StallDetector] Injected tier-{next_tier} nudge at step "
+            f"{step + 1} (stall={stall})."
         )
         if self._tracker is not None:
             try:
-                self._tracker.stall_nudge_fired_at_step = step + 1
+                self._tracker.stall_nudges_fired.append(step + 1)
             except AttributeError:
                 pass
+
+    @staticmethod
+    def _stall_nudge_content(tier: int, stall: int) -> str:
+        """Return the [STALLED-*] system message body for the given tier."""
+        if tier == 1:
+            return (
+                "[STALLED-DETECTOR] You have made "
+                f"{stall} tool calls without any measurable progress "
+                "(no new URL, new HTTP status, new cookie, or flag "
+                "found). Before any other action, issue ONE "
+                "ctf_knowledge_query with your current hypothesis — "
+                "retrieval may surface a different approach. Do not "
+                "repeat the same reconnaissance shape you have been "
+                "using."
+            )
+        if tier == 2:
+            return (
+                "[STALLED-TIER-2] You have stalled twice now. Your "
+                "current vulnerability hypothesis is likely wrong. In "
+                "your next response, name 3 DIFFERENT attack categories "
+                "you have NOT tried (e.g. if you've been attempting "
+                "file-upload RCE, consider: LFI, SSRF, auth bypass, "
+                "client-side, business-logic, XXE, NoSQL injection, "
+                "SSTI, deserialization). Pick the most plausible "
+                "alternative and issue a tool call in that new "
+                "direction. DO NOT re-use a (tool_name, endpoint) pair "
+                "you have already tried 3+ times — that has been "
+                "marked redundant and will not produce progress."
+            )
+        return (
+            "[STALLED-TIER-3] You have stalled three times. You are out "
+            "of productive moves. Emit `Action: Final Answer` right now "
+            "with either your best guess for the flag, or the literal "
+            "string `NO_FLAG_FOUND` if you have none. Do not run more "
+            "tools — further exploration will not fit in the step "
+            "budget."
+        )
 
     def _record_rag_query_step(self, step: int, tool_name: str) -> None:
         """Record the step at which the first ``ctf_knowledge_query`` fired
@@ -1120,7 +1174,8 @@ class CTFAgent(SimpleAgent):
         self._format_error_count = 0
         self._consecutive_format_errors = 0
         self._last_progress_step = 0
-        self._stall_nudge_sent = False
+        self._stall_nudge_tier = 0
+        self._stall_checks = 0
         self._seen_paths = set()
         self._seen_statuses = set()
 

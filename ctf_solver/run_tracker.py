@@ -79,12 +79,14 @@ class RunTracker:
     # diagnostics can distinguish "agent gave up" from "API refused".
     moderation_hits: int = 0
 
-    # Step at which the stall detector injected a [STALLED-DETECTOR] nudge
-    # (5+ tool calls without measurable progress AND zero RAG queries).
-    # None when the nudge never fired. Step at which the first
+    # Steps at which the stall detector fired each nudge tier (1-indexed).
+    # Tier 1 = [STALLED-DETECTOR] RAG nudge (suppressed if RAG already used).
+    # Tier 2 = [STALLED-TIER-2] pivot-category nudge (bypasses RAG gate).
+    # Tier 3 = [STALLED-TIER-3] emit-final-answer nudge.
+    # Empty list when nothing fired. Step at which the first
     # ctf_knowledge_query landed — lets post-run analysis correlate
     # nudge firing with behavior change.
-    stall_nudge_fired_at_step: Optional[int] = None
+    stall_nudges_fired: List[int] = field(default_factory=list)
     first_rag_query_step: Optional[int] = None
 
     # Detailed tool call log for failure analysis
@@ -164,7 +166,7 @@ class RunTracker:
             "failure_doc_generated": self.failure_doc_generated,
             "site_fingerprint": self.site_fingerprint,
             "moderation_hits": self.moderation_hits,
-            "stall_nudge_fired_at_step": self.stall_nudge_fired_at_step,
+            "stall_nudges_fired": list(self.stall_nudges_fired),
             "first_rag_query_step": self.first_rag_query_step,
         }
 

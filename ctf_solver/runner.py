@@ -95,9 +95,30 @@ Examples:
     # Agent configuration
     parser.add_argument(
         "--model",
-        choices=["gpt-4o", "gpt-5.2"],
         default=None,
-        help="OpenAI model to use (default: from CTF_MODEL_NAME env var or gpt-4o)",
+        help=(
+            "Model name. Hosted: gpt-4o, gpt-5.2, claude-sonnet-4-6, "
+            "claude-opus-4-6. Local via Ollama (auto-detected by name:tag "
+            "form), recommended order: llama3.1:latest (best ReAct "
+            "compliance), mistral-small:latest (larger, also tools-capable), "
+            "gpt-oss:20b (thinking mode). edgerunner-medium:latest is "
+            "refusal-resistant but not instruction-tuned for ReAct format — "
+            "use it for raw payload generation, not as the agent driver. "
+            "Default: from CTF_MODEL_NAME env var or gpt-4o."
+        ),
+    )
+    parser.add_argument(
+        "--ollama-num-ctx",
+        type=int,
+        default=None,
+        help=(
+            "Ollama context window override (default: 16384). The CTF "
+            "agent's tool-instruction region is ~10k tokens; Ollama's "
+            "Modelfile default (often 4096) silently truncates the system "
+            "prompt and produces empty/garbage responses. Raise to 32768+ "
+            "for long multi-turn runs. Ignored for non-Ollama providers. "
+            "Env var: CTF_OLLAMA_NUM_CTX."
+        ),
     )
     parser.add_argument(
         "--agent-prompt",
@@ -372,6 +393,9 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         use_llm_for_lessons=True if args.llm_lessons else None,
         lessons_llm_model=(
             args.lessons_model if args.lessons_model != "gpt-4o-mini" else None
+        ),
+        ollama_num_ctx=(
+            args.ollama_num_ctx if args.ollama_num_ctx is not None else None
         ),
     )
 

@@ -799,6 +799,7 @@ class OllamaAdapter(AbstractChatModel):
         model_name: str = "llama3.2",
         base_url: str = "http://localhost:11434",
         timeout: float = 120.0,
+        num_ctx: int = 16384,
     ):
         """
         Initialize the Ollama adapter.
@@ -807,6 +808,12 @@ class OllamaAdapter(AbstractChatModel):
             model_name: The Ollama model to use.
             base_url: Ollama server URL.
             timeout: Request timeout in seconds.
+            num_ctx: Ollama context window size passed in every chat
+                options dict. Defaults to 16384, which is large enough for
+                the CTF agent's full tool-instruction region (~10k tokens)
+                plus headroom. Ollama's Modelfile default (often 4096) is
+                too small for the CTF agent's prompt and causes silent
+                truncation of the system message → empty/garbage responses.
 
         Raises:
             ImportError: If the ollama library is not installed.
@@ -820,6 +827,7 @@ class OllamaAdapter(AbstractChatModel):
         self.client = OllamaClient(host=base_url, timeout=timeout)
         self.model_name = model_name
         self.base_url = base_url
+        self.num_ctx = num_ctx
 
     def _prepare_messages(self, messages: List[Message]) -> List[Dict[str, str]]:
         """Convert fairlib Messages to Ollama format."""
@@ -849,6 +857,7 @@ class OllamaAdapter(AbstractChatModel):
                     messages=ollama_messages,
                     options={
                         "temperature": kwargs.get("temperature", 0.7),
+                        "num_ctx": kwargs.get("num_ctx", self.num_ctx),
                     },
                 )
             )
@@ -887,6 +896,7 @@ class OllamaAdapter(AbstractChatModel):
                 stream=True,
                 options={
                     "temperature": kwargs.get("temperature", 0.7),
+                    "num_ctx": kwargs.get("num_ctx", self.num_ctx),
                 },
             )
 
@@ -1194,6 +1204,7 @@ def create_adapter(
             model_name=model_name or DEFAULT_CONFIGS[LLMProvider.OLLAMA].model_name,
             base_url=base_url or DEFAULT_CONFIGS[LLMProvider.OLLAMA].base_url,
             timeout=kwargs.get("timeout", 120.0),
+            num_ctx=kwargs.get("num_ctx", 16384),
         )
 
     elif provider == LLMProvider.HYBRID:
@@ -1258,6 +1269,7 @@ def create_adapter_from_config(config: "SolverConfig") -> AbstractChatModel:
         base_url=getattr(config, "llm_base_url", None),
         max_tokens=getattr(config, "max_tokens", 2048),
         timeout=getattr(config, "llm_timeout", 120.0),
+        num_ctx=getattr(config, "ollama_num_ctx", 16384),
     )
 
 

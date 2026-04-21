@@ -49,6 +49,7 @@ from ctf_solver.prompts import (
     JSON_API_EXAMPLE,
     ROBOTS_EXAMPLE,
     SELF_REFLECTION_EXAMPLE,
+    get_role_definition,
     get_system_prompt,
 )
 from ctf_solver.rag import (
@@ -212,6 +213,51 @@ def _extract_json_object(text: str) -> Optional[str]:
                 except json.JSONDecodeError:
                     return None
     return None
+
+
+# Known local-model name prefixes served via Ollama. Used to auto-route
+# provider selection in build_agent when the user passes an Ollama model
+# name without also specifying --provider ollama. Intentionally conservative:
+# anything that could plausibly be served through an OpenAI-compatible
+# endpoint (e.g. "gpt-4o") stays on the OpenAI path unless the caller
+# explicitly sets llm_provider.
+_OLLAMA_MODEL_PREFIXES: Tuple[str, ...] = (
+    "llama",
+    "mistral",
+    "gpt-oss",  # OpenAI's open-weight release, only served via Ollama locally
+    "edgerunner",  # EdgeRunner AI refusal-resistant fine-tunes
+    "starcoder",
+    "phi",
+    "qwen",
+    "deepseek",
+    "gemma",
+)
+
+
+def _looks_like_ollama_model(model_name: str) -> bool:
+    """Return True if ``model_name`` appears to be a locally-served Ollama model.
+
+    Heuristic: the name matches a known local-model prefix AND either carries
+    an Ollama-style tag suffix (``:latest``, ``:q6_k``, ``:20b`` etc.) or is
+    a bare known prefix. This keeps hosted models like ``gpt-4o`` on the
+    OpenAI path even though ``gpt-`` is a substring of ``gpt-oss``.
+    """
+    if not model_name:
+        return False
+    name = model_name.lower().strip()
+    has_tag = ":" in name
+    for prefix in _OLLAMA_MODEL_PREFIXES:
+        if name.startswith(prefix):
+            # Require either a tag (mistral-small:latest) or exact match
+            # (mistral-small) — avoids false-positives like a hypothetical
+            # "llama-guard-v2-via-openai" name a user might invent.
+            return (
+                has_tag
+                or name == prefix
+                or name.startswith(prefix + "-")
+                or name.startswith(prefix + "3")
+            )
+    return False
 
 
 class CTFAgent(SimpleAgent):
@@ -1563,6 +1609,16 @@ def build_agent(
     if config.model_name and config.model_name.startswith("claude"):
         provider = LLMProviderType.ANTHROPIC
         config.llm_provider = LLMProviderType.ANTHROPIC
+    elif config.model_name and _looks_like_ollama_model(config.model_name):
+        # Local Ollama model names follow name:tag form (e.g.
+        # "llama3.1:latest", "edgerunner-medium:latest", "gpt-oss:20b").
+        # Auto-route so users can pick a local model without also passing
+        # --provider. edgerunner-medium in particular is useful here — it
+        # is a refusal-resistant fine-tune, which removes a common blocker
+        # for CTF payload generation (SQLi/XSS strings, cookie exfil, etc.)
+        # that hosted models sometimes flag.
+        provider = LLMProviderType.OLLAMA
+        config.llm_provider = LLMProviderType.OLLAMA
 
     # Check if provider is available
     if isinstance(provider, str):
@@ -1949,35 +2005,63 @@ def build_agent(
                 "[Agent] WARNING: RAG knowledge base not available; 'ctf_knowledge_query' tool disabled"
             )
 
-    # Planner (ReAct) with PromptBuilder customization
-    planner = ReActPlanner(llm, tool_registry)
+    # Planner dispatch: smaller/local models (Ollama) get SimpleReActPlanner
+    # (key-value `Thought:` / `Action:` format), which is more forgiving than
+    # the strict-JSON contract ReActPlanner enforces. Capable models (OpenAI,
+    # Anthropic, Hybrid) stay on ReActPlanner with the full CTF system prompt.
+    use_simple_planner = provider == LLMProviderType.OLLAMA
+
+    if use_simple_planner:
+        planner = SimpleReActPlanner(llm, tool_registry)
+        log_fn(
+            "[Agent] Using SimpleReActPlanner (key-value format) for local/"
+            "smaller model — strict JSON is unreliable on this class of model."
+        )
+    else:
+        planner = ReActPlanner(llm, tool_registry)
 
     # === PromptBuilder Tuning: Role + Few-Shot Examples ===
     pb = planner.prompt_builder
 
-    # Remove FAIR library's default format instructions — the CTF system
-    # prompt (role_text) has its own format rules and they conflict with
-    # the FAIR defaults, causing Claude to produce wrong JSON structure.
-    pb.format_instructions.clear()
+    if use_simple_planner:
+        # SimpleReActPlanner path: use the lighter DEFAULT_ROLE_DEFINITION
+        # (no JSON format rules, no JSON-shaped few-shots). The planner's
+        # own default kv format instructions stay in place; the CTF
+        # few-shots are intentionally omitted because they are JSON-formatted
+        # and would confuse a key-value parser.
+        role_text = get_role_definition(
+            platform_name=config.platform_name,
+            custom_role=config.agent_system_prompt,
+        )
+        pb.role_definition = RoleDefinition(role_text)
+        # Do NOT clear format_instructions here — SimpleReActPlanner's
+        # default key-value format rules are what we want the model to follow.
+        # Do NOT append the JSON CTF examples — they would teach the wrong
+        # output shape for this planner.
+    else:
+        # Remove FAIR library's default format instructions — the CTF system
+        # prompt (role_text) has its own format rules and they conflict with
+        # the FAIR defaults, causing Claude to produce wrong JSON structure.
+        pb.format_instructions.clear()
 
-    # 1. Full system prompt with format rules, exploitation protocols, flag regex
-    role_text = get_system_prompt(
-        platform_name=config.platform_name,
-        flag_regex=config.flag_regex,
-        custom_prompt=config.agent_system_prompt,
-    )
-    pb.role_definition = RoleDefinition(role_text)
+        # 1. Full system prompt with format rules, exploitation protocols, flag regex
+        role_text = get_system_prompt(
+            platform_name=config.platform_name,
+            flag_regex=config.flag_regex,
+            custom_prompt=config.agent_system_prompt,
+        )
+        pb.role_definition = RoleDefinition(role_text)
 
-    # 2. Few-shot ReAct-style examples (generic CTF scenarios)
-    # Order: self-reflection first (primary failure mode), exploitation chains in middle,
-    # most common success pattern last (primacy/recency bias)
-    pb.examples.clear()
-    pb.examples.append(SELF_REFLECTION_EXAMPLE)
-    pb.examples.append(ROBOTS_EXAMPLE)
-    pb.examples.append(JS_ANALYSIS_EXAMPLE)
-    pb.examples.append(JSON_API_EXAMPLE)
-    pb.examples.append(COOKIE_BYPASS_EXAMPLE)
-    pb.examples.append(DEEP_RECON_EXAMPLE)
+        # 2. Few-shot ReAct-style examples (generic CTF scenarios)
+        # Order: self-reflection first (primary failure mode), exploitation chains in middle,
+        # most common success pattern last (primacy/recency bias)
+        pb.examples.clear()
+        pb.examples.append(SELF_REFLECTION_EXAMPLE)
+        pb.examples.append(ROBOTS_EXAMPLE)
+        pb.examples.append(JS_ANALYSIS_EXAMPLE)
+        pb.examples.append(JSON_API_EXAMPLE)
+        pb.examples.append(COOKIE_BYPASS_EXAMPLE)
+        pb.examples.append(DEEP_RECON_EXAMPLE)
 
     # === Tool executor, memory, and agent ===
     executor = ToolExecutor(tool_registry)

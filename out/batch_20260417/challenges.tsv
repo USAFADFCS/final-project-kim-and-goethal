@@ -1,0 +1,15 @@
+slug	name	url	description
+01_treasure_map	Treasure Map	http://digitalbuccaneer.chals.mctf.io/	Find the flag on the digital buccaneer pirate site. Solved by 86.6% in competition, first solve 29s.
+02_direct_login	Direct Login	https://metaproblems.com/71c5b42eb77639d5224be5589123de30/	Access ConnectWind's internal employee portal without knowing the password and steal the flag.
+03_door_to_door	Door To Door	http://80z71idg.chals.mctf.io/	We're going door to door looking for candy, but one house has hidden itself on the list.
+04_open_application	Open Application	http://ucqhos3q.chals.mctf.io/	We're looking for enthusiastic applicants - who actively want our flag.
+05_livestream	Livestream	http://b0lbfdf5.chals.mctf.io/	A new chatroom opened but registration costs $67. Help rizz way in for free. Flag likely via WebSocket/auth bypass.
+06_dot_matrix_destruction	Dot-Matrix Destruction	http://82p4oo2i.chals.mctf.io/	Vintage printer company website. Flag is at /flag.txt. Make them print the flag.
+07_super_quick_logic	Super Quick Logic Invitational	http://mwiljoz7.chals.mctf.io/	Trivia game challenge where 'What is the flag?' is one of the questions.
+08_snowfall_wishes	Snowfall Wishes	https://cyberlabhost.com/740df70f80b4f71f937cb582f7b978dd/	Wishing website with VIP wish package. Elf benefit access bypass.
+09_cracking_javashop	Cracking the Javashop	http://host5.metaproblems.com:7510/	Coffee shop website locked behind a combination lock page. Hack the page to get access early.
+10_admin_portal	Admin Portal	http://adminportal.chals.mctf.io/	Admin webpage for checking flags. Check for issues/auth bypass.
+11_cookie_crackdown	Cookie Crackdown	http://cookiecrackdown.chals.mctf.io/	Auditing sites for GDPR compliance - this site isn't. Flag in cookies likely.
+12_great_paywall	Great Paywall	https://cyberlabhost.com/907d5519f26946a0344a7965bb2a302b/	Article shared everywhere but hit with paywall. Bypass the paywall.
+13_trading_places	Trading Places	https://host5.metaproblems.com:7606/	Fintech trading platform in demo mode using cryptographic standards. Find a vulnerability.
+14_microdosing	Microdosing	http://vbwo23fy.chals.mctf.io/	Medical titration web app black-box assessment. Hack into the admin account. Lowest solve rate 0.2%.

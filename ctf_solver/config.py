@@ -275,6 +275,12 @@ class SolverConfig:
     # LLM tuning
     max_tokens: int = 4096
     llm_timeout: float = 120.0
+    # Ollama-specific: overrides the Modelfile num_ctx (usually 4096) so the
+    # CTF agent's ~10k-token tool-instruction prompt fits. Llama-family
+    # models architecturally support 131k; 16384 is a safe memory-friendly
+    # default. Raise to 32768+ for multi-turn exploration on a machine with
+    # plenty of RAM/VRAM.
+    ollama_num_ctx: int = 16384
 
     # Runtime configuration
     verbose: bool = False
@@ -375,6 +381,8 @@ class SolverConfig:
             use_llm_for_lessons=os.getenv("CTF_LLM_LESSONS", "").lower()
             in ("true", "1", "yes"),
             lessons_llm_model=os.getenv("CTF_LESSONS_MODEL", "gpt-4o-mini"),
+            # Ollama-specific
+            ollama_num_ctx=int(os.getenv("CTF_OLLAMA_NUM_CTX", "16384")),
         )
 
     def merge_with_args(self, **kwargs) -> "SolverConfig":
@@ -410,6 +418,8 @@ class SolverConfig:
             # LLM-enhanced lessons
             "use_llm_for_lessons": self.use_llm_for_lessons,
             "lessons_llm_model": self.lessons_llm_model,
+            # Ollama-specific
+            "ollama_num_ctx": self.ollama_num_ctx,
             # Caching configuration
             "cache_enabled": self.cache_enabled,
             "cache_ttl": self.cache_ttl,

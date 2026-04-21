@@ -579,6 +579,7 @@ def render_sidebar():
     st.sidebar.header("Agent Settings")
 
     model_options = [
+        # Hosted
         "gpt-5.2",
         "gpt-4o",
         "claude-sonnet-4-6",
@@ -586,6 +587,17 @@ def render_sidebar():
         "claude-haiku-4-5",
         "gemini-2.5-pro",
         "gemini-2.5-flash",
+        # Local via Ollama — auto-routed by name:tag form.
+        # Order = recommended preference as the agent driver:
+        # llama3.1 produces valid ReAct output first-try; mistral-small and
+        # gpt-oss also have the "tools" capability. edgerunner-medium is
+        # listed last because it is refusal-resistant but NOT instruction-
+        # tuned for structured ReAct output — use it as a raw-generation
+        # backend for payloads, not as the agent driver.
+        "llama3.1:latest",
+        "mistral-small:latest",
+        "gpt-oss:20b",
+        "edgerunner-medium:latest",
     ]
     current_model = st.session_state.get("model_name", "gpt-5.2")
     current_index = (
@@ -595,7 +607,14 @@ def render_sidebar():
         "LLM Model",
         options=model_options,
         index=current_index,
-        help="Gemini (GENAI.mil), Anthropic Claude, or OpenAI model",
+        help=(
+            "Hosted: Gemini (GENAI.mil), Anthropic Claude, OpenAI. "
+            "Local via Ollama, ranked by ReAct format compliance: "
+            "llama3.1 > mistral-small > gpt-oss > edgerunner-medium. "
+            "edgerunner-medium is refusal-resistant but doesn't follow "
+            "ReAct format — prefer it for raw payload generation, not as "
+            "the agent driver."
+        ),
     )
 
     st.session_state.max_steps = st.sidebar.slider(

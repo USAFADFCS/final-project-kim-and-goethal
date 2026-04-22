@@ -1,3 +1,9 @@
+# Vector stores (auto-generated, large files)
+out/ctf_vector_store/
+out/ctf_vector_store_augmented/
+*.faiss
+*.pkl
+
 # Ignore files created by the demos
 demos/outputs/
 demos/coding_autograder_files/reports/

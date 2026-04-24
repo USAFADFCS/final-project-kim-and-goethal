@@ -800,6 +800,8 @@ class OllamaAdapter(AbstractChatModel):
         base_url: str = "http://localhost:11434",
         timeout: float = 120.0,
         num_ctx: int = 16384,
+        thinking_callback: Optional[Callable[[str], None]] = None,
+        grammar_schema: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the Ollama adapter.
@@ -814,6 +816,24 @@ class OllamaAdapter(AbstractChatModel):
                 plus headroom. Ollama's Modelfile default (often 4096) is
                 too small for the CTF agent's prompt and causes silent
                 truncation of the system message → empty/garbage responses.
+            thinking_callback: Optional callback that receives the raw
+                ``message.thinking`` string from thinking-capable models
+                (gpt-oss, gemma4, etc.) after each chat call. Only fires
+                for models with the ``thinking`` capability — non-thinking
+                models (llama3.1, mistral-small, edgerunner-medium) will
+                never produce a thinking payload and this callback stays
+                silent. Errors raised by the callback are swallowed so a
+                buggy UI consumer cannot crash the adapter.
+            grammar_schema: Optional JSON Schema dict. When non-None, it is
+                passed as ``format=`` to ``client.chat()`` so llama.cpp
+                constrains decoding to valid JSON matching the schema
+                (internally compiled to a GBNF grammar). For the CTF agent
+                this is ``_REACT_SCHEMA`` — it eliminates the empty/
+                malformed responses that trigger the planner's
+                ``Could not parse simplified ReAct response`` fallback.
+                If the installed Ollama client version does not accept
+                ``format``, the adapter probes once and degrades silently
+                to unconstrained decoding.
 
         Raises:
             ImportError: If the ollama library is not installed.
@@ -828,6 +848,20 @@ class OllamaAdapter(AbstractChatModel):
         self.model_name = model_name
         self.base_url = base_url
         self.num_ctx = num_ctx
+        self.thinking_callback = thinking_callback
+        self.grammar_schema = grammar_schema
+        # Whether the installed ollama client supports the ``think=True``
+        # kwarg on .chat(). Probed lazily on first invoke — older Ollama
+        # server/client combos (<0.5.x) raise TypeError when given it, and
+        # we should only pay that penalty once per process.
+        self._think_supported: Optional[bool] = None
+        # Same probe-once pattern for the ``format=`` kwarg. Older clients
+        # reject it; once we know, skip it for the rest of the process.
+        self._format_supported: Optional[bool] = None
+        # Count of consecutive empty responses. Drives the escalation ladder
+        # in ``invoke`` so context-overflow doesn't cascade into a
+        # tool-repetition loop.
+        self._consecutive_empty: int = 0
 
     def _prepare_messages(self, messages: List[Message]) -> List[Dict[str, str]]:
         """Convert fairlib Messages to Ollama format."""
@@ -846,26 +880,166 @@ class OllamaAdapter(AbstractChatModel):
 
         return ollama_messages
 
+    def _build_chat_kwargs(
+        self, ollama_messages: List[Dict[str, str]], options: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Build the kwargs dict for ``client.chat()``. ``think`` and
+        ``format`` are layered in only when the installed client has been
+        probed to support them."""
+        chat_kwargs: Dict[str, Any] = {
+            "model": self.model_name,
+            "messages": ollama_messages,
+            "options": options,
+        }
+        if self._think_supported is not False:
+            chat_kwargs["think"] = True
+        if self.grammar_schema is not None and self._format_supported is not False:
+            chat_kwargs["format"] = self.grammar_schema
+        return chat_kwargs
+
+    def _chat_with_think(self, ollama_messages, options):
+        """Call ``client.chat()`` with the best-available kwarg set. The
+        ``think=True`` and ``format=<schema>`` kwargs are feature-detected
+        once per process: if the installed Ollama client raises TypeError
+        for either, flip the corresponding support flag and retry without
+        it. Subsequent calls skip the kwarg entirely."""
+        while True:
+            chat_kwargs = self._build_chat_kwargs(ollama_messages, options)
+            try:
+                resp = self.client.chat(**chat_kwargs)
+                if "think" in chat_kwargs:
+                    self._think_supported = True
+                if "format" in chat_kwargs:
+                    self._format_supported = True
+                return resp
+            except TypeError as te:
+                msg = str(te)
+                if "think" in chat_kwargs and "think" in msg:
+                    self._think_supported = False
+                    continue
+                if "format" in chat_kwargs and "format" in msg:
+                    self._format_supported = False
+                    logger.warning(
+                        "Ollama client does not accept `format=` kwarg; "
+                        "falling back to unconstrained decoding. "
+                        "Upgrade the ollama python package for grammar-constrained output."
+                    )
+                    continue
+                raise
+
+    def _extract_thinking(self, response: Any) -> str:
+        """Pull out ``message.thinking`` from an Ollama chat response,
+        handling both dict-style and Pydantic ChatResponse shapes. Returns
+        empty string when the model didn't produce thinking."""
+        try:
+            msg = response["message"]
+        except (TypeError, KeyError):
+            msg = getattr(response, "message", None)
+        if msg is None:
+            return ""
+        # Pydantic ChatResponse exposes attrs; dict mode exposes keys.
+        thinking = None
+        if isinstance(msg, dict):
+            thinking = msg.get("thinking")
+        else:
+            thinking = getattr(msg, "thinking", None)
+        return thinking or ""
+
+    def _maybe_fire_thinking(self, response: Any) -> None:
+        """Forward any thinking payload on ``response`` to the configured
+        callback. Swallows callback exceptions so a buggy UI consumer
+        can't crash the LLM path."""
+        if self.thinking_callback is None:
+            return
+        thinking = self._extract_thinking(response)
+        if not thinking:
+            return
+        try:
+            self.thinking_callback(thinking)
+        except Exception:
+            pass
+
     def invoke(self, messages: List[Message], **kwargs: Any) -> Message:
         """Synchronously invoke the Ollama model."""
         ollama_messages = self._prepare_messages(messages)
 
         try:
+            options = {
+                "temperature": kwargs.get("temperature", 0.7),
+                "num_ctx": kwargs.get("num_ctx", self.num_ctx),
+            }
             response = _retry_with_backoff(
-                lambda: self.client.chat(
-                    model=self.model_name,
-                    messages=ollama_messages,
-                    options={
-                        "temperature": kwargs.get("temperature", 0.7),
-                        "num_ctx": kwargs.get("num_ctx", self.num_ctx),
-                    },
-                )
+                lambda: self._chat_with_think(ollama_messages, options)
             )
 
-            return Message(
-                role="assistant",
-                content=response["message"]["content"],
-            )
+            # Thinking (if any) goes out-of-band to the optional callback;
+            # the Message.content contract is unchanged so existing parser
+            # paths keep working without modification.
+            self._maybe_fire_thinking(response)
+
+            content = response["message"]["content"]
+
+            # Empty-content escalation ladder. When grammar-constrained
+            # decoding is on, Ollama can still emit empty output after
+            # context overflow, generation aborts, or backend hiccups.
+            # The prior fallback hard-coded ``attack_planner`` with a
+            # bare-string ``tool_input`` — but that tool requires JSON,
+            # so every fallback produced a tool error, and three in a
+            # row tripped the repetition detector (cf. recentTestRun.txt
+            # run 4 steps 5–7, run 5 steps 5–7). Replace that with a
+            # two-step escalation:
+            #   1st empty → ``ctf_knowledge_query`` (accepts plain
+            #               strings, so no tool-error cascade).
+            #   2nd+ empty → ``final_answer`` with a CONTEXT_OVERFLOW
+            #               diagnostic so the run aborts instead of
+            #               burning the remaining step budget on more
+            #               empty turns.
+            # Non-empty content resets the counter.
+            if self.grammar_schema is not None and not (content or "").strip():
+                self._consecutive_empty += 1
+                if self._consecutive_empty == 1:
+                    content = json.dumps(
+                        {
+                            "thought": (
+                                "[Ollama returned empty content] "
+                                "Context may have overflowed. Consulting the "
+                                "knowledge base for a fresh angle before continuing."
+                            ),
+                            "action": {
+                                "tool_name": "ctf_knowledge_query",
+                                "tool_input": (
+                                    "Summarize the most common web CTF attack "
+                                    "vectors I should consider when initial "
+                                    "reconnaissance has stalled."
+                                ),
+                            },
+                        }
+                    )
+                else:
+                    content = json.dumps(
+                        {
+                            "thought": (
+                                "[CONTEXT_OVERFLOW] Ollama returned empty "
+                                f"content for {self._consecutive_empty} "
+                                "consecutive turns. Aborting so the runner can "
+                                "surface the failure instead of burning the "
+                                "remaining step budget."
+                            ),
+                            "action": {
+                                "tool_name": "final_answer",
+                                "tool_input": (
+                                    "[CONTEXT_OVERFLOW] Local model produced "
+                                    "repeated empty responses; unable to "
+                                    "continue. Consider raising num_ctx or "
+                                    "shortening the system prompt."
+                                ),
+                            },
+                        }
+                    )
+            else:
+                self._consecutive_empty = 0
+
+            return Message(role="assistant", content=content)
 
         except Exception as e:
             logger.error(f"Ollama error (invoke): {e}")
@@ -888,17 +1062,32 @@ class OllamaAdapter(AbstractChatModel):
     ) -> Generator[Message, None, None]:
         """Stream responses from the Ollama model."""
         ollama_messages = self._prepare_messages(messages)
+        options = {
+            "temperature": kwargs.get("temperature", 0.7),
+            "num_ctx": kwargs.get("num_ctx", self.num_ctx),
+        }
 
         try:
-            stream = self.client.chat(
-                model=self.model_name,
-                messages=ollama_messages,
-                stream=True,
-                options={
-                    "temperature": kwargs.get("temperature", 0.7),
-                    "num_ctx": kwargs.get("num_ctx", self.num_ctx),
-                },
-            )
+            # Reuse the feature-detected kwargs builder so streaming
+            # behaviour matches non-streaming (same think/format handling).
+            chat_kwargs = self._build_chat_kwargs(ollama_messages, options)
+            chat_kwargs["stream"] = True
+
+            while True:
+                try:
+                    stream = self.client.chat(**chat_kwargs)
+                    break
+                except TypeError as te:
+                    tmsg = str(te)
+                    if "think" in chat_kwargs and "think" in tmsg:
+                        self._think_supported = False
+                        chat_kwargs.pop("think", None)
+                        continue
+                    if "format" in chat_kwargs and "format" in tmsg:
+                        self._format_supported = False
+                        chat_kwargs.pop("format", None)
+                        continue
+                    raise
 
             for chunk in stream:
                 content = chunk.get("message", {}).get("content", "")
@@ -1200,11 +1389,21 @@ def create_adapter(
         )
 
     elif provider == LLMProvider.OLLAMA:
+        # Resolve grammar_mode → concrete schema. "auto" and "json_schema"
+        # both attach _REACT_SCHEMA; "none" (or any falsy value) leaves
+        # decoding unconstrained. The Ollama adapter handles unsupported-
+        # kwarg probing and silent degradation internally.
+        grammar_mode = (kwargs.get("grammar_mode") or "auto").lower()
+        grammar_schema = (
+            _REACT_SCHEMA if grammar_mode in ("auto", "json_schema") else None
+        )
         return OllamaAdapter(
             model_name=model_name or DEFAULT_CONFIGS[LLMProvider.OLLAMA].model_name,
             base_url=base_url or DEFAULT_CONFIGS[LLMProvider.OLLAMA].base_url,
             timeout=kwargs.get("timeout", 120.0),
             num_ctx=kwargs.get("num_ctx", 16384),
+            thinking_callback=kwargs.get("thinking_callback"),
+            grammar_schema=grammar_schema,
         )
 
     elif provider == LLMProvider.HYBRID:
@@ -1237,7 +1436,10 @@ def create_adapter(
         raise ValueError(f"Unsupported provider: {provider}")
 
 
-def create_adapter_from_config(config: "SolverConfig") -> AbstractChatModel:
+def create_adapter_from_config(
+    config: "SolverConfig",
+    thinking_callback: Optional[Callable[[str], None]] = None,
+) -> AbstractChatModel:
     """
     Create an LLM adapter from a SolverConfig.
 
@@ -1270,6 +1472,8 @@ def create_adapter_from_config(config: "SolverConfig") -> AbstractChatModel:
         max_tokens=getattr(config, "max_tokens", 2048),
         timeout=getattr(config, "llm_timeout", 120.0),
         num_ctx=getattr(config, "ollama_num_ctx", 16384),
+        thinking_callback=thinking_callback,
+        grammar_mode=getattr(config, "grammar_mode", "auto"),
     )
 
 

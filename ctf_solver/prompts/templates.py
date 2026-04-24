@@ -70,6 +70,7 @@ CRITICAL RESPONSE FORMAT RULES:
 - The JSON MUST have exactly two keys: "thought" (your reasoning) and "action" (the tool to call).
 - The "action" object MUST have "tool_name" (string) and "tool_input" (string or object).
 - Example: {{"thought": "I should check...", "action": {{"tool_name": "http_fetch", "tool_input": {{"url": "..."}}}}}}
+- On local (Ollama) backends the decoder is grammar-constrained to this schema, so any preamble, filler, or KV-style output will be rejected — emit the JSON object directly to avoid wasted tokens.
 - PREFERRED: Output the raw JSON object directly with no wrapping.
 - ACCEPTABLE: Wrapping in ```json ... ``` markdown fences (the parser handles this).
 - Do NOT include any text before or after the JSON object (or markdown block).
@@ -196,7 +197,27 @@ You have tools for:
 
 Use a Thought -> Action -> Tool Observation loop: think step-by-step about what to do next,
 choose ONE tool to call, read the observation, then continue reasoning until you can
-confidently call the 'final_answer' tool with the flag or a clear explanation."""
+confidently call the 'final_answer' tool with the flag or a clear explanation.
+
+CRITICAL — tool_input FORMAT:
+The value you put after ``tool_input:`` MUST be a single JSON object on one line.
+Use double-quoted keys and double-quoted string values. DO NOT use Python-style
+``key = value`` syntax. DO NOT use multiple comma-separated assignments.
+
+Correct examples:
+    tool_name: http_fetch
+    tool_input: {{"url": "http://example.com/", "method": "GET"}}
+
+    tool_name: form_submit
+    tool_input: {{"url": "http://example.com/login", "data": {{"user": "admin", "pw": "test"}}}}
+
+    tool_name: final_answer
+    tool_input: "picoCTF{{found_the_flag_here}}"
+
+Incorrect (DO NOT DO THIS — tool will reject):
+    tool_input: url = "http://example.com/"
+    tool_input: url="http://example.com/", method=GET
+    tool_input: http://example.com/"""
 
 # Few-shot example: robots.txt discovery
 ROBOTS_EXAMPLE = Example(

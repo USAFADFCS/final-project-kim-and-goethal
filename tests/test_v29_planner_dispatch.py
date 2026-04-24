@@ -99,6 +99,22 @@ class TestPromptWiringByPlanner:
         # Six CTF few-shot examples are appended.
         assert len(pb.examples) == 6
 
+    def test_simple_reactplanner_role_contains_tool_input_json_guidance(self):
+        """Without this guidance, local models produce Python-like
+        ``tool_input: url = "http://..."`` which every tool rejects with
+        ``tool_input must be JSON``. Added 2026-04-20 after a live smoke
+        test against picoCTF:49384 confirmed the failure mode."""
+        config = _make_config(LLMProviderType.OLLAMA, "llama3.1:latest")
+        pytest.importorskip("ollama")
+        agent = _build_agent_quietly(config)
+        role_text = agent.planner.prompt_builder.role_definition.text
+
+        # The explicit anti-example ("DO NOT use Python-style") must be
+        # present verbatim so linting/grep-driven auditing can confirm it.
+        assert "Python-style" in role_text
+        # At least one concrete correct example of a JSON tool_input.
+        assert 'tool_input: {"url":' in role_text
+
     def test_simple_reactplanner_path_uses_lighter_role_and_no_json_examples(self):
         config = _make_config(LLMProviderType.OLLAMA, "llama3:8b")
         pytest.importorskip("ollama")
@@ -150,6 +166,20 @@ class TestOllamaModelNameAutoDetection:
         from ctf_solver.agent import _looks_like_ollama_model
 
         assert _looks_like_ollama_model("gpt-oss:20b")
+
+    def test_gemma4_detected(self):
+        """gemma4:26b is Google's open-weight release served via Ollama.
+        The _OLLAMA_MODEL_PREFIXES tuple already contains 'gemma' so this
+        routes to SimpleReActPlanner automatically. Regression guard: if
+        someone removes 'gemma' from the prefix list, gemma4:26b (a
+        first-class model in the Streamlit selectbox) would silently
+        break."""
+        from ctf_solver.agent import _looks_like_ollama_model
+
+        assert _looks_like_ollama_model("gemma4:26b")
+        # Sibling guard — future gemma tags should also auto-route.
+        assert _looks_like_ollama_model("gemma3:27b")
+        assert _looks_like_ollama_model("gemma2:9b")
 
     def test_gpt_4o_not_detected_as_ollama(self):
         """Regression guard: hosted OpenAI model must stay on OpenAI path."""

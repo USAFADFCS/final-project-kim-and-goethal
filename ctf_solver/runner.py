@@ -89,7 +89,7 @@ Examples:
     parser.add_argument(
         "--flag-preset",
         choices=list(COMMON_FLAG_PATTERNS.keys()),
-        help="Use a preset flag pattern (picoctf, htb, thm, flag, ctf, generic)",
+        help="Use a preset flag pattern (picoctf, metactf, htb, thm, flag, ctf, generic)",
     )
 
     # Agent configuration
@@ -99,8 +99,9 @@ Examples:
         help=(
             "Model name. Hosted: gpt-4o, gpt-5.2, claude-sonnet-4-6, "
             "claude-opus-4-6. Local via Ollama (auto-detected by name:tag "
-            "form), recommended order: llama3.1:latest (best ReAct "
-            "compliance), mistral-small:latest (larger, also tools-capable), "
+            "form), recommended order: gemma4:26b (tools + thinking + 262k "
+            "ctx), llama3.1:latest (best ReAct compliance), "
+            "mistral-small:latest (larger, also tools-capable), "
             "gpt-oss:20b (thinking mode). edgerunner-medium:latest is "
             "refusal-resistant but not instruction-tuned for ReAct format — "
             "use it for raw payload generation, not as the agent driver. "
@@ -212,6 +213,19 @@ Examples:
         "--lessons-model",
         default="gpt-4o-mini",
         help="Model to use for lesson generation (default: gpt-4o-mini)",
+    )
+
+    # Grammar-constrained decoding (Ollama / local models)
+    parser.add_argument(
+        "--grammar-mode",
+        choices=["auto", "none", "json_schema"],
+        default=None,
+        help=(
+            "Constrain local model decoding to the ReAct JSON envelope. "
+            "'auto' (default via config): apply to Ollama, no-op elsewhere. "
+            "'none': disable. 'json_schema': force apply. "
+            "Overrides CTF_GRAMMAR_MODE."
+        ),
     )
 
     # Legacy compatibility (deprecated)
@@ -397,6 +411,7 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         ollama_num_ctx=(
             args.ollama_num_ctx if args.ollama_num_ctx is not None else None
         ),
+        grammar_mode=args.grammar_mode,
     )
 
 

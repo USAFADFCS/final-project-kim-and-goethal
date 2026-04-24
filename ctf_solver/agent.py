@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
@@ -288,6 +289,8 @@ class CTFAgent(SimpleAgent):
         opener_pack: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
         enable_parallel_tools: bool = False,
         native_system_prompt: Optional[str] = None,
+        trace_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        thinking_step_ref: Optional[Dict[str, int]] = None,
         **kwargs,
     ):
         """
@@ -317,6 +320,17 @@ class CTFAgent(SimpleAgent):
         ReAct path pulls this from the planner's ``role_definition`` which is
         not used by the native loop).  ``build_agent`` wires this from
         ``get_system_prompt()`` so both paths see the same instructions.
+
+        ``trace_callback``: optional callback that receives structured event
+        dicts as the agent runs, for live streaming of Thought / Action /
+        Observation to a UI. Called from inside ``arun()`` immediately after
+        each planner response is parsed and after each tool execution. The
+        callback runs on the agent's event-loop thread — consumers should do
+        the minimum required work (e.g. enqueue to a thread-safe queue) and
+        return quickly. Event shape: ``{"type": str, "step": int, ...}`` with
+        ``type`` in {``"thought_action"``, ``"observation"``,
+        ``"final_answer"``, ``"stall_nudge"``}. ``None`` disables tracing
+        (no events emitted).
         """
         super().__init__(*args, **kwargs)
         self._tracker = tracker
@@ -327,6 +341,13 @@ class CTFAgent(SimpleAgent):
         self._opener_pack: List[Tuple[str, Dict[str, Any]]] = list(opener_pack or [])
         self._parallel_tools_enabled = enable_parallel_tools
         self._native_system_prompt = native_system_prompt
+        self._trace_callback = trace_callback
+        # Mutable one-key dict (``{"step": int}``) shared with the LLM
+        # adapter's thinking-callback so thinking events emitted during
+        # ``planner.aplan()`` can be tagged with the step the agent is
+        # about to process. Updated at the top of each arun loop
+        # iteration. ``None`` disables thinking-step tagging.
+        self._thinking_step_ref = thinking_step_ref
         # Stall-detection state (feeds the [STALLED-*] tiered nudge).
         # Tier starts at 0; ascends to 1, 2, 3 as nudges fire.
         # ``_stall_checks`` counts threshold-crossing calls regardless of
@@ -423,6 +444,22 @@ class CTFAgent(SimpleAgent):
         if self._flag_regex and re.search(self._flag_regex, observation):
             progressed = True
         return progressed
+
+    def _emit_trace(self, event: Dict[str, Any]) -> None:
+        """Push a structured trace event to ``self._trace_callback``.
+
+        Guarded with a broad try/except — a buggy UI consumer must never
+        take down the agent loop. Silently swallows exceptions; we don't
+        even log them, because logging goes through ``self._log_fn`` which
+        may itself be the source of the bug (e.g. Streamlit session-state
+        races).
+        """
+        if self._trace_callback is None:
+            return
+        try:
+            self._trace_callback(event)
+        except Exception:
+            pass
 
     def _maybe_inject_stall_nudge(
         self, step: int, turn_messages: List[Message]
@@ -1310,9 +1347,33 @@ class CTFAgent(SimpleAgent):
                 )
                 turn_messages.append(progress_msg)
 
+            # Update the thinking-stream step tag so any ``message.thinking``
+            # emitted by the adapter during the upcoming ``planner.aplan()``
+            # is attributed to the step we're about to process. See the
+            # ``_thinking_cb`` closure in ``build_agent`` for the consumer.
+            if self._thinking_step_ref is not None:
+                self._thinking_step_ref["step"] = step + 1
+
             # Stall detector — may append a one-shot [STALLED-DETECTOR]
             # system message to turn_messages before the LLM sees them.
+            _nudge_tier_before = self._stall_nudge_tier
             self._maybe_inject_stall_nudge(step, turn_messages)
+            # Stream the nudge if the detector just fired, so live viewers
+            # see WHY the agent got redirected (matches demo-narration).
+            if (
+                self._stall_nudge_tier > _nudge_tier_before
+                and turn_messages
+                and turn_messages[-1].role == "system"
+            ):
+                self._emit_trace(
+                    {
+                        "type": "stall_nudge",
+                        "step": step + 1,
+                        "tier": self._stall_nudge_tier,
+                        "content": turn_messages[-1].content[:400],
+                        "timestamp": time.time(),
+                    }
+                )
 
             history = self._windowed_history()
             plan_result = await self.planner.aplan(history, current_request)
@@ -1370,6 +1431,14 @@ class CTFAgent(SimpleAgent):
                 # Genuine final answer (flag found or retries exhausted)
                 print(f"Thought: {final_answer_text}")
                 print("Action: Final Answer")
+                self._emit_trace(
+                    {
+                        "type": "final_answer",
+                        "step": step + 1,
+                        "text": final_answer_text[:600],
+                        "timestamp": time.time(),
+                    }
+                )
                 turn_messages.append(
                     Message(role="assistant", content=final_answer_text)
                 )
@@ -1383,6 +1452,16 @@ class CTFAgent(SimpleAgent):
                 print(f"Thought: {thought.text}")
                 print(
                     f"Action: Using tool '{action.tool_name}' with input '{action.tool_input}'"
+                )
+                self._emit_trace(
+                    {
+                        "type": "thought_action",
+                        "step": step + 1,
+                        "thought": thought.text,
+                        "tool": action.tool_name,
+                        "tool_input": str(action.tool_input)[:400],
+                        "timestamp": time.time(),
+                    }
                 )
             except (ValueError, TypeError):
                 error_message = (
@@ -1450,6 +1529,15 @@ class CTFAgent(SimpleAgent):
                     role="system",
                     content=f"Observation: {str(observation_output)}",
                 )
+            )
+            self._emit_trace(
+                {
+                    "type": "observation",
+                    "step": step + 1,
+                    "tool": action.tool_name,
+                    "observation": str(observation_output)[:500],
+                    "timestamp": time.time(),
+                }
             )
 
             # Update stall-detection signals. Progress in THIS step resets
@@ -1584,6 +1672,7 @@ def build_agent(
     config: SolverConfig,
     log_callback: Optional[Callable[[str], None]] = None,
     tracker: Optional[RunTracker] = None,
+    trace_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> SimpleAgent:
     """
     Construct and return a SimpleAgent wired up with:
@@ -1627,6 +1716,29 @@ def build_agent(
         except ValueError:
             pass  # Keep as string, will be handled by adapter factory
 
+    # Shared mutable "current step" context for the optional thinking
+    # stream. The OllamaAdapter publishes ``message.thinking`` via
+    # ``thinking_callback`` during ``planner.aplan()``; that fires at the
+    # same instant the agent is about to emit ``thought_action`` for the
+    # next step. The agent updates this dict at the top of each arun
+    # iteration so thinking events are tagged with the correct step.
+    _thinking_ctx: Dict[str, int] = {"step": 0}
+
+    def _thinking_cb(text: str) -> None:
+        if trace_callback is None or not text:
+            return
+        try:
+            trace_callback(
+                {
+                    "type": "llm_thinking",
+                    "step": _thinking_ctx["step"],
+                    "content": text[:1200],
+                    "timestamp": time.time(),
+                }
+            )
+        except Exception:
+            pass
+
     # Create the LLM adapter based on provider
     if provider == LLMProviderType.OPENAI or provider == "openai":
         # OpenAI-compatible path (OpenAI, Gemini via GENAI.mil, etc.)
@@ -1659,9 +1771,12 @@ def build_agent(
         else:
             log_fn(f"[Agent] Using OpenAI adapter with model: {config.model_name}")
     else:
-        # Use the adapter factory for other providers
+        # Use the adapter factory for other providers. The
+        # ``thinking_callback`` hook is only consumed by OllamaAdapter for
+        # thinking-capable models (gpt-oss, gemma4) — other providers
+        # accept the kwarg in ``create_adapter`` and ignore it.
         try:
-            llm = create_adapter_from_config(config)
+            llm = create_adapter_from_config(config, thinking_callback=_thinking_cb)
             caps = llm.get_model_capabilities()
             log_fn(
                 f"[Agent] Using {caps.get('provider', 'unknown')} adapter with model: {caps.get('model', 'unknown')}"
@@ -2100,6 +2215,8 @@ def build_agent(
         # RoleDefinition; the native loop doesn't use the planner, so pass
         # the same text directly so both paths see identical instructions.
         native_system_prompt=role_text,
+        trace_callback=trace_callback,
+        thinking_step_ref=_thinking_ctx,
     )
 
     # Short, high-level role description

@@ -27,12 +27,15 @@ os.environ["MKL_NUM_THREADS"] = "1"
 # Now safe to import everything else
 import asyncio
 import io
+import queue
 import re
 import tarfile
+import threading
+import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict, List, Optional
 
 import streamlit as st
 
@@ -52,6 +55,16 @@ from ctf_solver.config import (
 # Load .env file at startup
 _find_and_load_dotenv()
 from ctf_solver.agent import build_agent
+from ctf_solver.batch import (
+    BatchItem,
+    BatchResult,
+    ensure_batch_output_dir,
+    items_to_rows,
+    items_to_tsv_text,
+    load_batch_tsv,
+    rows_to_items,
+    write_batch_summary,
+)
 from ctf_solver.config import RAG_EXPERIENCE_MODES, RAG_WRITE_MODES
 from ctf_solver.consolidate_knowledge import consolidate_lessons_knowledge
 from ctf_solver.failure_analyzer import (
@@ -111,12 +124,24 @@ def init_session_state():
         "rag_mode": "original",
         "auto_analyze_failures": False,
         "use_llm_for_lessons": False,
+        # Grammar-constrained decoding for local (Ollama) models
+        "grammar_mode": "auto",
         # Challenge name for contamination filtering and lessons-learned doc naming
         "challenge_name": "",
         # Source code files (filename → content)
         "source_files": {},
         # Logging
         "save_logs": True,
+        # Batch mode state
+        "run_mode": "single",  # "single" | "batch"
+        "batch_rows": [  # initial empty row so st.data_editor has structure
+            {"name": "", "url": "", "description": "", "hints": ""},
+        ],
+        "batch_results": [],  # List[BatchResult] from the most recent batch
+        "is_running_batch": False,
+        "batch_output_dir": None,  # Path to out/batch_<ts>/ for the last run
+        # Live agent-trace state (events from agent.py's trace_callback)
+        "trace_events": [],  # List[Dict] — populated as the agent runs
     }
 
     for key, value in defaults.items():
@@ -150,12 +175,27 @@ def validate_url(url: str) -> tuple[bool, str]:
     return False, "Invalid URL format. Must start with http:// or https://"
 
 
-async def run_agent_async(config: SolverConfig) -> str:
-    """Run the agent asynchronously with run statistics tracking."""
+async def run_agent_async(
+    config: SolverConfig,
+    trace_callback: Optional[callable] = None,  # type: ignore[valid-type]
+) -> str:
+    """Run the agent asynchronously with run statistics tracking.
+
+    ``trace_callback`` receives structured event dicts from the agent as
+    it runs — see ``CTFAgent.__init__`` for the event shape. When this
+    function runs on a background thread (see ``run_agent`` below), the
+    callback typically enqueues events to a ``queue.Queue`` that the main
+    Streamlit thread polls to render the live trace.
+    """
     tracker = RunTracker()
     tracker.challenge_url = config.challenge_url or ""
     tracker.challenge_description = config.challenge_description or ""
-    agent = build_agent(config, log_callback=log_callback, tracker=tracker)
+    agent = build_agent(
+        config,
+        log_callback=log_callback,
+        tracker=tracker,
+        trace_callback=trace_callback,
+    )
 
     initial_message = get_initial_message(
         platform_name=config.platform_name,
@@ -298,6 +338,191 @@ async def run_agent_async(config: SolverConfig) -> str:
     return response
 
 
+# =============================================================================
+# Live agent-trace plumbing
+# =============================================================================
+
+
+_TRACE_STEP_ICONS = {
+    "thought_action": "🧠",
+    "observation": "👁",
+    "final_answer": "🏁",
+    "stall_nudge": "⚠️",
+    "llm_thinking": "💭",
+}
+
+
+def _event_order_key(event: Dict[str, Any]) -> int:
+    """Order events WITHIN a step: thinking first (model's internal
+    reasoning), then the structured thought/action, then observation,
+    with stall_nudge ahead of everything and final_answer last."""
+    return {
+        "stall_nudge": 0,
+        "llm_thinking": 1,
+        "thought_action": 2,
+        "observation": 3,
+        "final_answer": 4,
+    }.get(event.get("type", ""), 5)
+
+
+def _render_trace(events: List[Dict[str, Any]]) -> None:
+    """Render the live agent trace inside whatever container is active."""
+    if not events:
+        st.caption("Waiting for the first Thought...")
+        return
+
+    # Group events by step so the UI shows one expandable block per step.
+    by_step: Dict[int, List[Dict[str, Any]]] = {}
+    for evt in events:
+        by_step.setdefault(evt.get("step", 0), []).append(evt)
+
+    for step in sorted(by_step.keys()):
+        step_events = sorted(by_step[step], key=_event_order_key)
+        # Header: use the first thought_action in the step as the summary;
+        # fall back to any event type present.
+        summary = f"Step {step}"
+        ta = next((e for e in step_events if e["type"] == "thought_action"), None)
+        fa = next((e for e in step_events if e["type"] == "final_answer"), None)
+        thinking_present = any(e["type"] == "llm_thinking" for e in step_events)
+        if ta:
+            preview = ta["thought"][:80]
+            thinking_marker = "💭 " if thinking_present else ""
+            summary = f"{thinking_marker}🧠 Step {step} — {ta['tool']} · {preview}"
+        elif fa:
+            summary = f"🏁 Step {step} — Final Answer"
+
+        with st.expander(summary, expanded=(step == max(by_step.keys()))):
+            for evt in step_events:
+                etype = evt["type"]
+                icon = _TRACE_STEP_ICONS.get(etype, "·")
+                if etype == "llm_thinking":
+                    # Internal chain-of-thought from thinking-capable
+                    # Ollama models (gpt-oss, gemma4). Rendered italic-
+                    # gray so it reads as "background reasoning" rather
+                    # than the primary thought.
+                    st.markdown(f"{icon} **Model thinking** (internal)")
+                    st.markdown(
+                        f"<div style='opacity:0.75; font-style:italic; "
+                        f"border-left: 3px solid #888; padding-left: 10px; "
+                        f"white-space: pre-wrap;'>{evt['content']}</div>",
+                        unsafe_allow_html=True,
+                    )
+                elif etype == "thought_action":
+                    st.markdown(f"{icon} **Thought:** {evt['thought']}")
+                    st.markdown(f"🔧 **Action:** `{evt['tool']}`")
+                    st.code(evt["tool_input"], language="json")
+                elif etype == "observation":
+                    st.markdown(
+                        f"{icon} **Observation** from `{evt['tool']}` "
+                        "(first 500 chars):"
+                    )
+                    st.code(evt["observation"])
+                elif etype == "final_answer":
+                    st.markdown(f"{icon} **Final Answer:**")
+                    st.markdown(evt["text"])
+                elif etype == "stall_nudge":
+                    st.warning(
+                        f"Tier {evt.get('tier', '?')} stall nudge fired\n\n"
+                        f"{evt['content']}"
+                    )
+
+
+def _run_agent_streaming(
+    config: SolverConfig,
+    trace_placeholder,
+    status_placeholder,
+    events_list: List[Dict[str, Any]],
+    status_prefix: str = "",
+) -> tuple[str, Optional[Exception]]:
+    """Run the agent in a background thread, streaming trace events into
+    ``events_list`` and rendering into the supplied placeholders.
+
+    Returns ``(response, error_or_None)``. Never raises — the caller
+    (batch) needs to continue to the next item on per-item failure. The
+    caller owns ``events_list`` lifecycle (single-run passes
+    ``st.session_state.trace_events``; batch resets a fresh list per item).
+    """
+    event_queue: queue.Queue = queue.Queue()
+    result: Dict[str, Any] = {}
+
+    def _trace_cb(event: Dict[str, Any]) -> None:
+        event_queue.put(event)
+
+    def _bg_run() -> None:
+        try:
+            # Each thread gets its own event loop (asyncio requirement).
+            response = asyncio.run(run_agent_async(config, trace_callback=_trace_cb))
+            result["response"] = response
+        except Exception as exc:
+            result["error"] = exc
+
+    thread = threading.Thread(target=_bg_run, daemon=True)
+    # Attach the current Streamlit ScriptRunContext so that session_state
+    # writes from the agent's log_callback don't emit "missing
+    # ScriptRunContext" warnings. Imported locally because the module
+    # path has moved across Streamlit versions; both paths are tried.
+    try:
+        from streamlit.runtime.scriptrunner import (
+            add_script_run_ctx,
+            get_script_run_ctx,
+        )
+
+        ctx = get_script_run_ctx()
+        if ctx is not None:
+            add_script_run_ctx(thread, ctx)
+    except Exception:
+        pass
+    thread.start()
+    start_time = time.time()
+
+    # Poll the queue while the background thread is alive. We block up to
+    # 0.3s per iteration so the UI stays responsive without busy-looping.
+    while thread.is_alive() or not event_queue.empty():
+        try:
+            evt = event_queue.get(timeout=0.3)
+            events_list.append(evt)
+            with trace_placeholder.container():
+                _render_trace(events_list)
+            with status_placeholder.container():
+                elapsed = time.time() - start_time
+                step = evt.get("step", "?")
+                st.caption(
+                    f"{status_prefix}⏱ {elapsed:.1f}s elapsed · currently at step {step}"
+                )
+        except queue.Empty:
+            continue
+
+    thread.join(timeout=5.0)
+
+    with trace_placeholder.container():
+        _render_trace(events_list)
+    with status_placeholder.container():
+        st.caption(
+            f"{status_prefix}✅ Run complete · {time.time() - start_time:.1f}s total"
+        )
+
+    return result.get("response", ""), result.get("error")
+
+
+def _run_agent_with_live_trace(config: SolverConfig) -> tuple[str, List[str]]:
+    """Single-run wrapper around ``_run_agent_streaming`` that preserves
+    the original contract (raises on error, returns candidate flags)."""
+    st.markdown("### 🧠 Live Agent Trace")
+    trace_placeholder = st.empty()
+    status_placeholder = st.empty()
+
+    response, err = _run_agent_streaming(
+        config,
+        trace_placeholder=trace_placeholder,
+        status_placeholder=status_placeholder,
+        events_list=st.session_state.trace_events,
+        status_prefix="",
+    )
+    if err is not None:
+        raise err
+    return response, []
+
+
 def run_agent():
     """Run the CTF solving agent."""
     st.session_state.is_running = True
@@ -370,20 +595,22 @@ def run_agent():
         openai_api_key=api_key,
         llm_base_url=base_url,
         lessons_llm_model=st.session_state.get("lessons_llm_model", "gpt-4o-mini"),
+        grammar_mode=st.session_state.get("grammar_mode", "auto"),
     )
 
     try:
-        # Run the agent
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        response = loop.run_until_complete(run_agent_async(config))
-        loop.close()
+        # Reset the live trace for this run and run the agent in a
+        # background thread so the main Streamlit thread can poll trace
+        # events and update the UI in real time.
+        st.session_state.trace_events = []
+        response, flags = _run_agent_with_live_trace(config)
 
         st.session_state.final_answer = response
 
-        # Extract candidate flags
-        if response:
+        if response and not flags:
             flags = extract_candidate_flags(response, config.flag_regex)
+            st.session_state.candidate_flags = flags
+        elif flags:
             st.session_state.candidate_flags = flags
 
         # Add to run history
@@ -413,6 +640,237 @@ def run_agent():
 
     finally:
         st.session_state.is_running = False
+
+
+# =============================================================================
+# Batch run — loops run_agent_async over a list of challenges, shares KB state
+# =============================================================================
+
+
+def _build_config_for_batch_item(item: BatchItem) -> SolverConfig:
+    """Build a SolverConfig for one batch item, reusing the sidebar's shared
+    settings (model, max_steps, RAG mode, ollama_num_ctx, etc.)."""
+    project_root = Path(st.session_state.get("project_root", get_project_root()))
+
+    docs_dirs = []
+    for d in st.session_state.docs_dirs.split("\n"):
+        d = d.strip()
+        if d:
+            path = Path(d)
+            if not path.is_absolute():
+                path = project_root / d
+            docs_dirs.append(str(path))
+
+    kb_files = []
+    for f in st.session_state.kb_files.split("\n"):
+        f = f.strip()
+        if f:
+            path = Path(f)
+            if not path.is_absolute():
+                path = project_root / f
+            kb_files.append(str(path))
+
+    selected_model = st.session_state.model_name
+    if selected_model.startswith("gemini"):
+        api_key = os.getenv("GENAI_API_KEY", "")
+        base_url = os.getenv("GENAI_BASE_URL", "https://api.genai.mil/v1")
+    else:
+        api_key = os.getenv("OPENAI_API_KEY", "")
+        base_url = None
+
+    return SolverConfig(
+        platform_name=st.session_state.platform_name,
+        agent_system_prompt=(
+            st.session_state.agent_prompt
+            if st.session_state.agent_prompt != DEFAULT_SYSTEM_PROMPT
+            else None
+        ),
+        flag_regex=st.session_state.flag_regex,
+        challenge_url=item.url or None,
+        challenge_description=item.description or None,
+        challenge_hints=item.hints or None,
+        challenge_name=item.name or None,
+        source_files={},  # batch mode does not plumb per-item source files (yet)
+        docs_dirs=docs_dirs,
+        kb_files=kb_files,
+        max_steps=st.session_state.max_steps,
+        model_name=selected_model,
+        rag_mode=st.session_state.get("rag_mode", "original"),
+        auto_analyze_failures=st.session_state.get("auto_analyze_failures", False),
+        use_llm_for_lessons=st.session_state.get("use_llm_for_lessons", False),
+        openai_api_key=api_key,
+        llm_base_url=base_url,
+        lessons_llm_model=st.session_state.get("lessons_llm_model", "gpt-4o-mini"),
+        grammar_mode=st.session_state.get("grammar_mode", "auto"),
+    )
+
+
+def _write_batch_item_log(
+    out_dir: Path,
+    item: BatchItem,
+    config: SolverConfig,
+    response: str,
+    stats: dict,
+    logs: list,
+    candidate_flags: list,
+) -> Path:
+    """Write a per-challenge log file under the batch output directory.
+
+    Format matches the existing ``out/batch_20260417/*.log`` shape the user
+    already has on disk — a single plain-text file per challenge, enough
+    context to audit the run without opening the full tracker dict.
+    """
+    log_path = out_dir / f"{item.slug}.log"
+    lines: List[str] = []
+    lines.append(f"# Challenge: {item.name}")
+    lines.append(f"URL: {item.url}")
+    lines.append(f"Description: {item.description}")
+    if item.hints:
+        lines.append(f"Hints: {item.hints}")
+    lines.append(f"Model: {config.model_name}")
+    lines.append(f"RAG mode: {config.rag_mode}")
+    lines.append(f"Outcome: {stats.get('outcome', 'unknown')}")
+    if candidate_flags:
+        lines.append(f"Flags: {', '.join(candidate_flags)}")
+    lines.append(f"Steps: {stats.get('steps', 0)}")
+    lines.append(f"Duration: {stats.get('duration_seconds', 0):.1f}s")
+    lines.append("")
+    lines.append("## Execution log")
+    lines.extend(logs)
+    lines.append("")
+    lines.append("## Final answer")
+    lines.append(response or "")
+    log_path.write_text("\n".join(lines), encoding="utf-8")
+    return log_path
+
+
+def run_batch():
+    """Execute the current list of batch items sequentially."""
+    items = rows_to_items(st.session_state.batch_rows)
+    if not items:
+        st.session_state.error_message = (
+            "Batch table is empty. Add at least one challenge."
+        )
+        return
+
+    project_root = Path(st.session_state.get("project_root", get_project_root()))
+    out_dir = ensure_batch_output_dir(project_root / "out")
+    st.session_state.batch_output_dir = str(out_dir)
+    st.session_state.batch_results = []
+    st.session_state.is_running_batch = True
+    st.session_state.error_message = None
+
+    # Shared live-trace UI — status/progress above, trace placeholder below.
+    # The streaming helper renders into the two placeholders per item.
+    st.markdown("### 🧠 Live Agent Trace")
+    progress_placeholder = st.empty()
+    status_placeholder = st.empty()
+    trace_placeholder = st.empty()
+
+    try:
+        for idx, item in enumerate(items, start=1):
+            # Reset per-challenge session state so the single-challenge tabs
+            # display the CURRENT item during the batch run.
+            st.session_state.logs = []
+            st.session_state.final_answer = None
+            st.session_state.candidate_flags = []
+            st.session_state.execution_trace = []
+            st.session_state.trace_events = []
+            st.session_state.run_stats = None
+
+            with progress_placeholder.container():
+                st.info(f"**[{idx}/{len(items)}] Running:** {item.name or '(unnamed)'}")
+
+            log_callback(
+                f"[Batch] ({idx}/{len(items)}) Starting: {item.name} → {item.url}"
+            )
+            config = _build_config_for_batch_item(item)
+
+            start = datetime.now()
+            # TODO: thread a cancellation token through _run_agent_streaming →
+            # run_agent_async → CTFAgent.arun so a "Cancel Batch" button can
+            # stop the current item mid-run instead of waiting for it to end.
+            response, err = _run_agent_streaming(
+                config,
+                trace_placeholder=trace_placeholder,
+                status_placeholder=status_placeholder,
+                events_list=st.session_state.trace_events,
+                status_prefix=f"[{idx}/{len(items)}] ",
+            )
+            error = f"{type(err).__name__}: {err}" if err is not None else None
+            if error:
+                log_callback(f"[Batch] ({idx}/{len(items)}) ERROR: {error}")
+                # Surface errors inline so the user sees *why* a batch is
+                # blowing through items in 0.3s (Ollama down, missing key,
+                # agent-build exception) instead of only seeing it in the
+                # collapsed result expander after the whole batch ends.
+                with status_placeholder.container():
+                    st.error(
+                        f"[{idx}/{len(items)}] {item.name or '(unnamed)'} — {error}"
+                    )
+                time.sleep(1.0)
+
+            duration = (datetime.now() - start).total_seconds()
+
+            # Flag extraction
+            flags: List[str] = []
+            if response:
+                flags = extract_candidate_flags(response, config.flag_regex) or []
+
+            # Outcome: error > whatever tracker reported > failure
+            stats = st.session_state.get("run_stats") or {}
+            if error is not None:
+                outcome = "error"
+            else:
+                outcome = stats.get("outcome") or ("success" if flags else "failure")
+
+            # Persist log + append to results
+            log_path: Optional[str] = None
+            try:
+                written = _write_batch_item_log(
+                    out_dir=out_dir,
+                    item=item,
+                    config=config,
+                    response=response or "",
+                    stats={**stats, "outcome": outcome},
+                    logs=list(st.session_state.logs),
+                    candidate_flags=flags,
+                )
+                log_path = str(written)
+            except Exception as log_err:
+                log_callback(f"[Batch] WARN: could not write log: {log_err}")
+
+            result = BatchResult(
+                item=item,
+                outcome=outcome,
+                flag=flags[0] if flags else None,
+                steps=int(stats.get("steps", 0) or 0),
+                duration_seconds=duration,
+                error=error,
+                stats=stats,
+                log_path=log_path,
+            )
+            st.session_state.batch_results.append(result)
+            log_callback(
+                f"[Batch] ({idx}/{len(items)}) Done: {item.name} — "
+                f"{result.outcome_emoji} {outcome} "
+                f"({result.steps} steps, {result.duration_seconds:.1f}s)"
+            )
+
+        # Final summary TSV
+        try:
+            write_batch_summary(st.session_state.batch_results, out_dir / "results.tsv")
+            log_callback(f"[Batch] Summary written to {out_dir / 'results.tsv'}")
+        except Exception as sum_err:
+            log_callback(f"[Batch] WARN: could not write summary: {sum_err}")
+
+        with progress_placeholder.container():
+            st.success(
+                f"Batch complete — {len(st.session_state.batch_results)} challenge(s) processed."
+            )
+
+    finally:
+        st.session_state.is_running_batch = False
 
 
 def _save_challenge_log(config: SolverConfig) -> None:
@@ -589,11 +1047,13 @@ def render_sidebar():
         "gemini-2.5-flash",
         # Local via Ollama — auto-routed by name:tag form.
         # Order = recommended preference as the agent driver:
-        # llama3.1 produces valid ReAct output first-try; mistral-small and
+        # gemma4 has tools + thinking + 262k context (best local on paper).
+        # llama3.1 produces valid ReAct output first-try. mistral-small and
         # gpt-oss also have the "tools" capability. edgerunner-medium is
         # listed last because it is refusal-resistant but NOT instruction-
         # tuned for structured ReAct output — use it as a raw-generation
         # backend for payloads, not as the agent driver.
+        "gemma4:26b",
         "llama3.1:latest",
         "mistral-small:latest",
         "gpt-oss:20b",
@@ -610,10 +1070,11 @@ def render_sidebar():
         help=(
             "Hosted: Gemini (GENAI.mil), Anthropic Claude, OpenAI. "
             "Local via Ollama, ranked by ReAct format compliance: "
-            "llama3.1 > mistral-small > gpt-oss > edgerunner-medium. "
-            "edgerunner-medium is refusal-resistant but doesn't follow "
-            "ReAct format — prefer it for raw payload generation, not as "
-            "the agent driver."
+            "gemma4:26b > llama3.1 > mistral-small > gpt-oss > "
+            "edgerunner-medium. gemma4:26b is the most capable local "
+            "option (tools + thinking + 262k ctx). edgerunner-medium is "
+            "refusal-resistant but doesn't follow ReAct format — prefer "
+            "it for raw payload generation, not as the agent driver."
         ),
     )
 
@@ -624,6 +1085,37 @@ def render_sidebar():
         value=st.session_state.max_steps,
         help="Maximum number of reasoning steps before stopping",
     )
+
+    # Grammar-constrained decoding is only meaningful for local (Ollama)
+    # models — the auto-route check mirrors agent.py's _looks_like_ollama_model
+    # heuristic (any name containing a tag ':' counts as local).
+    _selected = st.session_state.get("model_name", "")
+    if ":" in _selected:
+        grammar_options = {
+            "Auto (enforce JSON schema)": "auto",
+            "None (no constraint)": "none",
+            "Force JSON schema": "json_schema",
+        }
+        grammar_labels = list(grammar_options.keys())
+        current_grammar = st.session_state.get("grammar_mode", "auto")
+        current_grammar_idx = (
+            list(grammar_options.values()).index(current_grammar)
+            if current_grammar in grammar_options.values()
+            else 0
+        )
+        selected_grammar_label = st.sidebar.selectbox(
+            "Grammar Constraint",
+            options=grammar_labels,
+            index=current_grammar_idx,
+            help=(
+                "Grammar-constrained decoding for local models. When on, "
+                "Ollama's decoder can only emit valid ReAct JSON — "
+                "eliminates the 'Could not parse simplified ReAct response' "
+                "errors that waste steps on small models. Use 'None' for "
+                "A/B comparison runs."
+            ),
+        )
+        st.session_state.grammar_mode = grammar_options[selected_grammar_label]
 
     st.session_state.save_logs = st.sidebar.checkbox(
         "Save run logs",
@@ -940,10 +1432,217 @@ def _process_uploaded_files(uploaded_files) -> Dict[str, str]:
     return result
 
 
+def render_batch_panel():
+    """Render the batch-run UI: table editor, import/export, run, results."""
+    st.subheader("Batch Run")
+    st.caption(
+        "Queue up multiple challenges and run them sequentially. The "
+        "knowledge base is shared across the batch (lessons written by "
+        "challenge N are available to challenge N+1). Sidebar settings "
+        "(model, max steps, RAG mode) apply to every challenge."
+    )
+
+    # --- Import / export ---
+    import_col, export_col = st.columns(2)
+    with import_col:
+        uploaded = st.file_uploader(
+            "Import TSV",
+            type=["tsv", "txt"],
+            accept_multiple_files=False,
+            help=(
+                "Load a TSV with columns name, url, description, hints. "
+                "Legacy format (slug, name, url, description) is also "
+                "accepted; slug is ignored and hints defaults to empty."
+            ),
+            key="batch_import_uploader",
+        )
+        if uploaded is not None and not st.session_state.is_running_batch:
+            try:
+                tmp = Path(get_project_root()) / ".streamlit_batch_upload.tsv"
+                tmp.write_bytes(uploaded.getvalue())
+                items = load_batch_tsv(tmp)
+                tmp.unlink(missing_ok=True)
+                if items:
+                    st.session_state.batch_rows = items_to_rows(items)
+                    st.success(
+                        f"Loaded {len(items)} challenge(s) from {uploaded.name}."
+                    )
+                else:
+                    st.warning("TSV parsed but contained no challenges.")
+            except Exception as e:
+                st.error(f"Failed to parse TSV: {e}")
+
+    with export_col:
+        # Export the current rows as TSV (even partial — useful for saving
+        # a batch before hitting run).
+        current_items = rows_to_items(st.session_state.batch_rows)
+        tsv_text = items_to_tsv_text(current_items) if current_items else ""
+        st.download_button(
+            "Export TSV",
+            data=tsv_text or "name\turl\tdescription\thints\n",
+            file_name=f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.tsv",
+            mime="text/tab-separated-values",
+            disabled=not current_items,
+            help="Download the current batch table as a TSV.",
+        )
+
+    # --- Editable table ---
+    edited = st.data_editor(
+        st.session_state.batch_rows,
+        num_rows="dynamic",
+        use_container_width=True,
+        disabled=st.session_state.is_running_batch,
+        column_config={
+            "name": st.column_config.TextColumn(
+                "Name",
+                help="Short human-readable name (also used as slug for logs and lessons)",
+                required=False,
+                width="small",
+            ),
+            "url": st.column_config.TextColumn(
+                "URL",
+                help="Challenge URL",
+                width="medium",
+            ),
+            "description": st.column_config.TextColumn(
+                "Description",
+                help="Challenge description / goal",
+                width="large",
+            ),
+            "hints": st.column_config.TextColumn(
+                "Hints",
+                help="Optional hints given by the challenge",
+                width="medium",
+            ),
+        },
+        key="batch_rows_editor",
+    )
+    st.session_state.batch_rows = edited
+
+    # --- Run / Clear buttons ---
+    run_col, clear_col, spacer = st.columns([1, 1, 3])
+    ready_items = rows_to_items(st.session_state.batch_rows)
+    missing_api_key = not os.getenv("OPENAI_API_KEY") and not os.getenv("GENAI_API_KEY")
+    run_disabled = (
+        st.session_state.is_running_batch
+        or st.session_state.is_running
+        or not ready_items
+        or missing_api_key
+    )
+    with run_col:
+        if st.button(
+            (
+                "🚀 Run Batch"
+                if not st.session_state.is_running_batch
+                else "⏳ Running Batch..."
+            ),
+            type="primary",
+            disabled=run_disabled,
+            use_container_width=True,
+        ):
+            run_batch()
+    with clear_col:
+        if st.button(
+            "🗑️ Clear Results",
+            disabled=st.session_state.is_running_batch,
+            use_container_width=True,
+        ):
+            st.session_state.batch_results = []
+            st.session_state.error_message = None
+            st.rerun()
+
+    if missing_api_key:
+        st.info(
+            "Set OPENAI_API_KEY (or GENAI_API_KEY) in your environment to enable batch runs."
+        )
+
+    if st.session_state.error_message:
+        st.error(st.session_state.error_message)
+
+    st.markdown("---")
+
+    # --- Results panel ---
+    results = st.session_state.batch_results
+    if not results:
+        st.info(
+            f"No batch results yet. Add {len(ready_items) or '…'} challenge(s) "
+            "above and hit Run Batch."
+        )
+        return
+
+    # Summary metrics
+    successes = sum(1 for r in results if r.outcome == "success")
+    partials = sum(1 for r in results if r.outcome == "partial")
+    failures = sum(1 for r in results if r.outcome == "failure")
+    errors = sum(1 for r in results if r.outcome == "error")
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Total", len(results))
+    m2.metric("✅ Success", successes)
+    m3.metric("⚠️ Partial", partials)
+    m4.metric("❌ Failure", failures)
+    m5.metric("💥 Error", errors)
+
+    if st.session_state.batch_output_dir:
+        st.caption(f"Output dir: `{st.session_state.batch_output_dir}`")
+
+    st.markdown("### Results")
+    for r in results:
+        header = (
+            f"{r.outcome_emoji} **{r.item.name or '(unnamed)'}** — "
+            f"{r.outcome} | {r.steps} steps | {r.duration_seconds:.1f}s"
+        )
+        if r.flag:
+            header += f" | 🚩 `{r.flag}`"
+        with st.expander(header):
+            st.markdown(f"**URL:** {r.item.url or '(none)'}")
+            if r.item.description:
+                st.markdown(f"**Description:** {r.item.description}")
+            if r.item.hints:
+                st.markdown(f"**Hints:** {r.item.hints}")
+            if r.error:
+                st.error(f"Error: {r.error}")
+            if r.log_path:
+                st.caption(f"Log: `{r.log_path}`")
+            if r.stats:
+                token_est = r.stats.get("total_tokens_est")
+                if token_est:
+                    st.caption(
+                        f"Tokens ≈ {token_est} | "
+                        f"RAG queries: {r.stats.get('rag_queries_made', 0)} | "
+                        f"Unique tools: {r.stats.get('unique_tools_used', 0)}"
+                    )
+
+
 def render_main_panel():
     """Render the main panel."""
     st.title("🚩 CTF Solver")
     st.markdown("*Platform-agnostic agentic CTF solving framework*")
+
+    # Mode selector: single challenge vs batch. Reset cross-mode state when
+    # the user actually flips the switch so stale trace/final-answer from
+    # the prior mode doesn't bleed into the new one.
+    prev_mode = st.session_state.get("run_mode", "single")
+    st.session_state.run_mode = st.radio(
+        "Mode",
+        options=["single", "batch"],
+        format_func=lambda m: (
+            "🎯 Single challenge" if m == "single" else "📋 Batch run"
+        ),
+        index=0 if prev_mode == "single" else 1,
+        horizontal=True,
+        label_visibility="collapsed",
+        disabled=st.session_state.is_running or st.session_state.is_running_batch,
+    )
+    if st.session_state.run_mode != prev_mode:
+        st.session_state.trace_events = []
+        st.session_state.final_answer = None
+        st.session_state.candidate_flags = []
+        st.session_state.error_message = None
+        st.session_state.logs = []
+
+    if st.session_state.run_mode == "batch":
+        render_batch_panel()
+        return
 
     # Challenge configuration
     col1, col2 = st.columns([2, 1])
@@ -1105,6 +1804,14 @@ def render_main_panel():
 
     if st.session_state.error_message:
         st.error(f"**Error:** {st.session_state.error_message}")
+
+    # Persistent live agent trace — visible after a run finishes so the
+    # user can scroll back through the Thought/Action/Observation history.
+    # During a run, _run_agent_with_live_trace renders into its own
+    # placeholders; this block shows the final state between runs.
+    if not st.session_state.is_running and st.session_state.get("trace_events"):
+        with st.expander("🧠 Agent Trace (last run)", expanded=False):
+            _render_trace(st.session_state.trace_events)
 
     # Display results in tabs
     if st.session_state.final_answer or st.session_state.logs:

@@ -82,9 +82,12 @@ def _find_and_load_dotenv() -> None:
 # - Content limited to 200 chars, no nested braces or newlines
 DEFAULT_FLAG_REGEX = r"[A-Za-z0-9_]+\{[^\n\r{}]{1,200}\}"
 
-# Common CTF flag patterns for reference
+# Common CTF flag patterns for reference.
+# Keys are used as CLI --flag-preset choices and as Streamlit preset options;
+# adding an entry here auto-propagates to both surfaces.
 COMMON_FLAG_PATTERNS = {
     "picoctf": r"picoCTF\{[^\n\r{}]{1,200}\}",
+    "metactf": r"MetaCTF\{[^\n\r{}]{1,200}\}",
     "htb": r"HTB\{[^\n\r{}]{1,200}\}",
     "thm": r"THM\{[^\n\r{}]{1,200}\}",
     "flag": r"flag\{[^\n\r{}]{1,200}\}",
@@ -282,6 +285,14 @@ class SolverConfig:
     # plenty of RAM/VRAM.
     ollama_num_ctx: int = 16384
 
+    # Grammar-constrained decoding for the ReAct JSON envelope. When the
+    # active provider is Ollama, the adapter passes a JSON schema to
+    # llama.cpp via the ``format=`` parameter so the decoder can only emit
+    # valid ``{"thought", "action": {"tool_name", "tool_input"}}`` output.
+    # "auto" = apply to Ollama, no-op elsewhere; "none" = never apply;
+    # "json_schema" = force apply (provider must support the kwarg).
+    grammar_mode: str = "auto"
+
     # Runtime configuration
     verbose: bool = False
 
@@ -383,6 +394,8 @@ class SolverConfig:
             lessons_llm_model=os.getenv("CTF_LESSONS_MODEL", "gpt-4o-mini"),
             # Ollama-specific
             ollama_num_ctx=int(os.getenv("CTF_OLLAMA_NUM_CTX", "16384")),
+            # Grammar-constrained decoding
+            grammar_mode=os.getenv("CTF_GRAMMAR_MODE", "auto"),
         )
 
     def merge_with_args(self, **kwargs) -> "SolverConfig":
@@ -420,6 +433,8 @@ class SolverConfig:
             "lessons_llm_model": self.lessons_llm_model,
             # Ollama-specific
             "ollama_num_ctx": self.ollama_num_ctx,
+            # Grammar-constrained decoding
+            "grammar_mode": self.grammar_mode,
             # Caching configuration
             "cache_enabled": self.cache_enabled,
             "cache_ttl": self.cache_ttl,

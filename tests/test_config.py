@@ -58,6 +58,21 @@ class TestFlagExtraction:
         flags = extract_candidate_flags(text, COMMON_FLAG_PATTERNS["htb"])
         assert flags == ["HTB{y0u_g0t_1t_h4x0r}"]
 
+    def test_extract_metactf_flag(self):
+        """Test extracting MetaCTF format flags (exact-case prefix)."""
+        text = "Solved! MetaCTF{session_fixation_via_old_cookie_2026}"
+        flags = extract_candidate_flags(text, COMMON_FLAG_PATTERNS["metactf"])
+        assert flags == ["MetaCTF{session_fixation_via_old_cookie_2026}"]
+
+    def test_metactf_preset_does_not_match_picoctf(self):
+        """Regression guard: the metactf preset must NOT pull picoCTF flags
+        (prefix is case-sensitive). Prevents a batch run configured for
+        MetaCTF from silently accepting picoCTF-shaped strings that appear
+        in a tool output."""
+        text = "picoCTF{not_for_metactf_preset}"
+        flags = extract_candidate_flags(text, COMMON_FLAG_PATTERNS["metactf"])
+        assert flags == []
+
     def test_extract_generic_flag(self):
         """Test extracting generic format flags."""
         text = "Multiple flags: flag{one} and CTF{two} and custom{three}"

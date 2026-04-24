@@ -583,6 +583,24 @@ class SafeKnowledgeQueryTool:
             if not filtered:
                 return "No relevant information found in the knowledge base (all results filtered)."
 
+            # Step 3.5: Dedupe near-identical chunks. The hybrid retriever
+            # + chunker can surface the same document section as multiple
+            # hits (e.g. five copies of the "Client-Side Access Control
+            # Bypass" section in recentTestRun.txt run 5 step 8). Hash by
+            # (source_file, first 200 chars) so the reranker gets unique
+            # candidates and top_k doesn't collapse into a single section.
+            _seen_keys: set = set()
+            deduped: list = []
+            for doc in filtered:
+                content = getattr(doc, "page_content", str(doc))
+                sf = getattr(doc, "metadata", {}).get("source_file", "")
+                key = (sf, content[:200])
+                if key in _seen_keys:
+                    continue
+                _seen_keys.add(key)
+                deduped.append(doc)
+            filtered = deduped
+
             # Step 4: Rerank filtered results
             if self._use_reranking and _cached_reranker is not None:
                 scored_results = _cached_reranker.rerank(

@@ -10,7 +10,7 @@ CTF Solver is an AI-powered agent designed to solve web-based Capture-The-Flag (
 
 ## Features
 
-### Tools (29 Total)
+### Tools (60 Total)
 
 **HTTP & Web Tools**
 - `http_fetch` - Fetch web pages and API endpoints
@@ -218,7 +218,7 @@ ctf_solver/
     llm/                 # Multi-LLM adapters
     prompts/             # Prompt templates
     rag/                 # RAG knowledge base
-    tools/               # 29 exploitation tools
+    tools/               # 60 exploitation tools
     utils/               # Utilities (async, caching)
 
 docs/                    # 20 reference documents

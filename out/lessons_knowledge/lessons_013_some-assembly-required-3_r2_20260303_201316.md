@@ -6,7 +6,7 @@
 **Challenge URL:** http://wily-courier.picoctf.net:62191/index.html
 **Auto-generated:** 2026-03-03
 **Tags:** wasm_re, success, experience, do
-**Confidence:** medium
+**Confidence:** high
 
 **Applies when:** When you achieve 'recon_complete' during a WASM / Reverse Engineering challenge
 

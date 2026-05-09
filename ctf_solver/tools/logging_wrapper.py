@@ -11,10 +11,12 @@ Wraps any FAIR-compatible tool to provide:
 import hashlib
 import json
 import re
+import time
 from collections import Counter, defaultdict
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ctf_solver.config import DEFAULT_FLAG_REGEX
+from ctf_solver.tools.core import apply_hash_hints
 
 # Error patterns to extract from tool outputs
 _ERROR_PATTERNS = [
@@ -337,22 +339,94 @@ class ReflectionEngine:
         )
 
 
+#: Sentinel string the agent loop greps for to force a stall-nudge tier bump
+#: when the same (tool, input) pair has been hit more times than the soft
+#: ``WARNING`` threshold.  Kept as a module constant so agent.py can match it
+#: without re-importing the wrapper.
+STUCK_HARD_STOP_TAG = "[STUCK-HARD-STOP]"
+
+
+# v3.8 P1: structured observation header.  Every tool result emitted by
+# LoggingToolWrapper begins with a ``[<tool>] result=<class>; signal=<key>;``
+# header so a 26B local model can grep one line to learn outcome instead
+# of parsing free-form prose.
+_RESULT_ERROR_RE = re.compile(r"^\s*(?:\[[^\]]+\]\s*)?Error[: ]", re.IGNORECASE)
+_RESULT_PARTIAL_TAGS = (
+    "[WARNING]",
+    STUCK_HARD_STOP_TAG,
+    "[SELF-REFLECTION]",
+    "[PHASE-GATE]",
+    "[ModerationBlocked]",
+)
+_RESULT_VULN_RE = re.compile(
+    r"\b(detected|confirmed|vulnerable|injection.+detected|exploit\s+succeeded)\b",
+    re.IGNORECASE,
+)
+
+
+def classify_result(text: str, has_flag: bool) -> Tuple[str, str]:
+    """Return ``(result, signal)`` from a tool observation string.
+
+    ``result`` is one of: ``success``, ``partial``, ``failure``,
+    ``error``, ``info``.  ``signal`` is a short keyword the model can
+    pattern-match.  Pure heuristic — kept simple on purpose so the same
+    rule applies to all 75 tools.
+    """
+    if not isinstance(text, str):
+        return "info", ""
+    if has_flag:
+        return "success", "flag_match"
+    if _RESULT_ERROR_RE.search(text):
+        return "error", "tool_error"
+    for tag in _RESULT_PARTIAL_TAGS:
+        if tag in text:
+            return "partial", tag.strip("[]").lower()
+    if _RESULT_VULN_RE.search(text):
+        return "partial", "vuln_signal"
+    return "info", ""
+
+
 class StuckDetector:
     """
     Detects when the agent is repeating the same tool+input pattern.
 
-    Tracks recent tool calls by hashing (tool_name, tool_input). When
-    the same hash appears >= threshold times, a warning message is
-    generated to append to the tool result.
+    Tracks recent tool calls by hashing (tool_name, tool_input).
+
+    Two thresholds:
+      - ``threshold`` (default 3): emits a soft ``[WARNING]``/contextual
+        reflection appended to the tool result.
+      - ``hard_stop_threshold`` (default 5): emits a stronger
+        ``[STUCK-HARD-STOP]``-tagged message that the agent loop intercepts
+        to force a stall-nudge tier bump (effectively kicking the agent out
+        of the loop on the next turn instead of waiting for the soft stall
+        clock to fire).
+
+    Set ``hard_stop_threshold`` to ``None`` to disable the hard stop.
     """
 
-    def __init__(self, threshold: int = 3) -> None:
+    def __init__(
+        self,
+        threshold: int = 3,
+        hard_stop_threshold: Optional[int] = 5,
+    ) -> None:
         self.threshold = threshold
+        self.hard_stop_threshold = hard_stop_threshold
         self._call_counts: Dict[Tuple[str, str], int] = defaultdict(int)
 
     def _hash_input(self, tool_input: str) -> str:
-        """Hash tool input for comparison. Normalize whitespace first."""
+        """Hash tool input for comparison.
+
+        Canonicalize JSON (sort keys, drop whitespace) before hashing so
+        that semantically-identical calls with reordered keys or
+        cosmetic whitespace differences collapse to the same bucket.
+        Non-JSON input falls back to a stripped-string hash.
+        """
         normalized = tool_input.strip()
+        try:
+            parsed = json.loads(normalized)
+            normalized = json.dumps(parsed, sort_keys=True, separators=(",", ":"))
+        except (json.JSONDecodeError, ValueError):
+            pass
         return hashlib.md5(normalized.encode("utf-8", errors="replace")).hexdigest()
 
     def check(
@@ -370,13 +444,28 @@ class StuckDetector:
             reflection_engine: Optional ReflectionEngine for contextual analysis
 
         Returns:
-            Warning/reflection string to append to result, or None.
+            Warning/reflection string to append to result, or None.  When the
+            ``hard_stop_threshold`` is hit, the returned string is prefixed
+            with ``STUCK_HARD_STOP_TAG`` and contains a directive forbidding
+            another invocation of the same tool+input.
         """
         input_hash = self._hash_input(tool_input)
         key = (tool_name, input_hash)
         self._call_counts[key] += 1
-
         count = self._call_counts[key]
+
+        # Hard stop: emit a tagged message the agent loop greps for.
+        if self.hard_stop_threshold is not None and count >= self.hard_stop_threshold:
+            return (
+                f"\n\n{STUCK_HARD_STOP_TAG} You have called '{tool_name}' "
+                f"with the same input {count} times. This is a hard stop: "
+                "you MUST switch to a different tool AND a different "
+                "approach on your next turn — repeating this tool+input "
+                "again will not advance the run.  Consult "
+                "'ctf_knowledge_query', call 'attack_planner', or pivot to "
+                "an entirely different vulnerability category."
+            )
+
         if count >= self.threshold:
             # Use contextual reflection if engine is available
             if reflection_engine is not None:
@@ -414,6 +503,7 @@ class LoggingToolWrapper:
         flag_regex: str = DEFAULT_FLAG_REGEX,
         log_callback: Optional[Callable[[str], None]] = None,
         tracker=None,
+        event_writer: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> None:
         """
         Initialize the logging wrapper.
@@ -423,11 +513,15 @@ class LoggingToolWrapper:
             flag_regex: Regex pattern for detecting flags in output
             log_callback: Optional callback for log messages (defaults to print)
             tracker: Optional RunTracker instance for recording tool usage
+            event_writer: Optional Phase-C structured event sink. Called with
+                a JSON-serializable dict per tool call. Use for the
+                ``events.jsonl`` per-step record without modifying every tool.
         """
         self.inner = inner
         self.flag_regex = flag_regex
         self.log_callback = log_callback or print
         self.tracker = tracker
+        self.event_writer = event_writer
 
         # Mirror the wrapped tool's public identity
         self.name = getattr(inner, "name", inner.__class__.__name__)
@@ -464,7 +558,11 @@ class LoggingToolWrapper:
         if self.tracker is not None:
             self.tracker.record_tool_call(self.name)
 
+        # Phase C: capture wall-clock duration around the inner call so
+        # the events.jsonl record can show per-tool latency.
+        t0 = time.monotonic()
         result = self.inner.use(tool_input)
+        duration_ms = int((time.monotonic() - t0) * 1000)
 
         # Record detailed tool call for failure analysis
         if self.tracker is not None and hasattr(
@@ -488,11 +586,13 @@ class LoggingToolWrapper:
                 )
 
         # Log potential flags in tool output and record in tracker
+        flag_seen = False
         if isinstance(result, str):
             try:
                 matches = re.findall(self.flag_regex, result)
                 for m in matches:
                     self._log(f"[LOG] Potential flag seen in {self.name} output: {m}")
+                    flag_seen = True
                     # Record in tracker so agent._has_flag() can detect it
                     if (
                         self.tracker is not None
@@ -502,6 +602,56 @@ class LoggingToolWrapper:
                         self.tracker.candidate_flags_found.append(m)
             except re.error:
                 pass  # Invalid regex, skip flag detection
+
+        # v3.8 P1: prepend a structured header so the model can grep one
+        # line for outcome.  Existing prose follows verbatim.  Only adds
+        # the header when the result is a string and doesn't already
+        # carry one (idempotent for tools that opt in to emitting it
+        # themselves later).
+        if isinstance(result, str) and not result.startswith(f"[{self.name}] result="):
+            cls, signal = classify_result(result, has_flag=flag_seen)
+            sig_field = f"signal={signal}; " if signal else ""
+            result = f"[{self.name}] result={cls}; {sig_field}{result}"
+
+        # v3.10 P5a: apply hash-pattern hints to the FULL assembled output
+        # so URL fields (which are concatenated outside the per-tool
+        # summarize_for_llm body pass) also surface md5/sha256 hints.
+        # Idempotent — apply_hash_hints short-circuits on existing hints.
+        if isinstance(result, str):
+            result = apply_hash_hints(result)
+
+        # Phase C: emit a structured per-call event for events.jsonl. Done
+        # last so output_len reflects the post-hint, final string the agent
+        # actually receives. Wrapped in try/except so a sink failure can
+        # never break the run.
+        if self.event_writer is not None:
+            try:
+                output_str = result if isinstance(result, str) else str(result)
+                input_hash = (
+                    self._stuck_detector._hash_input(tool_input)
+                    if self._stuck_detector is not None
+                    else hashlib.md5(
+                        tool_input.encode("utf-8", errors="replace")
+                    ).hexdigest()
+                )
+                self.event_writer(
+                    {
+                        "event": "tool_call",
+                        "step": (
+                            self.tracker.steps if self.tracker is not None else None
+                        ),
+                        "tool": self.name,
+                        "input_hash": input_hash,
+                        "input_preview": tool_input[:200],
+                        "output_len": len(output_str),
+                        "truncated": len(output_str) >= 2000,
+                        "duration_ms": duration_ms,
+                        "flag_seen": flag_seen,
+                        "ts": time.time(),
+                    }
+                )
+            except Exception:
+                pass  # Tracing must never crash the run.
 
         return result
 

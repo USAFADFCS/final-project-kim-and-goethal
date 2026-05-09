@@ -1,0 +1,118 @@
+{
+  "challenge_name": "Snowfall Wishes",
+  "rag_mode": "RAGMode.LESSONS_WRITE",
+  "outcome": "success",
+  "reflexion": null,
+  "proactive": {
+    "query": "Can you check out our cool new wishing website we're offering as an elf benefit? Maybe one day you'll even get access to our VIP wish package...",
+    "raw_text": "[Result 1] | Source: 38_flask_session_cookie_forgery.md | Section: Use with requests | Tags: authentication, xxe\n# Use with requests\nimport requests\nsession = requests.Session()\nsession.cookies.set(\"session\", forged, domain=\"target.com\")\nresponse = session.get(\"http://target.com/admin\")\nprint(response.text)\n``` ### 5.3 Common Session Fields to Modify **Tags:** `flask, session-cookie, forgery, fields, privilege-escalation` **Authentication / Authorization Fields:**\n```python\n# Boolean flags\n{\"\n[... truncated]\n\n[Result 2] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: sql_injection, authentication, command_injection\n- Cookies, sessions, or roles, but you're unsure how to systematically test them. **You see:**\n- SQL errors, but are unsure how to interpret them. - Encoded/obfuscated strings in JS or cookies that look like base64/hex but you're not certain. **You've done basic recon (HTML, robots, JS, cookies, forms) and:**\n- Need guidance on which attack pattern fits the hints. ### Use ctf_knowl\n[... truncated]\n\n[Result 3] | Source: 03_html_js_and_client_side_validation.md | Tags: authentication, command_injection\n**View the HTML and JS code.**\n   - Understand what the client-side code is checking. 2. **Derive the expected \"correct\" input.**\n   - For example, the correct password, token, or code based on JS logic. 3. **Send that value directly in an HTTP request.**\n   - Use a form submission tool or raw HTTP request. - Ignore any UI restrictions or JS validation that prevents form submission\n[... truncated]\n\n[Result 4] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication\n--- ### 20.12 Scenario 11: Second-Order SQLi **Tags:** `sqli, scenario, second-order, stored, delayed, registration, practice` **CHALLENGE HINT:**\n```\n\"User Registration\"\nCreate an account and explore. Admin reviews all new users. URL: http://challenge.ctf/register\n``` **OBSERVED BEHAVIOR:**\n```\nRegistration form: username, email, password\nRegistered with username: test' → Success!\n[... truncated]\n\n[Result 5] | Source: 39_cookie_tossing_cache_attacks.md | Tags: xss, authentication\nVictim's browser now sends ATTACKER_SESSION to www.example.com\n6. Victim logs in on www.example.com, binding their auth to ATTACKER_SESSION\n7. Attacker uses ATTACKER_SESSION to access victim's authenticated session\n``` **Exploitation Example:**\n```html\n<!-- evil.example.com/fixate.html -->\n<html>\n<body>\n[script: 251 bytes]\n</body>\n</html>\n``` **Server-Side Impact:**\n```python\n# Man\n[... truncated]",
+    "trimmed_text": "[Result 1] | Source: 38_flask_session_cookie_forgery.md | Section: Use with requests | Tags: authentication, xxe\n# Use with requests\nimport requests\nsession = requests.Session()\nsession.cookies.set(\"session\", forged, domain=\"target.com\")\nresponse = session.get(\"http://target.com/admin\")\nprint(response.text)\n``` ### 5.3 Common Session Fields to Modify **Tags:** `flask, session-cookie, forgery, fields, privilege-escalation` **Authentication / Authorization Fields:**\n```python\n# Boolean flags\n{\"\n[... truncated]\n\n[Result 2] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: sql_injection, authentication, command_injection\n- Cookies, sessions, or roles, but you're unsure how to systematically test them. **You see:**\n- SQL errors, but are unsure how to interpret them. - Encoded/obfuscated strings in JS or cookies that look like base64/hex but you're not certain. **You've done basic recon (HTML, robots, JS, cookies, forms) and:**\n- Need guidance on which attack pattern fits the hints. ### Use ctf_knowl\n[... truncated]\n\n[Result 3] | Source: 03_html_js_and_client_side_validation.md | Tags: authentication, command_injection\n**View the HTML and JS code.**\n   - Understand what the client-side code is checking. 2. **Derive the expected \"correct\" input.**\n   - For example, the correct password, token, or code based on JS logic. 3. **Send that value directly in an HTTP request.**\n   - Use a form submission tool or raw HTTP request. - Ignore any UI restrictions or JS validation that prevents form submission\n[... truncated]\n\n[Result 4] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication\n--- ### 20.12 Scenario 11: Second-Order SQLi **Tags:** `sqli, scenario, second-order, stored, delayed, registration, practice` **CHALLENGE HINT:**\n```\n\"User Registration\"\nCreate an account and explore. Admin reviews all new users. URL: http://challenge.ctf/register\n``` **OBSERVED BEHAVIOR:**\n```\nRegistration form: username, email, password\nRegistered with username: test' → Success!\n[... truncated]\n\n[Result 5] | Source: 39_cookie_tossing_cache_attacks.md | Tags: xss, authentication\nVictim's browser now sends ATTACKER_SESSION to www.example.com\n6. Victim logs in on www.example.com, binding their auth to ATTACKER_SESSION\n7. Attacker uses ATTACKER_SESSION to access victim's authenticated session\n``` **Exploitation Example:**\n```html\n<!-- evil.example.com/fixate.html -->\n<html>\n<body>\n[script: 251 bytes]\n</body>\n</html>\n``` **Server-Side Impact:**\n```python\n# Man\n[... truncated]",
+    "raw_char_count": 2523,
+    "trimmed_char_count": 2523,
+    "retrieval_records": [
+      {
+        "rank": 0,
+        "source_file": "38_flask_session_cookie_forgery.md",
+        "section": "Use with requests",
+        "tags": [
+          "authentication",
+          "xxe"
+        ],
+        "doc_type": null,
+        "score": 0.27211305511404665,
+        "match_details": {
+          "term_overlap": 0.010143748896227723,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.95,
+          "position": 0.7805555555555556,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 1,
+        "source_file": "07_web_ctf_troubleshooting_checklist.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication",
+          "command_injection",
+          "encoding"
+        ],
+        "doc_type": null,
+        "score": 0.27100149894496406,
+        "match_details": {
+          "term_overlap": 0.026651474635137368,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.95,
+          "position": 0.7034090909090909,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 2,
+        "source_file": "03_html_js_and_client_side_validation.md",
+        "section": null,
+        "tags": [
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.21978423127162935,
+        "match_details": {
+          "term_overlap": 0.02788071706796231,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.7,
+          "position": 0.6863194444444445,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 3,
+        "source_file": "05_sql_injection_web_ctf_v3_final.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.18267743897304553,
+        "match_details": {
+          "term_overlap": 0.01773526409928049,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.55,
+          "position": 0.6558333333333333,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 4,
+        "source_file": "39_cookie_tossing_cache_attacks.md",
+        "section": null,
+        "tags": [
+          "xss",
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.16097217778739886,
+        "match_details": {
+          "term_overlap": 0.02574483840789112,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.5,
+          "position": 0.5067424242424242,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      }
+    ],
+    "injected": true
+  }
+}

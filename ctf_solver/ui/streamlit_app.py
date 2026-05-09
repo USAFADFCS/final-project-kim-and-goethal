@@ -24,9 +24,29 @@ os.environ["OMP_NUM_THREADS"] = "1"
 # Disable MKL threading (if using Intel MKL)
 os.environ["MKL_NUM_THREADS"] = "1"
 
+# Quiet the ~200-line flood of ``[transformers] Accessing __path__ from
+# .models.<X>.image_processing_<X>`` deprecation warnings emitted at
+# import time when ``sentence-transformers`` pulls in ``transformers``.
+# Upstream issue (transformers >= 4.50): the lazy-import shim eagerly
+# walks every image-processing module and each access fires a
+# ``__path__`` alias DeprecationWarning. Harmless but noisy. Two
+# layers of suppression cover both paths the warning may take:
+#   - ``TRANSFORMERS_VERBOSITY`` for warnings emitted via
+#     ``transformers.utils.logging``;
+#   - ``warnings.filterwarnings`` for warnings emitted via
+#     ``warnings.warn`` (the actual current path).
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+import warnings  # noqa: E402
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"Accessing `__path__` from .*",
+)
+
 # Now safe to import everything else
 import asyncio
 import io
+import json
 import queue
 import re
 import tarfile
@@ -65,11 +85,11 @@ from ctf_solver.batch import (
     rows_to_items,
     write_batch_summary,
 )
-from ctf_solver.config import RAG_EXPERIENCE_MODES, RAG_WRITE_MODES
+from ctf_solver.config import RAG_ALL_READ_MODES, RAG_EXPERIENCE_MODES, RAG_WRITE_MODES
 from ctf_solver.consolidate_knowledge import consolidate_lessons_knowledge
 from ctf_solver.failure_analyzer import (
     _detect_partial_successes,
-    find_and_compress_prior_lesson,
+    find_and_compress_prior_lesson_with_sources,
     run_lessons_learned_pipeline,
 )
 from ctf_solver.prompts import DEFAULT_SYSTEM_PROMPT, get_initial_message
@@ -190,11 +210,19 @@ async def run_agent_async(
     tracker = RunTracker()
     tracker.challenge_url = config.challenge_url or ""
     tracker.challenge_description = config.challenge_description or ""
+
+    # Phase C: buffer structured per-step events on the tracker so the
+    # batch log writer can flush them to <slug>.events.jsonl alongside
+    # the per-run .log file.
+    def _event_writer(evt: Dict[str, Any]) -> None:
+        tracker.events_buffer.append(evt)
+
     agent = build_agent(
         config,
         log_callback=log_callback,
         tracker=tracker,
         trace_callback=trace_callback,
+        event_writer=_event_writer,
     )
 
     initial_message = get_initial_message(
@@ -207,12 +235,17 @@ async def run_agent_async(
     )
 
     # Reflexion injection: prepend prior lesson if available (matches Shinn et al. 2023)
-    if config.rag_mode in RAG_EXPERIENCE_MODES and config.challenge_name:
-        prior_reflection = find_and_compress_prior_lesson(
-            challenge_name=config.challenge_name,
-            challenge_url=config.challenge_url,
-            lessons_docs_dir=str(config.lessons_docs_dir),
-            fallback_failure_docs_dir=str(config.failure_docs_dir),
+    if config.rag_mode in RAG_EXPERIENCE_MODES and (
+        config.challenge_name or config.challenge_url
+    ):
+        prior_reflection, reflexion_sources = (
+            find_and_compress_prior_lesson_with_sources(
+                challenge_name=config.challenge_name,
+                challenge_url=config.challenge_url,
+                lessons_docs_dir=str(config.lessons_docs_dir),
+                fallback_failure_docs_dir=str(config.failure_docs_dir),
+                challenge_description=config.challenge_description,
+            )
         )
         if prior_reflection:
             initial_message = (
@@ -222,13 +255,30 @@ async def run_agent_async(
                 + initial_message
             )
             tracker.prior_reflection_injected = True
+            tracker.reflexion_payload = {
+                "text": prior_reflection,
+                "sources": list(reflexion_sources),
+                "char_count": len(prior_reflection),
+            }
+            tracker.events_buffer.append(
+                {
+                    "event": "rag_reflexion",
+                    "step": 0,
+                    "sources": list(reflexion_sources),
+                    "text_len": len(prior_reflection),
+                    "ts": time.time(),
+                }
+            )
             log_callback("[Reflexion] Prior lesson injected into prompt.")
 
     # Proactive RAG injection: query knowledge base upfront so the agent always
     # sees relevant prior knowledge before its first action.  Gated by
     # ``enable_proactive_rag`` (default on) so users can switch to on-demand
     # retrieval only.
-    if config.rag_mode in RAG_EXPERIENCE_MODES and config.enable_proactive_rag:
+    # v3.8: extended to ORIGINAL (curated-only) mode too — previously gated
+    # only on the experience modes which left curated-only users without
+    # proactive injection.
+    if config.rag_mode in RAG_ALL_READ_MODES and config.enable_proactive_rag:
         active_tool = get_active_knowledge_tool()
         if active_tool is not None:
             query = (
@@ -240,9 +290,29 @@ async def run_agent_async(
                 f"[RAG] Proactive knowledge injection attempted (query: {query!r:.80})."
             )
             proactive_results = active_tool.use(query)
+            retrieval_records = list(getattr(active_tool, "last_retrieval_records", []))
             if proactive_results and "No relevant information" not in proactive_results:
                 log_callback(
                     "[RAG] Proactive knowledge injection succeeded — results injected."
+                )
+                tracker.proactive_rag_payload = {
+                    "query": query,
+                    "raw_text": proactive_results,
+                    "trimmed_text": proactive_results,  # streamlit path injects untrimmed
+                    "raw_char_count": len(proactive_results),
+                    "trimmed_char_count": len(proactive_results),
+                    "retrieval_records": retrieval_records,
+                    "injected": True,
+                }
+                tracker.events_buffer.append(
+                    {
+                        "event": "rag_proactive",
+                        "step": 0,
+                        "query": query,
+                        "n_records": len(retrieval_records),
+                        "trimmed_char_count": len(proactive_results),
+                        "ts": time.time(),
+                    }
                 )
                 initial_message += (
                     "\n\n## Relevant Background Knowledge\n"
@@ -253,6 +323,15 @@ async def run_agent_async(
                 log_callback(
                     "[RAG] Proactive knowledge injection: no relevant results found."
                 )
+                tracker.proactive_rag_payload = {
+                    "query": query,
+                    "raw_text": proactive_results or "",
+                    "trimmed_text": "",
+                    "raw_char_count": len(proactive_results or ""),
+                    "trimmed_char_count": 0,
+                    "retrieval_records": retrieval_records,
+                    "injected": False,
+                }
 
     st.session_state.execution_trace.append(
         {
@@ -281,6 +360,15 @@ async def run_agent_async(
     else:
         tracker.outcome = "failure"
     tracker.run_succeeded = tracker.outcome == "success"
+
+    # Phase B2-B3: roll up token usage from per-call records into the
+    # tracker's authoritative fields and compute cost. Mirrors the
+    # CLI runner's behavior so streamlit-driven batches get the same
+    # cost columns in their results.tsv.
+    if tracker.per_call_tokens:
+        tracker.set_token_usage_from_adapter(
+            list(tracker.per_call_tokens), config.model_name
+        )
 
     # Write knowledge docs when the user opted into building the database.
     # All write modes route through the unified lessons-learned pipeline;
@@ -719,6 +807,10 @@ def _write_batch_item_log(
     Format matches the existing ``out/batch_20260417/*.log`` shape the user
     already has on disk — a single plain-text file per challenge, enough
     context to audit the run without opening the full tracker dict.
+
+    Phase A5: also write ``<slug>.injections.json`` next to the log when
+    the tracker captured a Reflexion or proactive-RAG payload, so post-run
+    analysis can show exactly what was prepended to the agent prompt.
     """
     log_path = out_dir / f"{item.slug}.log"
     lines: List[str] = []
@@ -741,6 +833,45 @@ def _write_batch_item_log(
     lines.append("## Final answer")
     lines.append(response or "")
     log_path.write_text("\n".join(lines), encoding="utf-8")
+
+    # Phase A5: sidecar injections.json — only emitted when at least one of
+    # the two payloads is populated, to avoid littering empty files for
+    # ``rag_mode == NONE`` runs.
+    refl_payload = stats.get("reflexion_payload")
+    rag_payload = stats.get("proactive_rag_payload")
+    if refl_payload or rag_payload:
+        injections_path = out_dir / f"{item.slug}.injections.json"
+        try:
+            injections_path.write_text(
+                json.dumps(
+                    {
+                        "challenge_name": item.name,
+                        "rag_mode": str(config.rag_mode),
+                        "outcome": stats.get("outcome", "unknown"),
+                        "reflexion": refl_payload,
+                        "proactive": rag_payload,
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            # Non-fatal: the .log file is the source of truth for the run;
+            # the injections sidecar is purely diagnostic.
+            log_callback(f"[Batch] WARN: could not write injections JSON: {exc}")
+
+    # Phase C: per-step structured events. One JSON object per line so the
+    # figure-rendering script can pandas.read_json(lines=True) it directly.
+    events = stats.get("events_buffer") or []
+    if events:
+        events_path = out_dir / f"{item.slug}.events.jsonl"
+        try:
+            with events_path.open("w", encoding="utf-8") as ef:
+                for evt in events:
+                    ef.write(json.dumps(evt, ensure_ascii=False) + "\n")
+        except (OSError, TypeError, ValueError) as exc:
+            log_callback(f"[Batch] WARN: could not write events JSONL: {exc}")
     return log_path
 
 
@@ -1045,6 +1176,10 @@ def render_sidebar():
         "claude-haiku-4-5",
         "gemini-2.5-pro",
         "gemini-2.5-flash",
+        # Local via MLX (Apple Silicon). Outlines grammar-constrains output to
+        # _REACT_SCHEMA so the strict ReActPlanner gets guaranteed valid JSON.
+        # Requires launching Streamlit from ~/mlx-env with outlines[mlxlm].
+        "mlx-community/gemma-4-26b-a4b-it-4bit",
         # Local via Ollama — auto-routed by name:tag form.
         # Order = recommended preference as the agent driver:
         # gemma4 has tools + thinking + 262k context (best local on paper).
@@ -1069,6 +1204,9 @@ def render_sidebar():
         index=current_index,
         help=(
             "Hosted: Gemini (GENAI.mil), Anthropic Claude, OpenAI. "
+            "Local via MLX (Apple Silicon): mlx-community/gemma-4-26b-a4b-it-4bit — "
+            "fastest local option on M-series (~90-113 tok/s), Outlines guarantees "
+            "valid ReAct JSON via grammar-constrained decoding. "
             "Local via Ollama, ranked by ReAct format compliance: "
             "gemma4:26b > llama3.1 > mistral-small > gpt-oss > "
             "edgerunner-medium. gemma4:26b is the most capable local "
@@ -1078,6 +1216,24 @@ def render_sidebar():
         ),
     )
 
+    # MLX reminder: the UI can select the MLX model, but the Streamlit
+    # process itself must be running inside ~/mlx-env with outlines[mlxlm]
+    # installed, otherwise the first invoke raises ImportError. Surface the
+    # check here so the user sees the fix before clicking Run.
+    if st.session_state.model_name.startswith("mlx-community/"):
+        try:
+            import mlx_lm  # noqa: F401
+            import outlines  # noqa: F401
+
+            st.sidebar.caption("✓ MLX stack available in this venv")
+        except ImportError:
+            st.sidebar.warning(
+                "MLX model selected but `mlx_lm` / `outlines` not importable. "
+                "Stop Streamlit, then: "
+                "`source ~/mlx-env/bin/activate && "
+                'pip install "outlines[mlxlm]"` and relaunch.'
+            )
+
     st.session_state.max_steps = st.sidebar.slider(
         "Max Steps",
         min_value=5,
@@ -1086,11 +1242,12 @@ def render_sidebar():
         help="Maximum number of reasoning steps before stopping",
     )
 
-    # Grammar-constrained decoding is only meaningful for local (Ollama)
-    # models — the auto-route check mirrors agent.py's _looks_like_ollama_model
-    # heuristic (any name containing a tag ':' counts as local).
+    # Grammar-constrained decoding is only meaningful for local models
+    # (Ollama via ``format=<schema>`` or MLX via Outlines). Auto-detect both:
+    # ``:`` in the name = Ollama tag form; ``mlx-community/`` prefix = MLX.
     _selected = st.session_state.get("model_name", "")
-    if ":" in _selected:
+    _is_local = ":" in _selected or _selected.startswith("mlx-community/")
+    if _is_local:
         grammar_options = {
             "Auto (enforce JSON schema)": "auto",
             "None (no constraint)": "none",
@@ -1108,9 +1265,10 @@ def render_sidebar():
             options=grammar_labels,
             index=current_grammar_idx,
             help=(
-                "Grammar-constrained decoding for local models. When on, "
-                "Ollama's decoder can only emit valid ReAct JSON — "
-                "eliminates the 'Could not parse simplified ReAct response' "
+                "Grammar-constrained decoding for local models. For Ollama, "
+                "passes the ReAct JSON schema via ``format=``. For MLX, uses "
+                "Outlines' FSM to mask logits against the schema — guaranteed "
+                "valid JSON. Eliminates 'Could not parse ReAct response' "
                 "errors that waste steps on small models. Use 'None' for "
                 "A/B comparison runs."
             ),

@@ -165,7 +165,11 @@ class TestLoggingWrapperDetailedCapture:
 
         wrapper = LoggingToolWrapper(FakeTool(), tracker=None)
         result = wrapper.use("input")
-        assert result == "result"
+        # v3.8: wrapper now prepends a structured `[<tool>] result=…;`
+        # header so a 26B model can grep one line for outcome.  The
+        # original prose ("result") still follows verbatim.
+        assert "result" in result
+        assert result.startswith("[fake_tool] result=info;")
 
 
 class TestStuckDetection:

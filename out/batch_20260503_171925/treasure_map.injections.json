@@ -1,0 +1,115 @@
+{
+  "challenge_name": "Treasure Map",
+  "rag_mode": "RAGMode.LESSONS_BUILDONLY",
+  "outcome": "success",
+  "reflexion": null,
+  "proactive": {
+    "query": "After several long years, you finally found yourself on board the digital buccaneer. You know the treasure must be close, but searching the ship's navigation hasn't helped at all! Can you steal the pirate's booty? Access the site here.",
+    "raw_text": "[Result 1] | Source: 34_css_injection_exfiltration.md\n```html\n<!-- Target HTML structure -->\n<div data-role=\"admin\" data-token=\"secret123\">\n  <template shadowrootmode=\"open\">\n    [style: 230 bytes]\n    <div class=\"probe\">X</div>\n  </template>\n</div>\n``` **Declarative Shadow DOM Injection:**\nIf the application uses Declarative Shadow DOM (`<template shadowrootmode=\"open\">`), and you can inject HTML that becomes part of the shadow tree:\n[... truncated]\n\n[Result 2] | Source: 42_xss_admin_bot_exploitation.md | Tags: xss, command_injection, encoding\nVisit webhook.site — it generates a unique URL automatically\n2. Copy the URL (looks like `https://webhook.site/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)\n3. Replace `WEBHOOK_URL` in your payload templates with this URL\n4. After triggering the admin bot, check the webhook dashboard for incoming requests\n5. The exfiltrated data will be in the query string (after `?c=` or `?f=`) as base64\n[... truncated]\n\n[Result 3] | Source: 37_http_request_smuggling.md | Tags: xss, authentication\n**How it works:**\n- The smuggled request has `Content-Length: 500` but no complete body\n- The back-end reads the next user's request as part of the body\n- The victim's headers (including cookies, auth tokens) are stored in the `comment` parameter ### 8.3 Response Queue Poisoning **Tags:** `http-smuggling, exploitation, response-queue, poisoning, xss` ```http\nPOST / HTTP/1.1\nHost: v\n[... truncated]\n\n[Result 4] | Source: 04_cookies_sessions_and_auth_bypass.md | Section: A very common CTF pattern | Tags: authentication, jwt, encoding\nA very common CTF pattern:\n- After login or visiting the site, you receive a cookie like:\n  - `isAdmin=false`\n  - `role=user`\n  - `admin=0` **Sometimes:**\n- The application uses this cookie directly to decide whether to show admin-only content. - Changing the cookie to `isAdmin=true` or `admin=1` might grant access. **In these CTFs:**\n- There may be no server-side verification beyo\n[... truncated]\n\n[Result 5] | Source: 03_html_js_and_client_side_validation.md | Tags: authentication, command_injection\nt-side JS are visible to anyone who inspects the source. - Any restrictions enforced only by JS can be bypassed. **Because of this:**\n- Real security checks (authentication, access control, flag delivery) should be enforced on the server. - CTF challenges intentionally violate this rule so you can exploit the weakness. --- ### 4.2 Strategy: Bypass JS Checks or Send Correct Values M\n[... truncated]",
+    "trimmed_text": "[Result 1] | Source: 34_css_injection_exfiltration.md\n```html\n<!-- Target HTML structure -->\n<div data-role=\"admin\" data-token=\"secret123\">\n  <template shadowrootmode=\"open\">\n    [style: 230 bytes]\n    <div class=\"probe\">X</div>\n  </template>\n</div>\n``` **Declarative Shadow DOM Injection:**\nIf the application uses Declarative Shadow DOM (`<template shadowrootmode=\"open\">`), and you can inject HTML that becomes part of the shadow tree:\n[... truncated]\n\n[Result 2] | Source: 42_xss_admin_bot_exploitation.md | Tags: xss, command_injection, encoding\nVisit webhook.site — it generates a unique URL automatically\n2. Copy the URL (looks like `https://webhook.site/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`)\n3. Replace `WEBHOOK_URL` in your payload templates with this URL\n4. After triggering the admin bot, check the webhook dashboard for incoming requests\n5. The exfiltrated data will be in the query string (after `?c=` or `?f=`) as base64\n[... truncated]\n\n[Result 3] | Source: 37_http_request_smuggling.md | Tags: xss, authentication\n**How it works:**\n- The smuggled request has `Content-Length: 500` but no complete body\n- The back-end reads the next user's request as part of the body\n- The victim's headers (including cookies, auth tokens) are stored in the `comment` parameter ### 8.3 Response Queue Poisoning **Tags:** `http-smuggling, exploitation, response-queue, poisoning, xss` ```http\nPOST / HTTP/1.1\nHost: v\n[... truncated]\n\n[Result 4] | Source: 04_cookies_sessions_and_auth_bypass.md | Section: A very common CTF pattern | Tags: authentication, jwt, encoding\nA very common CTF pattern:\n- After login or visiting the site, you receive a cookie like:\n  - `isAdmin=false`\n  - `role=user`\n  - `admin=0` **Sometimes:**\n- The application uses this cookie directly to decide whether to show admin-only content. - Changing the cookie to `isAdmin=true` or `admin=1` might grant access. **In these CTFs:**\n- There may be no server-side verification beyo\n[... truncated]\n\n[Result 5] | Source: 03_html_js_and_client_side_validation.md | Tags: authentication, command_injection\nt-side JS are visible to anyone who inspects the source. - Any restrictions enforced only by JS can be bypassed. **Because of this:**\n- Real security checks (authentication, access control, flag delivery) should be enforced on the server. - CTF challenges intentionally violate this rule so you can exploit the weakness. --- ### 4.2 Strategy: Bypass JS Checks or Send Correct Values M\n[... truncated]",
+    "raw_char_count": 2474,
+    "trimmed_char_count": 2474,
+    "retrieval_records": [
+      {
+        "rank": 0,
+        "source_file": "34_css_injection_exfiltration.md",
+        "section": null,
+        "tags": [],
+        "doc_type": null,
+        "score": 0.23686312132609522,
+        "match_details": {
+          "term_overlap": 0.030832045739480365,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.8,
+          "position": 0.6453030303030304,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 1,
+        "source_file": "42_xss_admin_bot_exploitation.md",
+        "section": null,
+        "tags": [
+          "xss",
+          "command_injection",
+          "encoding"
+        ],
+        "doc_type": null,
+        "score": 0.2253325953118909,
+        "match_details": {
+          "term_overlap": 0.021645882219121174,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.65,
+          "position": 0.8667424242424243,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 2,
+        "source_file": "37_http_request_smuggling.md",
+        "section": null,
+        "tags": [
+          "xss",
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.2141402842379329,
+        "match_details": {
+          "term_overlap": 0.02360071059483232,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.65,
+          "position": 0.747,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 3,
+        "source_file": "04_cookies_sessions_and_auth_bypass.md",
+        "section": "A very common CTF pattern",
+        "tags": [
+          "authentication",
+          "jwt",
+          "encoding"
+        ],
+        "doc_type": null,
+        "score": 0.20533360861726824,
+        "match_details": {
+          "term_overlap": 0.025018049320948386,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.55,
+          "position": 0.8532638888888888,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 4,
+        "source_file": "03_html_js_and_client_side_validation.md",
+        "section": null,
+        "tags": [
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.19884713593602493,
+        "match_details": {
+          "term_overlap": 0.0323903765276933,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.55,
+          "position": 0.7589098532494759,
+          "recency": 1.0
+        },
+        "char_count": 477,
+        "is_lesson": false
+      }
+    ],
+    "injected": true
+  }
+}

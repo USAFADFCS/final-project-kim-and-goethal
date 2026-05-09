@@ -1,0 +1,113 @@
+{
+  "challenge_name": "Treasure Map",
+  "rag_mode": "RAGMode.LESSONS_WRITE",
+  "outcome": "success",
+  "reflexion": null,
+  "proactive": {
+    "query": "After several long years, you finally found yourself on board the digital buccaneer. You know the treasure must be close, but searching the ship's navigation hasn't helped at all! Can you steal the pirate's booty? Access the site here.",
+    "raw_text": "[Result 1] | Source: 34_css_injection_exfiltration.md\n```html\n<!-- Target HTML structure -->\n<div data-role=\"admin\" data-token=\"secret123\">\n  <template shadowrootmode=\"open\">\n    [style: 230 bytes]\n    <div class=\"probe\">X</div>\n  </template>\n</div>\n``` **Declarative Shadow DOM Injection:**\nIf the application uses Declarative Shadow DOM (`<template shadowrootmode=\"open\">`), and you can inject HTML that becomes part of the shadow tree:\n[... truncated]\n\n[Result 2] | Source: lessons_002_ssti1_r2_20260303_093329.md | Section: Server-Side Template Injection: When you achieve 'ssti_confirmed' during a Server-Side Template Inject **Type:** experience_success | Tags: ssti\n# Server-Side Template Injection: When you achieve 'ssti_confirmed' during a Server-Side Template Inject **Type:** experience_success\n**Category:** Server-Side Template Injection\n**Challenge:** SSTI1\n**Challenge URL:** http://rescued-float.picoctf.net:55010/\n**Auto-generated:** 2026-03-03\n**Tags:** ssti, success, experience, do\n**Confidence:** high\n**Template engine:** Jinja2/Twig\n\n[... truncated]\n\n[Result 3] | Source: lessons_013_some-assembly-required-3_r2_20260303_201316.md | Section: WASM / Reverse Engineering: When you achieve 'recon_complete' during a WASM / Reverse Engineering **Type:** experience_success | Tags: command_injection, encoding\n# WASM / Reverse Engineering: When you achieve 'recon_complete' during a WASM / Reverse Engineering **Type:** experience_success\n**Category:** WASM / Reverse Engineering\n**Challenge:** Some Assembly Required 3\n**Challenge URL:** http://wily-courier.picoctf.net:62191/index.html\n**Auto-generated:** 2026-03-03\n**Tags:** wasm_re, success, experience, do\n**Confidence:** medium **Applies\n[... truncated]\n\n[Result 4] | Source: 04_cookies_sessions_and_auth_bypass.md | Section: A very common CTF pattern | Tags: authentication, jwt, encoding\nA very common CTF pattern:\n- After login or visiting the site, you receive a cookie like:\n  - `isAdmin=false`\n  - `role=user`\n  - `admin=0` **Sometimes:**\n- The application uses this cookie directly to decide whether to show admin-only content. - Changing the cookie to `isAdmin=true` or `admin=1` might grant access. **In these CTFs:**\n- There may be no server-side verification beyo\n[... truncated]\n\n[Result 5] | Source: 03_html_js_and_client_side_validation.md | Tags: authentication, command_injection\nt-side JS are visible to anyone who inspects the source. - Any restrictions enforced only by JS can be bypassed. **Because of this:**\n- Real security checks (authentication, access control, flag delivery) should be enforced on the server. - CTF challenges intentionally violate this rule so you can exploit the weakness. --- ### 4.2 Strategy: Bypass JS Checks or Send Correct Values M\n[... truncated]",
+    "trimmed_text": "[Result 1] | Source: 34_css_injection_exfiltration.md\n```html\n<!-- Target HTML structure -->\n<div data-role=\"admin\" data-token=\"secret123\">\n  <template shadowrootmode=\"open\">\n    [style: 230 bytes]\n    <div class=\"probe\">X</div>\n  </template>\n</div>\n``` **Declarative Shadow DOM Injection:**\nIf the application uses Declarative Shadow DOM (`<template shadowrootmode=\"open\">`), and you can inject HTML that becomes part of the shadow tree:\n[... truncated]\n\n[Result 2] | Source: lessons_002_ssti1_r2_20260303_093329.md | Section: Server-Side Template Injection: When you achieve 'ssti_confirmed' during a Server-Side Template Inject **Type:** experience_success | Tags: ssti\n# Server-Side Template Injection: When you achieve 'ssti_confirmed' during a Server-Side Template Inject **Type:** experience_success\n**Category:** Server-Side Template Injection\n**Challenge:** SSTI1\n**Challenge URL:** http://rescued-float.picoctf.net:55010/\n**Auto-generated:** 2026-03-03\n**Tags:** ssti, success, experience, do\n**Confidence:** high\n**Template engine:** Jinja2/Twig\n\n[... truncated]\n\n[Result 3] | Source: lessons_013_some-assembly-required-3_r2_20260303_201316.md | Section: WASM / Reverse Engineering: When you achieve 'recon_complete' during a WASM / Reverse Engineering **Type:** experience_success | Tags: command_injection, encoding\n# WASM / Reverse Engineering: When you achieve 'recon_complete' during a WASM / Reverse Engineering **Type:** experience_success\n**Category:** WASM / Reverse Engineering\n**Challenge:** Some Assembly Required 3\n**Challenge URL:** http://wily-courier.picoctf.net:62191/index.html\n**Auto-generated:** 2026-03-03\n**Tags:** wasm_re, success, experience, do\n**Confidence:** medium **Applies\n[... truncated]\n\n[Result 4] | Source: 04_cookies_sessions_and_auth_bypass.md | Section: A very common CTF pattern | Tags: authentication, jwt, encoding\nA very common CTF pattern:\n- After login or visiting the site, you receive a cookie like:\n  - `isAdmin=false`\n  - `role=user`\n  - `admin=0` **Sometimes:**\n- The application uses this cookie directly to decide whether to show admin-only content. - Changing the cookie to `isAdmin=true` or `admin=1` might grant access. **In these CTFs:**\n- There may be no server-side verification beyo\n[... truncated]\n\n[Result 5] | Source: 03_html_js_and_client_side_validation.md | Tags: authentication, command_injection\nt-side JS are visible to anyone who inspects the source. - Any restrictions enforced only by JS can be bypassed. **Because of this:**\n- Real security checks (authentication, access control, flag delivery) should be enforced on the server. - CTF challenges intentionally violate this rule so you can exploit the weakness. --- ### 4.2 Strategy: Bypass JS Checks or Send Correct Values M\n[... truncated]",
+    "raw_char_count": 2772,
+    "trimmed_char_count": 2772,
+    "retrieval_records": [
+      {
+        "rank": 0,
+        "source_file": "34_css_injection_exfiltration.md",
+        "section": null,
+        "tags": [],
+        "doc_type": null,
+        "score": 0.23686312132609522,
+        "match_details": {
+          "term_overlap": 0.030832045739480365,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.8,
+          "position": 0.6453030303030304,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 1,
+        "source_file": "lessons_002_ssti1_r2_20260303_093329.md",
+        "section": "Server-Side Template Injection: When you achieve 'ssti_confirmed' during a Server-Side Template Inject **Type:** experience_success",
+        "tags": [
+          "ssti"
+        ],
+        "doc_type": null,
+        "score": 0.21332991001283033,
+        "match_details": {
+          "term_overlap": 0.025047452494991677,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.75,
+          "position": 0.7059848484848484,
+          "recency": 0.6251897970911005
+        },
+        "char_count": 1200,
+        "is_lesson": true
+      },
+      {
+        "rank": 2,
+        "source_file": "lessons_013_some-assembly-required-3_r2_20260303_201316.md",
+        "section": "WASM / Reverse Engineering: When you achieve 'recon_complete' during a WASM / Reverse Engineering **Type:** experience_success",
+        "tags": [
+          "command_injection",
+          "encoding"
+        ],
+        "doc_type": null,
+        "score": 0.2084968527070233,
+        "match_details": {
+          "term_overlap": 0.019940216925851736,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.75,
+          "position": 0.6741666666666666,
+          "recency": 0.6251897970911005
+        },
+        "char_count": 1200,
+        "is_lesson": true
+      },
+      {
+        "rank": 3,
+        "source_file": "04_cookies_sessions_and_auth_bypass.md",
+        "section": "A very common CTF pattern",
+        "tags": [
+          "authentication",
+          "jwt",
+          "encoding"
+        ],
+        "doc_type": null,
+        "score": 0.20533360861726824,
+        "match_details": {
+          "term_overlap": 0.025018049320948386,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.55,
+          "position": 0.8532638888888888,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 4,
+        "source_file": "03_html_js_and_client_side_validation.md",
+        "section": null,
+        "tags": [
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.19884713593602493,
+        "match_details": {
+          "term_overlap": 0.0323903765276933,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.55,
+          "position": 0.7589098532494759,
+          "recency": 1.0
+        },
+        "char_count": 477,
+        "is_lesson": false
+      }
+    ],
+    "injected": true
+  }
+}

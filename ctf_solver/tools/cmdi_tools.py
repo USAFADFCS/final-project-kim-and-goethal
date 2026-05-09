@@ -5,12 +5,13 @@ Provides utilities for detecting OS command injection vulnerabilities
 and generating bypass payloads for filtered environments.
 """
 
-import json
 import re
 import time
 from typing import List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class CommandInjectionProbeTool:
@@ -45,6 +46,24 @@ class CommandInjectionProbeTool:
         "Tests output-based and time-based injection using various separators and "
         "detection commands."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "data": {"type": "object"},
+            "os_target": {
+                "type": "string",
+                "enum": ["linux", "windows", "both"],
+                "default": "linux",
+            },
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/ping", "param": "host"}]
 
     # Linux separators paired with detection commands
     LINUX_SEPARATORS: List[str] = [
@@ -192,11 +211,9 @@ class CommandInjectionProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CommandInjectionProbeTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "CommandInjectionProbeTool")
+        if err:
+            return err
         url = data.get("url", "").strip() if isinstance(data.get("url"), str) else ""
         param = (
             data.get("param", "").strip() if isinstance(data.get("param"), str) else ""
@@ -426,11 +443,9 @@ class CommandInjectionPayloadGenerator:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CommandInjectionPayloadGenerator] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "CommandInjectionPayloadGenerator")
+        if err:
+            return err
         operation = data.get("operation", "").strip().lower()
         command = data.get("command", "id")
         os_target = data.get("os_target", "linux").lower()

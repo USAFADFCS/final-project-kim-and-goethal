@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="C1C Andrew Kim · USAFA/DFMA" />
+  <meta name="dcterms.date" content="2026-04-29" />
+  <title>Path to A — DATA 422 Final Capstone Plan</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      font-size: 11pt;
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: blue;
+    }
+    a:visited {
+      color: blue;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      white-space: pre-wrap;
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Path to A — DATA 422 Final Capstone Plan</h1>
+<p class="subtitle">Automated CTF Program (Cadet-Initiated)</p>
+<p class="author">C1C Andrew Kim · USAFA/DFMA</p>
+<p class="date">29 April 2026</p>
+</header>
+<nav id="TOC" role="doc-toc">
+
+</nav>
+<h1 id="document-purpose">0. Document Purpose</h1>
+<p>This is your day-by-day execution plan from <strong>today (Wed 29 Apr
+2026)</strong> through the <strong>Final Paper deadline (COB Fri 8 May
+2026)</strong>. Every step is tagged with the rubric criterion it earns
+and the artifact it produces. Code blocks are ready to paste — modify
+paths only.</p>
+<p>The plan assumes:</p>
+<ul>
+<li>You brief on the <strong>earliest</strong> Final Outbrief slot (Mon
+4 May, T38). If you brief later (T39 = Wed 6 May or T40 = Fri 8 May) the
+buffer days at the end grow.</li>
+<li>You will use a <strong>hybrid backend</strong>: OpenAI API for the
+bulk benchmark sweep, Ollama (gemma4:26b) for a smaller subset that
+anchors the local-model thread.</li>
+<li>This is a <strong>cadet-initiated, individual capstone</strong> with
+Lt Col Todd as mentor (no external sponsor). The “decision-quality
+recommendations” rubric line maps to recommendations for (a) Lt Col
+Todd’s research interests, (b) future cadet researchers continuing this
+work, and (c) an explicit “what would a master’s thesis follow-on look
+like” section.</li>
+</ul>
+<h1 id="how-a-cadet-initiated-capstone-changes-the-rubric-mapping">1.
+How a Cadet-Initiated Capstone Changes the Rubric Mapping</h1>
+<p>The Course Letter and the rubrics use the word “sponsor” frequently.
+For your project there is no operational sponsor — Lt Col Todd is your
+mentor. Three mappings to make explicit so the panel doesn’t penalize
+for missing what isn’t there:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Rubric line</th>
+<th>What “sponsor” maps to in your case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>“Decision-quality information that directly solves sponsor
+needs”</td>
+<td>(a) Recommendations <em>to Lt Col Todd</em> on follow-on research
+directions; (b) deployment envelope for a hypothetical operational user;
+(c) explicit master’s thesis problem statements derived from your
+gaps</td>
+</tr>
+<tr>
+<td>“Open, transparent, timely communication with sponsor”</td>
+<td>Documented mentor meetings (cite dates in the paper
+acknowledgements)</td>
+</tr>
+<tr>
+<td>“Sponsor approval” for cloud APIs (Course Letter §9)</td>
+<td>Mentor approval — you still owe Lt Col Todd a heads-up on the
+OpenAI-API decision before you spend</td>
+</tr>
+<tr>
+<td>“Has answered the questions your sponsor was asking”</td>
+<td>Has answered your <strong>own</strong> three research questions;
+restate them verbatim in §6 of the paper and on the conclusions
+slide</td>
+</tr>
+</tbody>
+</table>
+<p>In the Final Brief and Paper, <strong>state once, near the top, that
+this is a cadet-initiated individual capstone</strong> so the panel
+scores recommendations against the right reference. Suggested wording:
+<em>“This capstone is a cadet-initiated individual research project
+mentored by Lt Col Todd (DFCS). Research recommendations are scoped to
+follow-on work and future cadet researchers in this domain rather than
+an external operational sponsor.”</em></p>
+<h1 id="strategic-reframe-read-this-first">2. Strategic Reframe (Read
+This First)</h1>
+<p>Your mid-semester brief asked: <em>“Can a 26B local model +
+lessons-learned KB match capability?”</em> and reported the honest
+negative result that KB hurt overall solve rate (3 regressed, 2
+improved, 9 efficient).</p>
+<p>For an <strong>A</strong>, that finding alone is insufficient — the
+rubric explicitly penalizes narratives that dwell on the
+journey/failures over the final solution. <strong>Reframe the project
+around three claims that the data can support:</strong></p>
+<p><strong>Claim 1 — Scaffolding-tier hypothesis.</strong> Scaffolding
+investment scales inversely with model capability. At 26B local,
+scaffolding moves the needle materially. At frontier (GPT-4o),
+scaffolding marginal value approaches zero. Lessons-DB is one component
+of scaffolding and behaves accordingly.</p>
+<p><strong>Claim 2 — Regression diagnosis.</strong> Where lessons-DB
+hurt, the cause was mechanical (context bloat, stale rule cross-talk,
+narrow IDOR enumeration default). v3.10 P0–P5 patches address each
+mechanism; post-fix benchmark quantifies the remediation.</p>
+<p><strong>Claim 3 — Capability envelope.</strong> Across N challenges
+in M categories, the solver reliably solves categories X/Y/Z; categories
+P/Q remain open. This becomes the deployment recommendation table.</p>
+<p>These three claims map cleanly to the three research questions on
+slide 8 of your mid-semester deck and convert the “did RAG work?”
+framing into a “where does scaffolding pay off, and how do we diagnose
+its failures?” framing — which is exactly what the rubric A-line
+(“explored novel methodologies, integrated them, comprehensive
+discussion”) rewards.</p>
+<h1 id="calendar-day-by-day">3. Calendar — Day-by-Day</h1>
+<table>
+<colgroup>
+<col style="width: 18%" />
+<col style="width: 18%" />
+<col style="width: 18%" />
+<col style="width: 25%" />
+<col style="width: 18%" />
+</colgroup>
+<thead>
+<tr>
+<th>Day</th>
+<th>Date</th>
+<th>Focus</th>
+<th>Hrs</th>
+<th>Deliverable</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wed</td>
+<td>29 Apr</td>
+<td>Bench setup; mentor email; lit review pull</td>
+<td>6</td>
+<td><code>bench/challenges.tsv</code>,
+<code>scripts/benchmark.sh</code>, batch 1 kicked off</td>
+</tr>
+<tr>
+<td>Thu</td>
+<td>30 Apr</td>
+<td>Lit review synthesis; methods inventory; bench batch 2</td>
+<td>4+idle</td>
+<td><code>refs/synthesis.md</code>, <code>methods_inventory.md</code>,
+partial CSV</td>
+</tr>
+<tr>
+<td>Fri</td>
+<td>1 May</td>
+<td>Mentor sync; figures; regression diagnosis</td>
+<td>6</td>
+<td><code>out/figures/fig{1..5}.png</code>,
+<code>results/regression_diagnoses.md</code>,
+<code>sponsor_notes.md</code></td>
+</tr>
+<tr>
+<td>Sat</td>
+<td>2 May</td>
+<td>Paper draft §1–4 (Abstract, Intro, Lit, Methods)</td>
+<td>6</td>
+<td><code>final_paper/main.tex</code> partial</td>
+</tr>
+<tr>
+<td>Sun</td>
+<td>3 May</td>
+<td>Paper draft §5–6 (Results, Conclusions); citations</td>
+<td>6</td>
+<td><code>final_paper/main.tex</code> complete first draft,
+<code>references.bib</code></td>
+</tr>
+<tr>
+<td>Mon</td>
+<td>4 May</td>
+<td>Slide deck (21 slides)</td>
+<td>5</td>
+<td><code>presentation/final_brief.pptx</code></td>
+</tr>
+<tr>
+<td>Tue</td>
+<td>5 May</td>
+<td>Q&amp;A prep; solo run-through</td>
+<td>4</td>
+<td><code>qa_prep.md</code>, timed solo</td>
+</tr>
+<tr>
+<td>Wed</td>
+<td>6 May</td>
+<td>Mock run-through; README handoff; paper edit pass 1</td>
+<td>4</td>
+<td><code>README_HANDOFF.md</code>, paper rev 2</td>
+</tr>
+<tr>
+<td>Thu</td>
+<td>7 May</td>
+<td>Paper edit pass 2; AI-usage statement; final slide polish</td>
+<td>3</td>
+<td>paper rev 3, slides final</td>
+</tr>
+<tr>
+<td>Fri</td>
+<td>8 May</td>
+<td>Submit by 0900</td>
+<td>1</td>
+<td>Email to Maj Merrick</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Total: ~45 hours.</strong> Tight but doable. Lighter days
+near the brief give buffer.</p>
+<h1 id="phase-1-generate-evidence-wed-29-apr-fri-1-may">4. Phase 1 —
+Generate Evidence (Wed 29 Apr → Fri 1 May)</h1>
+<h2 id="build-the-benchmark-spec-wed-am-1-hr">4.1 Build the benchmark
+spec (Wed AM, 1 hr)</h2>
+<p>Create <code>bench/challenges.tsv</code> (tab-separated, columns:
+name url category preset notes):</p>
+<pre><code># Name&lt;TAB&gt;URL&lt;TAB&gt;category&lt;TAB&gt;preset&lt;TAB&gt;notes
+crystal-peak&lt;TAB&gt;http://crystal-peak.picoctf.net:&lt;port&gt;&lt;TAB&gt;idor&lt;TAB&gt;picoctf&lt;TAB&gt;md5(uid) IDOR
+# ... continue with the 18 mid-sem challenges + 5–7 fresh picoCTF retired</code></pre>
+<p><strong>Sourcing the 18:</strong>
+<code>ls out/lessons_knowledge/lessons_*.md | sed 's/.*lessons_[0-9]*_//' | sed 's/_r[0-9]*_.*//' | sort -u</code>
+— each file name is a challenge slug.</p>
+<p><strong>Adding new ones:</strong> pick from picoCTF retired
+challenges (<a href="https://play.picoctf.org/practice"
+class="uri">https://play.picoctf.org/practice</a>) plus any leftover
+from your batch_* directories. Stratify so each category has ≥2
+entries.</p>
+<p><strong>Document scope/exclusions</strong> in
+<code>bench/README.md</code> — the rubric A-line wants “data source,
+scope, and limitations clearly described.”</p>
+<h2 id="the-benchmark-harness-wed-am-1.5-hr">4.2 The benchmark harness
+(Wed AM, 1.5 hr)</h2>
+<p>Three new files. <strong>All three are designed to be
+paste-ready.</strong></p>
+<h3 id="scriptsbenchmark.sh">4.2.1
+<code>scripts/benchmark.sh</code></h3>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/usr/bin/env bash</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Hybrid CTF benchmark — runs every challenge under three rag-mode configs</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co"># on each backend tier. Tier 1: OpenAI (frontier). Tier 2: Ollama (26B local).</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Outputs runs/benchmark_&lt;ts&gt;/&lt;tier&gt;/&lt;config&gt;/&lt;name&gt;.log + metrics.csv.</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="bu">set</span> <span class="at">-euo</span> pipefail</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="va">HERE</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$(</span><span class="bu">cd</span> <span class="st">&quot;</span><span class="va">$(</span><span class="fu">dirname</span> <span class="st">&quot;</span><span class="va">${BASH_SOURCE</span><span class="op">[</span><span class="dv">0</span><span class="op">]</span><span class="va">}</span><span class="st">&quot;</span><span class="va">)</span><span class="st">/..&quot;</span> <span class="kw">&amp;&amp;</span> <span class="bu">pwd</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="va">TS</span><span class="op">=</span><span class="va">$(</span><span class="fu">date</span> +%Y%m%d_%H%M%S<span class="va">)</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="va">BENCH_ROOT</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${HERE}</span><span class="st">/runs/benchmark_</span><span class="va">${TS}</span><span class="st">&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="va">TSV</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${HERE}</span><span class="st">/bench/challenges.tsv&quot;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="va">CONFIGS</span><span class="op">=</span><span class="va">(</span><span class="st">&quot;none&quot;</span> <span class="st">&quot;lessons_readonly&quot;</span> <span class="st">&quot;lessons_write&quot;</span><span class="va">)</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co"># --- Tier toggles ---------------------------------------------------------</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="va">RUN_OPENAI</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${RUN_OPENAI</span><span class="op">:-</span>1<span class="va">}</span><span class="st">&quot;</span>        <span class="co"># set to 0 to skip</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="va">RUN_OLLAMA</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${RUN_OLLAMA</span><span class="op">:-</span>1<span class="va">}</span><span class="st">&quot;</span>        <span class="co"># set to 0 to skip</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="va">OPENAI_MODEL</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${OPENAI_MODEL</span><span class="op">:-</span>gpt-4o-mini<span class="va">}</span><span class="st">&quot;</span>   <span class="co"># cheap default</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="va">OLLAMA_MODEL</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${OLLAMA_MODEL</span><span class="op">:-</span>gemma4:26b<span class="va">}</span><span class="st">&quot;</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="va">MAX_STEPS</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${MAX_STEPS</span><span class="op">:-</span>15<span class="va">}</span><span class="st">&quot;</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Limit Ollama to a 6-challenge subset (rotate via OLLAMA_SUBSET env).</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="va">OLLAMA_SUBSET</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${OLLAMA_SUBSET</span><span class="op">:-</span>crystal-peak,verbal-stack,login-token,jwt-mate,cookie-monster,ssti-warmup<span class="va">}</span><span class="st">&quot;</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="fu">run_one()</span> <span class="kw">{</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>    <span class="bu">local</span> <span class="va">tier</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$1</span><span class="st">&quot;</span><span class="kw">;</span> <span class="bu">local</span> <span class="va">provider</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$2</span><span class="st">&quot;</span><span class="kw">;</span> <span class="bu">local</span> <span class="va">model</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$3</span><span class="st">&quot;</span><span class="kw">;</span> <span class="bu">local</span> <span class="va">cfg</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$4</span><span class="st">&quot;</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    <span class="bu">local</span> <span class="va">name</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$5</span><span class="st">&quot;</span><span class="kw">;</span> <span class="bu">local</span> <span class="va">url</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$6</span><span class="st">&quot;</span><span class="kw">;</span> <span class="bu">local</span> <span class="va">preset</span><span class="op">=</span><span class="st">&quot;</span><span class="va">$7</span><span class="st">&quot;</span></span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>    <span class="bu">local</span> <span class="va">out</span><span class="op">=</span><span class="st">&quot;</span><span class="va">${BENCH_ROOT}</span><span class="st">/</span><span class="va">${tier}</span><span class="st">/</span><span class="va">${cfg}</span><span class="st">/</span><span class="va">${name}</span><span class="st">.log&quot;</span></span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mkdir</span> <span class="at">-p</span> <span class="st">&quot;</span><span class="va">$(</span><span class="fu">dirname</span> <span class="st">&quot;</span><span class="va">$out</span><span class="st">&quot;</span><span class="va">)</span><span class="st">&quot;</span></span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>    <span class="st">&quot;</span><span class="va">${HERE}</span><span class="st">/scripts/run.sh&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>        <span class="at">--challenge-url</span> <span class="st">&quot;</span><span class="va">$url</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>        <span class="at">--challenge-name</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>        <span class="at">--description</span> <span class="st">&quot;Benchmark: </span><span class="va">$name</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>        <span class="at">--flag-preset</span> <span class="st">&quot;</span><span class="va">$preset</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>        <span class="at">--llm-provider</span> <span class="st">&quot;</span><span class="va">$provider</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a>        <span class="at">--model</span> <span class="st">&quot;</span><span class="va">$model</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>        <span class="at">--max-steps</span> <span class="st">&quot;</span><span class="va">$MAX_STEPS</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>        <span class="at">--rag-mode</span> <span class="st">&quot;</span><span class="va">$cfg</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>        <span class="at">--history-window-size</span> 16 <span class="dt">\</span></span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>        <span class="op">&gt;</span> <span class="st">&quot;</span><span class="va">$out</span><span class="st">&quot;</span> <span class="dv">2</span><span class="op">&gt;&amp;</span><span class="dv">1</span> <span class="kw">||</span> <span class="bu">echo</span> <span class="st">&quot;[WARN] </span><span class="va">$tier</span><span class="st">/</span><span class="va">$cfg</span><span class="st">/</span><span class="va">$name</span><span class="st"> exit non-zero&quot;</span></span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a><span class="kw">}</span></span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> <span class="va">IFS</span><span class="op">=</span><span class="st">$&#39;</span><span class="dt">\t</span><span class="st">&#39;</span> <span class="bu">read</span> <span class="at">-r</span> <span class="va">name</span> <span class="va">url</span> <span class="va">category</span> <span class="va">preset</span> <span class="va">notes</span><span class="kw">;</span> <span class="cf">do</span></span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>    <span class="kw">[[</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span> <span class="ot">=~</span> <span class="pp">^</span><span class="ss">#</span> <span class="kw">]]</span> <span class="kw">&amp;&amp;</span> <span class="cf">continue</span></span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>    <span class="kw">[[</span> <span class="ot">-z</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span> <span class="kw">]]</span> <span class="kw">&amp;&amp;</span> <span class="cf">continue</span></span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">[[</span> <span class="st">&quot;</span><span class="va">$RUN_OPENAI</span><span class="st">&quot;</span> <span class="ot">==</span> <span class="st">&quot;1&quot;</span> <span class="kw">]];</span> <span class="cf">then</span></span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> cfg <span class="kw">in</span> <span class="st">&quot;</span><span class="va">${CONFIGS</span><span class="op">[@]</span><span class="va">}</span><span class="st">&quot;</span><span class="kw">;</span> <span class="cf">do</span></span>
+<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a>            <span class="ex">run_one</span> <span class="st">&quot;openai&quot;</span> <span class="st">&quot;openai&quot;</span> <span class="st">&quot;</span><span class="va">$OPENAI_MODEL</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$cfg</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$url</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$preset</span><span class="st">&quot;</span></span>
+<span id="cb2-46"><a href="#cb2-46" aria-hidden="true" tabindex="-1"></a>        <span class="cf">done</span></span>
+<span id="cb2-47"><a href="#cb2-47" aria-hidden="true" tabindex="-1"></a>    <span class="cf">fi</span></span>
+<span id="cb2-48"><a href="#cb2-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-49"><a href="#cb2-49" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">[[</span> <span class="st">&quot;</span><span class="va">$RUN_OLLAMA</span><span class="st">&quot;</span> <span class="ot">==</span> <span class="st">&quot;1&quot;</span> <span class="kw">&amp;&amp;</span> <span class="st">&quot;,</span><span class="va">${OLLAMA_SUBSET}</span><span class="st">,&quot;</span> <span class="ot">==</span> <span class="pp">*</span><span class="st">&quot;,</span><span class="va">${name}</span><span class="st">,&quot;</span><span class="pp">*</span> <span class="kw">]];</span> <span class="cf">then</span></span>
+<span id="cb2-50"><a href="#cb2-50" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> cfg <span class="kw">in</span> <span class="st">&quot;</span><span class="va">${CONFIGS</span><span class="op">[@]</span><span class="va">}</span><span class="st">&quot;</span><span class="kw">;</span> <span class="cf">do</span></span>
+<span id="cb2-51"><a href="#cb2-51" aria-hidden="true" tabindex="-1"></a>            <span class="ex">run_one</span> <span class="st">&quot;ollama&quot;</span> <span class="st">&quot;ollama&quot;</span> <span class="st">&quot;</span><span class="va">$OLLAMA_MODEL</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$cfg</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$url</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$preset</span><span class="st">&quot;</span></span>
+<span id="cb2-52"><a href="#cb2-52" aria-hidden="true" tabindex="-1"></a>        <span class="cf">done</span></span>
+<span id="cb2-53"><a href="#cb2-53" aria-hidden="true" tabindex="-1"></a>    <span class="cf">fi</span></span>
+<span id="cb2-54"><a href="#cb2-54" aria-hidden="true" tabindex="-1"></a><span class="cf">done</span> <span class="op">&lt;</span> <span class="st">&quot;</span><span class="va">$TSV</span><span class="st">&quot;</span></span>
+<span id="cb2-55"><a href="#cb2-55" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-56"><a href="#cb2-56" aria-hidden="true" tabindex="-1"></a><span class="co"># Extract metrics</span></span>
+<span id="cb2-57"><a href="#cb2-57" aria-hidden="true" tabindex="-1"></a><span class="st">&quot;</span><span class="va">${HERE}</span><span class="st">/.venv/bin/python&quot;</span> <span class="st">&quot;</span><span class="va">${HERE}</span><span class="st">/scripts/extract_metrics.py&quot;</span> <span class="st">&quot;</span><span class="va">$BENCH_ROOT</span><span class="st">&quot;</span> <span class="dt">\</span></span>
+<span id="cb2-58"><a href="#cb2-58" aria-hidden="true" tabindex="-1"></a>    <span class="op">&gt;</span> <span class="st">&quot;</span><span class="va">${BENCH_ROOT}</span><span class="st">/metrics.csv&quot;</span></span>
+<span id="cb2-59"><a href="#cb2-59" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&quot;Benchmark complete. Results: </span><span class="va">${BENCH_ROOT}</span><span class="st">/&quot;</span></span></code></pre></div>
+<p><code>chmod +x scripts/benchmark.sh</code>.</p>
+<h3 id="scriptsextract_metrics.py">4.2.2
+<code>scripts/extract_metrics.py</code></h3>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">&quot;&quot;&quot;Walk a benchmark output tree and emit a CSV with one row per</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="co">(tier, config, challenge). Captures solve outcome, steps, validity,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co">repeated-call rate, and wall-clock estimate from each run.log.&quot;&quot;&quot;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> csv</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> re</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> sys</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>FLAG_RE <span class="op">=</span> re.<span class="bu">compile</span>(<span class="vs">r&quot;</span><span class="ch">\[</span><span class="vs">FLAG DETECTED</span><span class="ch">\]</span><span class="vs"> </span><span class="kw">(</span><span class="dv">.</span><span class="op">+</span><span class="kw">)</span><span class="vs">&quot;</span>)</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>STEP_RE <span class="op">=</span> re.<span class="bu">compile</span>(<span class="vs">r&quot;</span><span class="dv">^</span><span class="vs">--- Step </span><span class="kw">(</span><span class="dv">\d</span><span class="op">+</span><span class="kw">)</span><span class="vs">/</span><span class="dv">\d</span><span class="op">+</span><span class="vs"> ---&quot;</span>)</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>ACTION_RE <span class="op">=</span> re.<span class="bu">compile</span>(<span class="vs">r&quot;</span><span class="dv">^</span><span class="vs">Action: Using tool &#39;</span><span class="kw">(</span><span class="pp">[^&#39;]</span><span class="op">+</span><span class="kw">)</span><span class="vs">&#39;&quot;</span>)</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>ERROR_OBS_RE <span class="op">=</span> re.<span class="bu">compile</span>(<span class="vs">r&quot;</span><span class="dv">^</span><span class="vs">Observation:</span><span class="dv">.</span><span class="op">*</span><span class="vs">result=error&quot;</span>)</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>PARSE_FAIL_RE <span class="op">=</span> re.<span class="bu">compile</span>(<span class="vs">r&quot;Could not parse simplified ReAct response&quot;</span>)</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> parse_one(path: Path) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true" tabindex="-1"></a>    text <span class="op">=</span> path.read_text(errors<span class="op">=</span><span class="st">&quot;replace&quot;</span>)</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true" tabindex="-1"></a>    flag <span class="op">=</span> FLAG_RE.search(text)</span>
+<span id="cb3-20"><a href="#cb3-20" aria-hidden="true" tabindex="-1"></a>    steps <span class="op">=</span> [<span class="bu">int</span>(m.group(<span class="dv">1</span>)) <span class="cf">for</span> m <span class="kw">in</span> STEP_RE.finditer(text)]</span>
+<span id="cb3-21"><a href="#cb3-21" aria-hidden="true" tabindex="-1"></a>    actions <span class="op">=</span> ACTION_RE.findall(text)</span>
+<span id="cb3-22"><a href="#cb3-22" aria-hidden="true" tabindex="-1"></a>    error_obs <span class="op">=</span> <span class="bu">len</span>(ERROR_OBS_RE.findall(text))</span>
+<span id="cb3-23"><a href="#cb3-23" aria-hidden="true" tabindex="-1"></a>    parse_fails <span class="op">=</span> <span class="bu">len</span>(PARSE_FAIL_RE.findall(text))</span>
+<span id="cb3-24"><a href="#cb3-24" aria-hidden="true" tabindex="-1"></a>    repeated <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb3-25"><a href="#cb3-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> actions:</span>
+<span id="cb3-26"><a href="#cb3-26" aria-hidden="true" tabindex="-1"></a>        seen <span class="op">=</span> {}</span>
+<span id="cb3-27"><a href="#cb3-27" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> a <span class="kw">in</span> actions:</span>
+<span id="cb3-28"><a href="#cb3-28" aria-hidden="true" tabindex="-1"></a>            seen[a] <span class="op">=</span> seen.get(a, <span class="dv">0</span>) <span class="op">+</span> <span class="dv">1</span></span>
+<span id="cb3-29"><a href="#cb3-29" aria-hidden="true" tabindex="-1"></a>        repeated <span class="op">=</span> <span class="bu">sum</span>(c <span class="op">-</span> <span class="dv">1</span> <span class="cf">for</span> c <span class="kw">in</span> seen.values() <span class="cf">if</span> c <span class="op">&gt;</span> <span class="dv">1</span>)</span>
+<span id="cb3-30"><a href="#cb3-30" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {</span>
+<span id="cb3-31"><a href="#cb3-31" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;max_step_seen&quot;</span>: <span class="bu">max</span>(steps) <span class="cf">if</span> steps <span class="cf">else</span> <span class="dv">0</span>,</span>
+<span id="cb3-32"><a href="#cb3-32" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;total_actions&quot;</span>: <span class="bu">len</span>(actions),</span>
+<span id="cb3-33"><a href="#cb3-33" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;unique_actions&quot;</span>: <span class="bu">len</span>(<span class="bu">set</span>(actions)),</span>
+<span id="cb3-34"><a href="#cb3-34" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;error_observations&quot;</span>: error_obs,</span>
+<span id="cb3-35"><a href="#cb3-35" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;parse_failures&quot;</span>: parse_fails,</span>
+<span id="cb3-36"><a href="#cb3-36" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;repeated_call_count&quot;</span>: repeated,</span>
+<span id="cb3-37"><a href="#cb3-37" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;outcome&quot;</span>: <span class="st">&quot;success&quot;</span> <span class="cf">if</span> flag <span class="cf">else</span> <span class="st">&quot;failure&quot;</span>,</span>
+<span id="cb3-38"><a href="#cb3-38" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;flag&quot;</span>: flag.group(<span class="dv">1</span>) <span class="cf">if</span> flag <span class="cf">else</span> <span class="st">&quot;&quot;</span>,</span>
+<span id="cb3-39"><a href="#cb3-39" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb3-40"><a href="#cb3-40" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-41"><a href="#cb3-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-42"><a href="#cb3-42" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> main(root: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb3-43"><a href="#cb3-43" aria-hidden="true" tabindex="-1"></a>    rows <span class="op">=</span> []</span>
+<span id="cb3-44"><a href="#cb3-44" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> log <span class="kw">in</span> Path(root).rglob(<span class="st">&quot;*.log&quot;</span>):</span>
+<span id="cb3-45"><a href="#cb3-45" aria-hidden="true" tabindex="-1"></a>        rel <span class="op">=</span> log.relative_to(root)</span>
+<span id="cb3-46"><a href="#cb3-46" aria-hidden="true" tabindex="-1"></a>        parts <span class="op">=</span> rel.parts</span>
+<span id="cb3-47"><a href="#cb3-47" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="bu">len</span>(parts) <span class="op">&lt;</span> <span class="dv">3</span>:</span>
+<span id="cb3-48"><a href="#cb3-48" aria-hidden="true" tabindex="-1"></a>            <span class="cf">continue</span></span>
+<span id="cb3-49"><a href="#cb3-49" aria-hidden="true" tabindex="-1"></a>        tier, cfg, name <span class="op">=</span> parts[<span class="dv">0</span>], parts[<span class="dv">1</span>], parts[<span class="dv">2</span>].removesuffix(<span class="st">&quot;.log&quot;</span>)</span>
+<span id="cb3-50"><a href="#cb3-50" aria-hidden="true" tabindex="-1"></a>        m <span class="op">=</span> parse_one(log)</span>
+<span id="cb3-51"><a href="#cb3-51" aria-hidden="true" tabindex="-1"></a>        rows.append({<span class="st">&quot;tier&quot;</span>: tier, <span class="st">&quot;config&quot;</span>: cfg, <span class="st">&quot;challenge&quot;</span>: name, <span class="op">**</span>m})</span>
+<span id="cb3-52"><a href="#cb3-52" aria-hidden="true" tabindex="-1"></a>    cols <span class="op">=</span> [</span>
+<span id="cb3-53"><a href="#cb3-53" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;tier&quot;</span>, <span class="st">&quot;config&quot;</span>, <span class="st">&quot;challenge&quot;</span>, <span class="st">&quot;outcome&quot;</span>, <span class="st">&quot;max_step_seen&quot;</span>,</span>
+<span id="cb3-54"><a href="#cb3-54" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;total_actions&quot;</span>, <span class="st">&quot;unique_actions&quot;</span>, <span class="st">&quot;repeated_call_count&quot;</span>,</span>
+<span id="cb3-55"><a href="#cb3-55" aria-hidden="true" tabindex="-1"></a>        <span class="st">&quot;error_observations&quot;</span>, <span class="st">&quot;parse_failures&quot;</span>, <span class="st">&quot;flag&quot;</span>,</span>
+<span id="cb3-56"><a href="#cb3-56" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb3-57"><a href="#cb3-57" aria-hidden="true" tabindex="-1"></a>    w <span class="op">=</span> csv.DictWriter(sys.stdout, fieldnames<span class="op">=</span>cols)</span>
+<span id="cb3-58"><a href="#cb3-58" aria-hidden="true" tabindex="-1"></a>    w.writeheader()</span>
+<span id="cb3-59"><a href="#cb3-59" aria-hidden="true" tabindex="-1"></a>    w.writerows(<span class="bu">sorted</span>(rows, key<span class="op">=</span><span class="kw">lambda</span> r: (r[<span class="st">&quot;tier&quot;</span>], r[<span class="st">&quot;config&quot;</span>], r[<span class="st">&quot;challenge&quot;</span>])))</span>
+<span id="cb3-60"><a href="#cb3-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-61"><a href="#cb3-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-62"><a href="#cb3-62" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="va">__name__</span> <span class="op">==</span> <span class="st">&quot;__main__&quot;</span>:</span>
+<span id="cb3-63"><a href="#cb3-63" aria-hidden="true" tabindex="-1"></a>    main(sys.argv[<span class="dv">1</span>])</span></code></pre></div>
+<h3 id="first-dry-run-on-one-challenge">4.2.3 First dry-run on one
+challenge</h3>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="at">-e</span> <span class="st">&quot;crystal-peak\thttp://crystal-peak.picoctf.net:&lt;port&gt;\tidor\tpicoctf\ttest&quot;</span> <span class="op">&gt;</span> bench/challenges.tsv</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="va">RUN_OLLAMA</span><span class="op">=</span>0 <span class="va">OPENAI_MODEL</span><span class="op">=</span>gpt-4o-mini <span class="va">MAX_STEPS</span><span class="op">=</span>10 <span class="ex">./scripts/benchmark.sh</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> runs/benchmark_<span class="pp">*</span>/metrics.csv <span class="kw">|</span> <span class="fu">tail</span> <span class="at">-5</span></span></code></pre></div>
+<p>If the CSV has a row with <code>outcome=success</code> you are good.
+Then expand the TSV to all 25 and run for real.</p>
+<h2 id="run-protocol">4.3 Run protocol</h2>
+<ul>
+<li><strong>Wed PM, before bed:</strong> kick off batch 1 with
+<code>RUN_OLLAMA=0</code> (OpenAI only, ~25 challenges × 3 configs = 75
+runs, ~2 hrs at $5–10).</li>
+<li><strong>Thu AM:</strong> check <code>metrics.csv</code>. If clean,
+kick off the Ollama subset (<code>RUN_OPENAI=0 OLLAMA_SUBSET=...</code>)
+— runs through Thu/Thu-night.</li>
+<li><strong>Fri AM:</strong> combined CSV ready for analysis.</li>
+</ul>
+<p><strong>Cost guard.</strong> Set
+<code>OPENAI_MODEL=gpt-4o-mini</code> for the first pass. If you have
+budget left after results, re-run a subset on <code>gpt-4o</code> for an
+extra “frontier-tier” data point.</p>
+<h2 id="mentor-sync-wed-am-15-min-email">4.4 Mentor sync (Wed AM, 15 min
+email)</h2>
+<p>Send Lt Col Todd:</p>
+<pre><code>Subject: [CAPSTONE] 30-min vector check before final brief — Thu/Fri?
+
+Sir,
+
+Final brief is the week of 4 May. I&#39;ve made significant changes to the
+codebase since the 4 March update brief — most importantly:
+  - Patched the FAISS+OpenMP segfault that was preventing RAG runs
+  - Added 5 scaffolding fixes (v3.10) targeting failure modes I observed
+    on a recent gemma4:26b live run
+  - Adding a hybrid OpenAI-API arm to the benchmark to let me make
+    cross-tier capability claims
+
+I&#39;d like 30 minutes this Thu or Fri to (a) walk you through the v3.10
+results, (b) get your read on the reframed thesis, and (c) confirm the
+recommendations slide hits what you want to see.
+
+Times that work for me: [list 3].
+
+V/R,
+Andrew</code></pre>
+<p><strong>At the meeting, ask three questions:</strong></p>
+<ol type="1">
+<li><em>“For the recommendations slide, what’s the most useful thing
+this project could leave behind for follow-on cadet research?”</em></li>
+<li><em>“Are you OK with me using OpenAI API for one arm of the
+benchmark? The data is all public picoCTF, but I want to flag
+it.”</em></li>
+<li><em>“What’s the one thing you’d push back on if you saw this brief
+from another team?”</em></li>
+</ol>
+<p>Capture answers verbatim into <code>sponsor_notes.md</code> (keep the
+filename even though there’s no sponsor — your code already references
+it).</p>
+<h2 id="lit-review-additions-thu-3-hrs">4.5 Lit-review additions (Thu, 3
+hrs)</h2>
+<p>For each paper, write a 3-sentence synthesis paragraph in
+<code>refs/synthesis.md</code>:</p>
+<ol type="1">
+<li><strong>Shinn et al., “Reflexion: Language Agents with Verbal
+Reinforcement Learning,” NeurIPS 2023.</strong> Justifies your
+compressed verbal lesson summaries.</li>
+<li><strong>Zhao et al., “ExpeL: LLM Agents Are Experiential Learners,”
+AAAI 2024.</strong> Justifies atomic rule docs vs. monolithic logs.</li>
+<li><strong>Wang et al., “VOYAGER: An Open-Ended Embodied Agent with
+Large Language Models,” 2023.</strong> Justifies the lessons-as-skills
+framing.</li>
+<li><strong>Schick et al., “Toolformer: Language Models Can Teach
+Themselves to Use Tools,” NeurIPS 2023.</strong> Anchors tool-use
+scaffolding broadly.</li>
+<li><strong>Yang et al., “EnIGMA: Enhanced Interactive Generative Model
+Agent for CTF Challenges,” 2024.</strong> Direct comparison point — what
+they did with GPT-4 vs. what your local-tier scaffolding does.</li>
+<li><strong>Zhang et al., “Cybench: A Framework for Evaluating
+Cybersecurity Capabilities and Risks of Language Models,” 2024.</strong>
+Frames your benchmark methodology.</li>
+<li><strong>Wei et al., “Emergent Abilities of Large Language Models,”
+TMLR 2022.</strong> Anchors your scaffolding-tier hypothesis (capability
+emerges at scale; sub-frontier models need help).</li>
+<li><strong>Tann et al., “Using Large Language Models for Cybersecurity
+CTF Challenges,” 2023.</strong> (Already in mid-sem — deepen the
+synthesis.)</li>
+</ol>
+<p><strong>Synthesis template per paper (3 sentences, no
+more):</strong></p>
+<blockquote>
+<p><strong>[Authors, year, short title].</strong> [One sentence: what
+they claim.] [One sentence: how this informs your design choice.] [One
+sentence: what your work does differently or adds.]</p>
+</blockquote>
+<p>Example:</p>
+<blockquote>
+<p><strong>Zhao et al., 2024, ExpeL.</strong> They show that LLM agents
+extract higher-quality task heuristics when experiences are stored as
+atomic rule fragments rather than full trajectories, with retrieval
+gated by similarity to the current state. We adopt this atomic-rule
+structure in <code>failure_analyzer.py:generate_atomic_rule_doc</code>
+and add Jaccard-based deduplication on triggering conditions to prevent
+rule-set bloat across runs. Unlike ExpeL, our domain (web CTF) requires
+preserving exact attack inputs (e.g., template-injection payloads), so
+our extraction pipeline includes a post-scrub append of
+<code>winning_inputs</code> that bypasses the broad flag-regex
+redaction.</p>
+</blockquote>
+<h2 id="novel-methods-inventory-wed-pm-30-min">4.6 Novel-methods
+inventory (Wed PM, 30 min)</h2>
+<p>Create <code>methods_inventory.md</code> (this becomes one slide and
+one paper sub-section). For each item annotate which model tier it
+applies to:</p>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>Method</th>
+<th>File</th>
+<th>Local-tier</th>
+<th>Frontier-tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hybrid BM25+vector retrieval (0.4/0.6, query-expand, rerank)</td>
+<td><code>rag/knowledge_base.py</code></td>
+<td>Y</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>Outlines FSM grammar-constrained JSON (per-tool flat-enum)</td>
+<td><code>llm/adapters.py:MLXAdapter</code></td>
+<td>Y</td>
+<td>n/a</td>
+</tr>
+<tr>
+<td>ExpeL-style atomic rule docs with confidence-ladder dedup</td>
+<td><code>failure_analyzer.py</code></td>
+<td>Y</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>Reflexion compressed prior-lesson injection</td>
+<td><code>runner.py:530-552</code></td>
+<td>Y</td>
+<td>Marginal</td>
+</tr>
+<tr>
+<td>Jaccard site-fingerprint contamination filter</td>
+<td><code>rag/knowledge_base.py</code></td>
+<td>Y</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>Function-calling via per-tool <code>parameters_schema</code>
+(Draft-07)</td>
+<td><code>tools/schema.py</code></td>
+<td>Y</td>
+<td>Y</td>
+</tr>
+<tr>
+<td>Tool family collapse (5 SQLi → 1 dispatcher)</td>
+<td><code>tools/collapsed_*.py</code></td>
+<td>Y</td>
+<td>Marginal</td>
+</tr>
+<tr>
+<td>Hash-pattern hint surface (v3.10 P1+P5a)</td>
+<td><code>tools/core.py:_detect_hash_hints</code></td>
+<td>Y</td>
+<td>Marginal</td>
+</tr>
+<tr>
+<td>StuckDetector with canonicalized JSON hashing (v3.10 P2)</td>
+<td><code>tools/logging_wrapper.py</code></td>
+<td>Y</td>
+<td>Marginal</td>
+</tr>
+<tr>
+<td>DYLD-preload Apple-Silicon FAISS+OpenMP fix</td>
+<td><code>scripts/run.sh</code></td>
+<td>Y</td>
+<td>Y (env)</td>
+</tr>
+</tbody>
+</table>
+<p>The “Local-tier vs. Frontier-tier” split is what makes Claim 1
+(scaffolding scales inversely with capability) defensible — you’re
+showing exactly which methods stop mattering as the model gets
+stronger.</p>
+<h1 id="phase-2-analysis-writing-sat-2-may-sun-3-may">5. Phase 2 —
+Analysis &amp; Writing (Sat 2 May → Sun 3 May)</h1>
+<h2 id="five-figures-fri-pm-3-hrs">5.1 Five figures (Fri PM, 3 hrs)</h2>
+<p>Save all to <code>out/figures/</code> at 300 dpi. Caption each with
+the <em>finding</em>, not the contents.</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># bench/analyze.py</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> matplotlib.pyplot <span class="im">as</span> plt</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_csv(<span class="st">&quot;runs/benchmark_LATEST/metrics.csv&quot;</span>)  <span class="co"># symlink or paste actual path</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>df[<span class="st">&quot;solved&quot;</span>] <span class="op">=</span> (df[<span class="st">&quot;outcome&quot;</span>] <span class="op">==</span> <span class="st">&quot;success&quot;</span>).astype(<span class="bu">int</span>)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Fig 1 — Solve rate by tier × config × category</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a><span class="co"># (need to merge in category from bench/challenges.tsv)</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>ch <span class="op">=</span> pd.read_csv(<span class="st">&quot;bench/challenges.tsv&quot;</span>, sep<span class="op">=</span><span class="st">&quot;</span><span class="ch">\t</span><span class="st">&quot;</span>,</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>                  names<span class="op">=</span>[<span class="st">&quot;challenge&quot;</span>, <span class="st">&quot;url&quot;</span>, <span class="st">&quot;category&quot;</span>, <span class="st">&quot;preset&quot;</span>, <span class="st">&quot;notes&quot;</span>],</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>                  comment<span class="op">=</span><span class="st">&quot;#&quot;</span>)</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> df.merge(ch[[<span class="st">&quot;challenge&quot;</span>, <span class="st">&quot;category&quot;</span>]], on<span class="op">=</span><span class="st">&quot;challenge&quot;</span>, how<span class="op">=</span><span class="st">&quot;left&quot;</span>)</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">5</span>))</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>pivot <span class="op">=</span> (df.groupby([<span class="st">&quot;category&quot;</span>, <span class="st">&quot;tier&quot;</span>, <span class="st">&quot;config&quot;</span>])[<span class="st">&quot;solved&quot;</span>]</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>            .mean().unstack([<span class="st">&quot;tier&quot;</span>, <span class="st">&quot;config&quot;</span>]) <span class="op">*</span> <span class="dv">100</span>)</span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>pivot.plot.bar(ax<span class="op">=</span>ax)</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>ax.set_ylabel(<span class="st">&quot;Solve rate (%)&quot;</span>)</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>ax.set_xlabel(<span class="st">&quot;Vulnerability category&quot;</span>)</span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>ax.set_title(<span class="st">&quot;Figure 1 — Scaffolding lift by category and model tier&quot;</span>)</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>ax.legend(loc<span class="op">=</span><span class="st">&quot;upper right&quot;</span>, fontsize<span class="op">=</span><span class="dv">8</span>)</span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>plt.savefig(<span class="st">&quot;out/figures/fig1_solverate.png&quot;</span>, dpi<span class="op">=</span><span class="dv">300</span>)</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a><span class="co"># Fig 2 — Per-challenge improvement matrix (heatmap)</span></span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>wide <span class="op">=</span> df.pivot_table(index<span class="op">=</span><span class="st">&quot;challenge&quot;</span>, columns<span class="op">=</span>[<span class="st">&quot;tier&quot;</span>, <span class="st">&quot;config&quot;</span>], values<span class="op">=</span><span class="st">&quot;solved&quot;</span>)</span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="bu">max</span>(<span class="dv">4</span>, <span class="bu">len</span>(wide)<span class="op">*</span><span class="fl">0.25</span>)))</span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>ax.imshow(wide.values, aspect<span class="op">=</span><span class="st">&quot;auto&quot;</span>, cmap<span class="op">=</span><span class="st">&quot;RdYlGn&quot;</span>, vmin<span class="op">=</span><span class="dv">0</span>, vmax<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a>ax.set_yticks(<span class="bu">range</span>(<span class="bu">len</span>(wide)))<span class="op">;</span> ax.set_yticklabels(wide.index, fontsize<span class="op">=</span><span class="dv">8</span>)</span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a>ax.set_xticks(<span class="bu">range</span>(<span class="bu">len</span>(wide.columns)))<span class="op">;</span> ax.set_xticklabels([<span class="st">&quot;/&quot;</span>.join(c) <span class="cf">for</span> c <span class="kw">in</span> wide.columns], rotation<span class="op">=</span><span class="dv">45</span>, ha<span class="op">=</span><span class="st">&quot;right&quot;</span>, fontsize<span class="op">=</span><span class="dv">8</span>)</span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>ax.set_title(<span class="st">&quot;Figure 2 — Per-challenge solve outcomes&quot;</span>)</span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a>plt.savefig(<span class="st">&quot;out/figures/fig2_matrix.png&quot;</span>, dpi<span class="op">=</span><span class="dv">300</span>)</span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a><span class="co"># Fig 3 — Steps-to-flag CDF</span></span>
+<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a>solved <span class="op">=</span> df[df[<span class="st">&quot;outcome&quot;</span>] <span class="op">==</span> <span class="st">&quot;success&quot;</span>]</span>
+<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>(<span class="dv">7</span>, <span class="dv">4</span>))</span>
+<span id="cb6-40"><a href="#cb6-40" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (tier, cfg), grp <span class="kw">in</span> solved.groupby([<span class="st">&quot;tier&quot;</span>, <span class="st">&quot;config&quot;</span>]):</span>
+<span id="cb6-41"><a href="#cb6-41" aria-hidden="true" tabindex="-1"></a>    s <span class="op">=</span> <span class="bu">sorted</span>(grp[<span class="st">&quot;max_step_seen&quot;</span>])</span>
+<span id="cb6-42"><a href="#cb6-42" aria-hidden="true" tabindex="-1"></a>    cdf <span class="op">=</span> np.arange(<span class="dv">1</span>, <span class="bu">len</span>(s)<span class="op">+</span><span class="dv">1</span>) <span class="op">/</span> <span class="bu">len</span>(s)</span>
+<span id="cb6-43"><a href="#cb6-43" aria-hidden="true" tabindex="-1"></a>    ax.plot(s, cdf, label<span class="op">=</span><span class="ss">f&quot;</span><span class="sc">{</span>tier<span class="sc">}</span><span class="ss">/</span><span class="sc">{</span>cfg<span class="sc">}</span><span class="ss">&quot;</span>, drawstyle<span class="op">=</span><span class="st">&quot;steps-post&quot;</span>)</span>
+<span id="cb6-44"><a href="#cb6-44" aria-hidden="true" tabindex="-1"></a>ax.set_xlabel(<span class="st">&quot;Steps to flag&quot;</span>)<span class="op">;</span> ax.set_ylabel(<span class="st">&quot;Cumulative solve fraction&quot;</span>)</span>
+<span id="cb6-45"><a href="#cb6-45" aria-hidden="true" tabindex="-1"></a>ax.set_title(<span class="st">&quot;Figure 3 — Efficiency: steps-to-flag CDF by config&quot;</span>)</span>
+<span id="cb6-46"><a href="#cb6-46" aria-hidden="true" tabindex="-1"></a>ax.legend(fontsize<span class="op">=</span><span class="dv">8</span>)<span class="op">;</span> plt.tight_layout()</span>
+<span id="cb6-47"><a href="#cb6-47" aria-hidden="true" tabindex="-1"></a>plt.savefig(<span class="st">&quot;out/figures/fig3_cdf.png&quot;</span>, dpi<span class="op">=</span><span class="dv">300</span>)</span>
+<span id="cb6-48"><a href="#cb6-48" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-49"><a href="#cb6-49" aria-hidden="true" tabindex="-1"></a><span class="co"># Fig 4 — Tool-call validity rate (parse_failures vs. total_actions)</span></span>
+<span id="cb6-50"><a href="#cb6-50" aria-hidden="true" tabindex="-1"></a>df[<span class="st">&quot;validity&quot;</span>] <span class="op">=</span> <span class="dv">1</span> <span class="op">-</span> (df[<span class="st">&quot;parse_failures&quot;</span>] <span class="op">/</span> df[<span class="st">&quot;total_actions&quot;</span>].clip(lower<span class="op">=</span><span class="dv">1</span>))</span>
+<span id="cb6-51"><a href="#cb6-51" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">4</span>))</span>
+<span id="cb6-52"><a href="#cb6-52" aria-hidden="true" tabindex="-1"></a>df.groupby([<span class="st">&quot;tier&quot;</span>, <span class="st">&quot;config&quot;</span>])[<span class="st">&quot;validity&quot;</span>].mean().mul(<span class="dv">100</span>).plot.bar(ax<span class="op">=</span>ax)</span>
+<span id="cb6-53"><a href="#cb6-53" aria-hidden="true" tabindex="-1"></a>ax.set_ylabel(<span class="st">&quot;Tool-call validity (%)&quot;</span>)</span>
+<span id="cb6-54"><a href="#cb6-54" aria-hidden="true" tabindex="-1"></a>ax.set_title(<span class="st">&quot;Figure 4 — Tool-call validity rate by tier × config&quot;</span>)</span>
+<span id="cb6-55"><a href="#cb6-55" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb6-56"><a href="#cb6-56" aria-hidden="true" tabindex="-1"></a>plt.savefig(<span class="st">&quot;out/figures/fig4_validity.png&quot;</span>, dpi<span class="op">=</span><span class="dv">300</span>)</span>
+<span id="cb6-57"><a href="#cb6-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-58"><a href="#cb6-58" aria-hidden="true" tabindex="-1"></a><span class="co"># Fig 5 — Repeated-call rate (proxy for stuck loops)</span></span>
+<span id="cb6-59"><a href="#cb6-59" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>(<span class="dv">8</span>, <span class="dv">4</span>))</span>
+<span id="cb6-60"><a href="#cb6-60" aria-hidden="true" tabindex="-1"></a>df.groupby([<span class="st">&quot;tier&quot;</span>, <span class="st">&quot;config&quot;</span>])[<span class="st">&quot;repeated_call_count&quot;</span>].mean().plot.bar(ax<span class="op">=</span>ax)</span>
+<span id="cb6-61"><a href="#cb6-61" aria-hidden="true" tabindex="-1"></a>ax.set_ylabel(<span class="st">&quot;Mean repeated-call count per run&quot;</span>)</span>
+<span id="cb6-62"><a href="#cb6-62" aria-hidden="true" tabindex="-1"></a>ax.set_title(<span class="st">&quot;Figure 5 — Stuck-loop incidence by tier × config&quot;</span>)</span>
+<span id="cb6-63"><a href="#cb6-63" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb6-64"><a href="#cb6-64" aria-hidden="true" tabindex="-1"></a>plt.savefig(<span class="st">&quot;out/figures/fig5_stuck.png&quot;</span>, dpi<span class="op">=</span><span class="dv">300</span>)</span></code></pre></div>
+<p>Run with <code>.venv/bin/python bench/analyze.py</code>. Eyeball each
+figure — if any is degenerate (e.g. all categories tied), you have
+either a data problem or a finding worth investigating.</p>
+<h2 id="causal-regression-analysis-sat-am-3-hrs">5.2 Causal regression
+analysis (Sat AM, 3 hrs)</h2>
+<p>For every challenge where lessons_write <em>worsened</em> outcome
+vs. baseline, write a <code>results/regression_diagnoses.md</code>
+entry:</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">### &lt;challenge_slug&gt;</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>**Observation.** Baseline (rag-mode=none) solved in N steps; lessons_write</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>solver did <span class="dt">&lt;</span><span class="kw">not</span><span class="ot"> solve </span><span class="er">/</span><span class="ot"> solved in M</span><span class="dt">&gt;</span>N steps&gt;.</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>**Mechanism.** Diff of the trajectories at line ___ shows [stale lesson</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>cited / context bloat truncated key observation / off-task RAG result</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>distracted from immediate signal].</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a>**v3.10 fix that addresses this.** [P3a 1500-char proactive RAG cap / P5a</span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a>universal hash hint / P5b IDOR range_end=100 / etc.]</span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>**Re-run result.** Post-fix benchmark on <span class="dt">&lt;</span><span class="kw">date</span><span class="dt">&gt;</span> shows <span class="dt">&lt;</span><span class="kw">recovered</span><span class="ot"> </span><span class="er">/</span><span class="ot"> still</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a><span class="ot">fails </span><span class="er">/</span><span class="ot"> improved by N steps</span><span class="dt">&gt;</span>.</span></code></pre></div>
+<p>Aim for 3–5 entries (one per significant regression). This is
+<strong>the difference between a B-grade “honest negative result” and an
+A-grade “diagnosed and partially remedied negative result.”</strong></p>
+<h2 id="final-paper-sat-pm-sun-6-hrs">5.3 Final paper (Sat PM → Sun, 6
+hrs)</h2>
+<p>Use IEEE conference template (<code>IEEEtran.cls</code>, two-column).
+Skeleton:</p>
+<pre><code>final_paper/
+├── main.tex
+├── references.bib
+├── figures/   (symlink to ../out/figures)
+├── IEEEtran.cls
+└── IEEEtran.bst</code></pre>
+<p>Or use the Word IEEE template if LaTeX is too much to spin up. Either
+way, the <strong>section content</strong> below is what matters.</p>
+<h3 id="abstract-200-words-last-thing-you-write">§1 Abstract (200 words,
+last thing you write)</h3>
+<p>Template: &gt; CTF challenges are increasingly being used to evaluate
+the offensive-cyber &gt; capability of LLM agents. This paper
+investigates the relative contribution &gt; of <em>scaffolding</em>
+(prompt engineering, tool schemas, observation processing, &gt;
+retrieval augmentation, and an experiential lessons-learned database)
+&gt; versus raw model capability on web CTF tasks. We benchmark a
+unified agent &gt; framework against N challenges across M vulnerability
+categories at two &gt; capability tiers: gemma4:26b (local) and
+gpt-4o-mini (frontier-API). &gt; Scaffolding lifts solve rate by X
+percentage points at the local tier and &gt; Y percentage points at the
+frontier tier. We diagnose three mechanisms &gt; (context bloat,
+stale-lesson contamination, narrow enumeration defaults) &gt; by which a
+lessons-learned database can <em>worsen</em> solve rate, and we show
+&gt; that targeted patches recover ~Z% of regressed cases. Code,
+benchmark, and &gt; raw run logs are released for reproducibility. Our
+results suggest &gt; scaffolding investment scales inversely with model
+capability — a finding &gt; with practical implications for sub-frontier
+deployments.</p>
+<p>Fill in the numbers from your CSV.</p>
+<h3 id="introduction-1-page">§2 Introduction (~1 page)</h3>
+<ul>
+<li>Paragraph 1: Motivation (Volt Typhoon, NSA-MSS manpower asymmetry,
+AI-orchestrated cyber). Cite mid-sem references.</li>
+<li>Paragraph 2: Problem statement. State that this is a cadet-initiated
+individual capstone (per §1 of this plan).</li>
+<li>Paragraph 3: Three research questions, verbatim from mid-sem slide
+8.</li>
+<li>Paragraph 4: Contributions, three bullets matching Claims 1/2/3 from
+§2 of this plan.</li>
+<li>Paragraph 5: Roadmap sentence.</li>
+</ul>
+<h3 id="theory-literature-review-1.5-pages">§3 Theory &amp; Literature
+Review (~1.5 pages)</h3>
+<p>Three threads (subsections), each ending in a <em>gap</em>
+sentence:</p>
+<ul>
+<li>§3.1 LLM CTF Agents — Tann 2023, EnIGMA 2024, Cybench 2024 → “no
+prior work evaluates a sub-frontier (26B) model with a structured
+experiential database on web-CTF tasks.”</li>
+<li>§3.2 Experiential Learning — Reflexion, ExpeL, VOYAGER → “prior work
+focuses on simulated environments and dense feedback; web CTF feedback
+is sparse and observation-rich, motivating the atomic-rule
+representation we use.”</li>
+<li>§3.3 Tool Use &amp; Scaffolding at Tier — Toolformer, ReAct, Wei
+2022 emergence → “the scaffolding-vs-capability tradeoff has not been
+empirically characterized at the 26B/frontier boundary; this paper
+does.”</li>
+</ul>
+<h3 id="methodology-2-pages">§4 Methodology (~2 pages)</h3>
+<p>Subsections matching <code>methods_inventory.md</code>. Each
+subsection: 2–3 sentences of theory, one figure or code-snippet for the
+integration, one sentence of why that choice. <strong>Cite the prior
+coursework</strong> (e.g. DATA 350 / DATA 410 content if those covered
+RAG, vector search, agentic systems) — the rubric explicitly grades
+“integration of coursework tools with novel data science
+methodologies.”</p>
+<h3 id="results-discussion-2-pages">§5 Results &amp; Discussion (~2
+pages)</h3>
+<p>Lead with Figure 1 + the headline number. Then Figures 2/3/4/5 in
+turn. End with the regression-diagnosis subsection. <strong>Embrace the
+failed-model discussion</strong> — the rubric A-line for the Update
+Brief was “fully embraces failed models and results”; the Final-Paper
+rubric implicitly inherits this via “comprehensive discussion of outputs
+and models.”</p>
+<h3 id="conclusions-recommendations-1-page">§6 Conclusions &amp;
+Recommendations (~1 page)</h3>
+<p>Three subsections:</p>
+<ul>
+<li>§6.1 Answers to RQ1/RQ2/RQ3 — 2–3 sentences each, citing your
+figures.</li>
+<li>§6.2 Recommendations for Follow-on Research (your “sponsor”
+stand-in): five numbered items including a master’s-thesis problem
+statement derived from your gaps (e.g., “RL on top of SFT-LoRA over
+scaffold-aligned trajectories” from the audit).</li>
+<li>§6.3 Capability envelope — what this codebase reliably solves,
+deployment prerequisites, cost envelope.</li>
+</ul>
+<h3 id="references">§7 References</h3>
+<p>IEEE-numeric, every paper in <code>refs/synthesis.md</code> must
+appear, plus your mid-sem set.</p>
+<h3 id="ai-usage-statement-course-letter-9-mandatory">§8 AI Usage
+Statement (Course Letter §9, mandatory)</h3>
+<p>Three-part: 1. <strong>What:</strong> Tools used (Claude Opus,
+GPT-4o, etc.) for code authorship, debugging, paper drafting. 2.
+<strong>How:</strong> Whether output was reviewed/edited/used verbatim.
+3. <strong>Where:</strong> Link to representative transcript (your
+existing OneDrive transcript link works).</p>
+<h1 id="phase-3-polish-brief-and-ship-mon-4-may-fri-8-may">6. Phase 3 —
+Polish, Brief, and Ship (Mon 4 May → Fri 8 May)</h1>
+<h2 id="slide-deck-structure-mon-5-hrs">6.1 21-slide deck structure
+(Mon, 5 hrs)</h2>
+<p>Use exactly this structure. ~70 sec/slide → 25 min total.</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>Slide</th>
+<th>Rubric tie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Title (you, mentor, date, “cadet-initiated individual
+capstone”)</td>
+<td>bookkeeping</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Team (you + Lt Col Todd as mentor; thank Wilson, Goethal)</td>
+<td>bookkeeping</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Overview / agenda</td>
+<td>bookkeeping</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Motivation (Volt Typhoon, NSA-MSS gap, AI-cyber rise)</td>
+<td>§1 Intro</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Purpose statement + 3 research questions verbatim</td>
+<td>§1 Intro</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Lit Thread 1 — LLM CTF agents (gap statement bold)</td>
+<td>§2 Lit</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Lit Thread 2 — Experiential learning (gap)</td>
+<td>§2 Lit</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Lit Thread 3 — Tool use / capability tier (gap)</td>
+<td>§2 Lit</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Data — 25 challenges, stratification table, KB sources</td>
+<td>§3 RQ&amp;Data</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Methodology — scaffolding architecture diagram</td>
+<td>§4 Methods</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Methodology — lessons-DB pipeline (atomic rules, Reflexion,
+fingerprint)</td>
+<td>§4 Methods</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Methodology — v3.10 fixes table (audit→implementation chain)</td>
+<td>§4 Methods</td>
+</tr>
+<tr>
+<td>13</td>
+<td><strong>Headline result</strong> — Fig 1 + one-sentence finding</td>
+<td>§5 Results</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Fig 2 — per-challenge matrix</td>
+<td>§5 Results</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Fig 3 — efficiency CDF</td>
+<td>§5 Results</td>
+</tr>
+<tr>
+<td>16</td>
+<td>Failure analysis — 3 short cases from
+<code>regression_diagnoses.md</code></td>
+<td>§5 Results</td>
+</tr>
+<tr>
+<td>17</td>
+<td>Answers to RQ1 / RQ2 / RQ3 (one bullet each, cite figure
+number)</td>
+<td>§6 Conclusions</td>
+</tr>
+<tr>
+<td>18</td>
+<td><strong>Recommendations</strong> — (cadet-initiated reframing)
+follow-on directions, master’s thesis problem statements, deployment
+envelope</td>
+<td>§6 Conclusions</td>
+</tr>
+<tr>
+<td>19</td>
+<td>Limitations &amp; future work (single-seed, 25-challenge scope, no
+LoRA)</td>
+<td>§6 Conclusions</td>
+</tr>
+<tr>
+<td>20</td>
+<td>References (IEEE-formatted) + AI Usage 3-part statement</td>
+<td>§7 §8</td>
+</tr>
+<tr>
+<td>21</td>
+<td>Questions</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="qa-prep-tue-2-hrs">6.2 Q&amp;A prep (Tue, 2 hrs)</h2>
+<p>Write <code>qa_prep.md</code> with rehearsed ≤30-sec answers:</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Q</th>
+<th>Crisp answer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Why local model not just GPT-4?</td>
+<td>Cost, sovereignty (military deploy), reproducibility — and as a
+hypothesis test about scaffolding’s marginal value at sub-frontier
+capability</td>
+</tr>
+<tr>
+<td>Why no LoRA?</td>
+<td>Audit showed scaffolding dominates LoRA at this stage; LoRA is the
+explicit next phase, listed as a master’s-thesis problem in §6.2</td>
+</tr>
+<tr>
+<td>Why these 25 challenges?</td>
+<td>Stratified across web vuln categories from picoCTF + MetaCTF;
+bounded by free-tier rotation. Document exclusions on slide 9</td>
+</tr>
+<tr>
+<td>How does this compare to EnIGMA / Cybench?</td>
+<td>EnIGMA uses GPT-4 + Docker exec; we use a 26B local agent +
+structured lessons. Cybench is a benchmark, not an agent. We’re closest
+to EnIGMA’s <em>methodology</em>, with a scaffolding-first variant at
+smaller scale</td>
+</tr>
+<tr>
+<td>Why did KB hurt some challenges?</td>
+<td>Three diagnosed mechanisms: context bloat (P3a), stale-lesson
+cross-talk (v3.4 site-fingerprint), narrow IDOR range default (P5b). See
+slide 16</td>
+</tr>
+<tr>
+<td>Reproducibility?</td>
+<td><code>./scripts/run.sh</code> wraps env (DYLD libomp fix on Apple
+Silicon), pinned <code>pyproject.toml</code>, public benchmark TSV, raw
+logs published</td>
+</tr>
+<tr>
+<td>Cadet-initiated — why no sponsor?</td>
+<td>Personal interest informed by CTF competition experience; mentor (Lt
+Col Todd) shaped scope. “Recommendations” section is for follow-on
+research, not operational deployment</td>
+</tr>
+<tr>
+<td>What’s the deploy bar?</td>
+<td>Slide 18 — categories with solve rate ≥ X% are deploy-ready for
+human-in-loop CTF triage; lower-rate categories need a
+human-in-loop</td>
+</tr>
+<tr>
+<td>Honor / AI use?</td>
+<td>Level-5 attributed Generative AI per DF policy; transcript link on
+slide 20</td>
+</tr>
+</tbody>
+</table>
+<p>Practice each answer aloud once.</p>
+<h2 id="solo-run-through-tue-pm-30-min">6.3 Solo run-through (Tue PM, 30
+min)</h2>
+<p>Set a 25-min timer. If you go over, the cut order is: - First cut:
+one lit-review thread slide (merge two) - Second cut: one methodology
+slide (collapse 11+12) - <strong>Never cut Results, Recommendations, or
+Limitations</strong> — those are graded directly.</p>
+<h2 id="mock-with-classmate-wed-am-30-min">6.4 Mock with classmate (Wed
+AM, 30 min)</h2>
+<p>Have one classmate (Wilson) ask you 5 questions from
+<code>qa_prep.md</code>. Time each answer. Refine.</p>
+<h2 id="reproducibility-readme-wed-pm-1-hr">6.5 Reproducibility README
+(Wed PM, 1 hr)</h2>
+<p><code>README_HANDOFF.md</code> at the repo root:</p>
+<div class="sourceCode" id="cb9"><pre
+class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu"># CTF Solver — Reproducibility &amp; Handoff</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>**Status:** v3.10 (8 May 2026). Cadet-initiated individual capstone.</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>**Mentor:** Lt Col Todd, DFCS.</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>**Author:** C1C Andrew Kim, andrew.kim@afacademy.af.edu</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="fu">## What this is</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>A web-CTF-solving agent that combines a unified scaffolding layer</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>(structured tool schemas, RAG-augmented prompts, lessons-learned</span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>experiential database) with multi-backend LLM support (OpenAI,</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>Anthropic, Ollama, MLX). Released as a basis for follow-on cadet</span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>research and as a working tool for picoCTF triage.</span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="fu">## Quickstart</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>./scripts/run.sh \</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>    --challenge-url <span class="dt">&lt;</span><span class="kw">URL</span><span class="dt">&gt;</span> \</span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a>    --challenge-name <span class="dt">&lt;</span><span class="kw">NAME</span><span class="dt">&gt;</span> \</span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a>    --description &quot;<span class="dt">&lt;</span><span class="kw">one-sentence</span><span class="ot"> brief</span><span class="dt">&gt;</span>&quot; \</span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a>    --flag-preset picoctf \</span>
+<span id="cb9-20"><a href="#cb9-20" aria-hidden="true" tabindex="-1"></a>    --llm-provider ollama --model gemma4:26b \</span>
+<span id="cb9-21"><a href="#cb9-21" aria-hidden="true" tabindex="-1"></a>    --rag-mode lessons_readonly \</span>
+<span id="cb9-22"><a href="#cb9-22" aria-hidden="true" tabindex="-1"></a>    --max-steps 15 --history-window-size 16</span>
+<span id="cb9-23"><a href="#cb9-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-24"><a href="#cb9-24" aria-hidden="true" tabindex="-1"></a><span class="fu">## Apple Silicon — required env (segfault prevention)</span></span>
+<span id="cb9-25"><a href="#cb9-25" aria-hidden="true" tabindex="-1"></a>See <span class="in">`memory/faiss_libomp_crash.md`</span>. The wrapper sets</span>
+<span id="cb9-26"><a href="#cb9-26" aria-hidden="true" tabindex="-1"></a>DYLD_INSERT_LIBRARIES so faiss/torch/sklearn share one libomp.</span>
+<span id="cb9-27"><a href="#cb9-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-28"><a href="#cb9-28" aria-hidden="true" tabindex="-1"></a><span class="fu">## Run the benchmark</span></span>
+<span id="cb9-29"><a href="#cb9-29" aria-hidden="true" tabindex="-1"></a>./scripts/benchmark.sh</span>
+<span id="cb9-30"><a href="#cb9-30" aria-hidden="true" tabindex="-1"></a><span class="fu"># Override defaults via env: RUN_OPENAI, RUN_OLLAMA, MAX_STEPS, OPENAI_MODEL.</span></span>
+<span id="cb9-31"><a href="#cb9-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-32"><a href="#cb9-32" aria-hidden="true" tabindex="-1"></a><span class="fu">## What it solves reliably (May 2026 benchmark)</span></span>
+<span id="cb9-33"><a href="#cb9-33" aria-hidden="true" tabindex="-1"></a><span class="co">[</span><span class="ot">Categories-with-rates table from results/metrics.csv</span><span class="co">]</span></span>
+<span id="cb9-34"><a href="#cb9-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-35"><a href="#cb9-35" aria-hidden="true" tabindex="-1"></a><span class="fu">## Known gaps &amp; follow-on work</span></span>
+<span id="cb9-36"><a href="#cb9-36" aria-hidden="true" tabindex="-1"></a><span class="ss">1. </span><span class="co">[</span><span class="ot">Category X</span><span class="co">]</span> — model misidentifies pattern, needs hint Y</span>
+<span id="cb9-37"><a href="#cb9-37" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span><span class="co">[</span><span class="ot">Category Y</span><span class="co">]</span> — observation truncation drops critical signal</span>
+<span id="cb9-38"><a href="#cb9-38" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span><span class="co">[</span><span class="ot">Category Z</span><span class="co">]</span> — schema friction on tool W</span>
+<span id="cb9-39"><a href="#cb9-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-40"><a href="#cb9-40" aria-hidden="true" tabindex="-1"></a><span class="fu">## Master&#39;s-thesis-scope follow-ons</span></span>
+<span id="cb9-41"><a href="#cb9-41" aria-hidden="true" tabindex="-1"></a><span class="ss">1. </span>RL on top of SFT-LoRA trained on scaffold-aligned trajectories</span>
+<span id="cb9-42"><a href="#cb9-42" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span>Multi-agent decomposition (recon-agent + exploit-agent + extract-agent)</span>
+<span id="cb9-43"><a href="#cb9-43" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span>Cross-challenge transfer evaluation for the lessons-DB</span>
+<span id="cb9-44"><a href="#cb9-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-45"><a href="#cb9-45" aria-hidden="true" tabindex="-1"></a><span class="fu">## Key dependencies</span></span>
+<span id="cb9-46"><a href="#cb9-46" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Python 3.13, faiss-cpu, sentence-transformers, torch</span>
+<span id="cb9-47"><a href="#cb9-47" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>Ollama (gemma4:26b for local) and/or OpenAI API key</span>
+<span id="cb9-48"><a href="#cb9-48" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>See pyproject.toml for pinned versions.</span>
+<span id="cb9-49"><a href="#cb9-49" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-50"><a href="#cb9-50" aria-hidden="true" tabindex="-1"></a><span class="fu">## Reproducing the benchmark</span></span>
+<span id="cb9-51"><a href="#cb9-51" aria-hidden="true" tabindex="-1"></a><span class="ss">1. </span>cp bench/challenges.tsv.template bench/challenges.tsv  # edit URLs</span>
+<span id="cb9-52"><a href="#cb9-52" aria-hidden="true" tabindex="-1"></a><span class="ss">2. </span>export OPENAI_API_KEY=...</span>
+<span id="cb9-53"><a href="#cb9-53" aria-hidden="true" tabindex="-1"></a><span class="ss">3. </span>./scripts/benchmark.sh</span>
+<span id="cb9-54"><a href="#cb9-54" aria-hidden="true" tabindex="-1"></a><span class="ss">4. </span>python bench/analyze.py  # produces out/figures/*.png</span>
+<span id="cb9-55"><a href="#cb9-55" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-56"><a href="#cb9-56" aria-hidden="true" tabindex="-1"></a><span class="fu">## Tests</span></span>
+<span id="cb9-57"><a href="#cb9-57" aria-hidden="true" tabindex="-1"></a>pytest tests/  # currently 2662 passing</span>
+<span id="cb9-58"><a href="#cb9-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-59"><a href="#cb9-59" aria-hidden="true" tabindex="-1"></a><span class="fu">## Contact</span></span>
+<span id="cb9-60"><a href="#cb9-60" aria-hidden="true" tabindex="-1"></a>C1C Andrew Kim — andrew.kim@afacademy.af.edu</span>
+<span id="cb9-61"><a href="#cb9-61" aria-hidden="true" tabindex="-1"></a>Mentor: Lt Col Todd, DFCS</span></code></pre></div>
+<h2 id="submission-checklist-thu-pm">6.6 Submission checklist (Thu
+PM)</h2>
+<pre><code>[ ] Final paper PDF — all 6 sections present, 5–8 pages
+[ ] Abstract ≤ 250 words
+[ ] All figures captioned, referenced in text by number
+[ ] All in-text citations resolve in references list
+[ ] No &quot;TODO&quot; / &quot;[FILL IN]&quot; / placeholder text (grep)
+[ ] AI Usage 3-part statement present
+[ ] PDF rendering verified on a second machine
+[ ] Slide deck PDF exported
+[ ] README_HANDOFF.md committed
+[ ] All run logs preserved under runs/benchmark_*
+[ ] Repo tagged: git tag v3.10-final
+[ ] qa_prep.md committed
+[ ] Team Assessment email drafted (solo cadet — short)</code></pre>
+<h2 id="submit-fri-8-may-before-0900">6.7 Submit (Fri 8 May, before
+0900)</h2>
+<pre><code>Subject: [CAPSTONE] DATA 422 Final Report — C1C Andrew Kim
+To: justin.merrick@afacademy.af.edu
+CC: lt.col.todd@afacademy.af.edu
+
+Sir,
+
+Attached is my final report for DATA 422. Section 8 (AI Usage Statement)
+includes the transcript link. The repository tag v3.10-final captures the
+exact codebase state.
+
+Final brief is on T___ at ____.
+
+V/R,
+C1C Andrew Kim</code></pre>
+<h1 id="code-changes-required-summary">7. Code Changes Required
+(Summary)</h1>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>File</th>
+<th>New / Modify</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bench/challenges.tsv</code></td>
+<td>New</td>
+<td>Benchmark spec</td>
+</tr>
+<tr>
+<td><code>bench/README.md</code></td>
+<td>New</td>
+<td>Scope, exclusions, limitations</td>
+</tr>
+<tr>
+<td><code>scripts/benchmark.sh</code></td>
+<td>New</td>
+<td>Hybrid OpenAI + Ollama harness</td>
+</tr>
+<tr>
+<td><code>scripts/extract_metrics.py</code></td>
+<td>New</td>
+<td>CSV from run logs</td>
+</tr>
+<tr>
+<td><code>bench/analyze.py</code></td>
+<td>New</td>
+<td>5 figures from CSV</td>
+</tr>
+<tr>
+<td><code>refs/synthesis.md</code></td>
+<td>New</td>
+<td>Lit-review synthesis paragraphs</td>
+</tr>
+<tr>
+<td><code>methods_inventory.md</code></td>
+<td>New</td>
+<td>Novel-methods table by tier</td>
+</tr>
+<tr>
+<td><code>results/regression_diagnoses.md</code></td>
+<td>New</td>
+<td>Causal analysis of failed runs</td>
+</tr>
+<tr>
+<td><code>sponsor_notes.md</code></td>
+<td>New</td>
+<td>Mentor meeting notes (filename kept for code compat)</td>
+</tr>
+<tr>
+<td><code>final_paper/main.tex</code> + <code>references.bib</code></td>
+<td>New</td>
+<td>Paper</td>
+</tr>
+<tr>
+<td><code>presentation/final_brief.pptx</code></td>
+<td>New</td>
+<td>Deck</td>
+</tr>
+<tr>
+<td><code>qa_prep.md</code></td>
+<td>New</td>
+<td>Q&amp;A defense</td>
+</tr>
+<tr>
+<td><code>README_HANDOFF.md</code></td>
+<td>New</td>
+<td>Reproducibility / handoff</td>
+</tr>
+<tr>
+<td>Possibly <code>ctf_solver/runner.py</code></td>
+<td>Modify</td>
+<td>Add <code>--save-metrics</code> JSON output to make
+extract_metrics.py simpler</td>
+</tr>
+</tbody>
+</table>
+<p>No existing test will break.</p>
+<h1 id="rubric-coverage-map">8. Rubric Coverage Map</h1>
+<p>Final Paper Rubric (DS422_EOC_Paper_Rubric.pdf):</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>A-line</th>
+<th>Where you earn it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>“Concise summary of problem, methods, and results”</td>
+<td>§1 Abstract + §2 Intro</td>
+</tr>
+<tr>
+<td>“Synthesizes high-quality research on ‘new topics’”</td>
+<td>§3 Lit Review (refs/synthesis.md)</td>
+</tr>
+<tr>
+<td>“Effectively integrates coursework with novel methodologies”</td>
+<td>§4 Methodology + methods_inventory.md</td>
+</tr>
+<tr>
+<td>“Focuses on primary solution; high-quality visuals”</td>
+<td>§5 Results (Figures 1–5)</td>
+</tr>
+<tr>
+<td>“Data-driven conclusions; decision-quality recommendations”</td>
+<td>§6 (with cadet-initiated reframe)</td>
+</tr>
+<tr>
+<td>“All sources cited professionally (IEEE/APA). Conference
+standard”</td>
+<td>§7 + §8</td>
+</tr>
+</tbody>
+</table>
+<p>Final Presentation Rubric (Final_Presentation_Rubric.pdf): 1:1 by
+slide, see §6.1.</p>
+<p>Course Letter §6 holistic A: covered by mentor sync (§4.4), polished
+brief (§6.1–6.4), professional submission (§6.6–6.7), and the codebase
+artifacts themselves.</p>
+<h1 id="risk-register">9. Risk Register</h1>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenAI benchmark fails / rate-limits</td>
+<td>Already using gpt-4o-mini (cheap, high quota); fall back to
+Ollama-only with a note in §5 limitations</td>
+</tr>
+<tr>
+<td>FAISS+OpenMP segfault returns</td>
+<td>Already patched via DYLD wrapper + memory note</td>
+</tr>
+<tr>
+<td>Lt Col Todd unavailable for sync</td>
+<td>Send written summary; capture his preferences async via email</td>
+</tr>
+<tr>
+<td>Run-time on benchmark exceeds calendar</td>
+<td>gpt-4o-mini takes ~2 hr for 75 runs; well within Thu morning</td>
+</tr>
+<tr>
+<td>LaTeX template trouble</td>
+<td>Fallback to Word IEEE template — content is what’s graded</td>
+</tr>
+<tr>
+<td>Brief runs over 25 min</td>
+<td>Cut order documented in §6.3</td>
+</tr>
+<tr>
+<td>Fresh segfault on a tool I haven’t touched</td>
+<td>Check <code>~/Library/Logs/DiagnosticReports/Python-*.ips</code>,
+apply DYLD env, log it as known-issue</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="appendix-a-quick-reference-files-youll-create">Appendix A —
+Quick reference: files you’ll create</h2>
+<pre><code>bench/
+├── README.md
+├── challenges.tsv
+└── analyze.py
+scripts/
+├── benchmark.sh
+├── extract_metrics.py
+└── run.sh                   (already exists)
+refs/
+├── synthesis.md
+└── *.pdf                    (the 7 papers)
+results/
+└── regression_diagnoses.md
+out/figures/
+├── fig1_solverate.png
+├── fig2_matrix.png
+├── fig3_cdf.png
+├── fig4_validity.png
+└── fig5_stuck.png
+final_paper/
+├── main.tex
+├── references.bib
+└── figures/                 (symlink → ../out/figures)
+presentation/
+└── final_brief.pptx
+methods_inventory.md
+qa_prep.md
+sponsor_notes.md
+README_HANDOFF.md</code></pre>
+<h2 id="appendix-b-todays-60-minute-starter-sequence">Appendix B —
+Today’s 60-minute starter sequence</h2>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="st">&quot;/Users/andrewkim/Documents/School Files/1 Dig Spring Semester/DATA422/new_final_project/kim_data_project&quot;</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> bench refs results out/figures presentation final_paper</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Email Lt Col Todd (2 min)</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Use the template in §4.4</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Pull the 7 papers as PDFs into refs/ (15 min)</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Use Google Scholar; accept the arXiv PDFs</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Build challenges.tsv from your existing lessons docs</span></span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a><span class="fu">ls</span> out/lessons_knowledge/lessons_<span class="pp">*</span>.md <span class="kw">|</span> <span class="fu">sed</span> <span class="at">-E</span> <span class="st">&#39;s|.*lessons_[0-9]+_||&#39;</span> <span class="kw">|</span> <span class="fu">sed</span> <span class="at">-E</span> <span class="st">&#39;s|_r[0-9]+.*||&#39;</span> <span class="kw">|</span> <span class="fu">sort</span> <span class="at">-u</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Edit bench/challenges.tsv with these names + URLs</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Paste scripts/benchmark.sh + scripts/extract_metrics.py from §4.2</span></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a><span class="fu">chmod</span> +x scripts/benchmark.sh</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a><span class="co"># 5. Dry-run on one challenge with OpenAI gpt-4o-mini</span></span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a><span class="va">RUN_OLLAMA</span><span class="op">=</span>0 <span class="va">OPENAI_MODEL</span><span class="op">=</span>gpt-4o-mini <span class="va">MAX_STEPS</span><span class="op">=</span>10 <span class="ex">./scripts/benchmark.sh</span></span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> runs/benchmark_<span class="pp">*</span>/metrics.csv</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a><span class="co"># 6. If clean: full sweep before bed</span></span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a><span class="ex">./scripts/benchmark.sh</span></span></code></pre></div>
+<p>You’re set up to wake up Thursday with the full benchmark CSV in
+hand.</p>
+</body>
+</html>

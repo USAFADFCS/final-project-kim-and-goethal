@@ -4,10 +4,11 @@ Path enumeration tools for CTF solving.
 Provides utilities for discovering hidden files, directories, and interesting paths.
 """
 
-import json
 from typing import Dict, List, Optional, Set
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class PathEnumeratorTool:
@@ -44,6 +45,38 @@ class PathEnumeratorTool:
         "optional 'timeout' (request timeout, default 5), optional 'max_paths' (limit paths tested, default 50). "
         "Returns list of discovered paths with status codes. Use for CTF recon to find hidden files."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "wordlist": {
+                "oneOf": [
+                    {
+                        "type": "string",
+                        "enum": ["common", "backup", "git", "admin", "api"],
+                    },
+                    {"type": "array", "items": {"type": "string"}},
+                ],
+                "description": (
+                    "Either a wordlist name (common/backup/git/admin/api) "
+                    "or an array of custom paths."
+                ),
+            },
+            "extensions": {"type": "array", "items": {"type": "string"}},
+            "timeout": {"type": "integer", "default": 5},
+            "max_paths": {"type": "integer", "default": 50},
+        },
+        "required": ["url", "wordlist"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com", "wordlist": "common"},
+        {
+            "url": "http://example.com",
+            "wordlist": ["secret", "admin"],
+            "extensions": [".php", ".bak"],
+        },
+    ]
 
     # Built-in wordlists for different scenarios
     WORDLISTS: Dict[str, List[str]] = {
@@ -280,11 +313,9 @@ class PathEnumeratorTool:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[PathEnumeratorTool] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "PathEnumeratorTool")
+        if err:
+            return err
         url = data.get("url", "").rstrip("/")
         wordlist_input = data.get("wordlist", "common")
         extensions = data.get("extensions", [])
@@ -606,11 +637,9 @@ class BackupFileFinder:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[BackupFileFinder] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "BackupFileFinder")
+        if err:
+            return err
         url = data.get("url", "")
         timeout = data.get("timeout", 5)
 

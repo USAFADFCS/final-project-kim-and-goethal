@@ -1,0 +1,121 @@
+{
+  "challenge_name": "Microdosing",
+  "rag_mode": "RAGMode.LESSONS_WRITE",
+  "outcome": "partial",
+  "reflexion": {
+    "text": "Prior runs on 'Microdosing' (1 total: 1 partial):\n\n✗ PRIOR FAILURE: In a prior attempt on a Cookies / Session / Auth Bypass challenge, the agent failed after 27 steps. Primary tools used: `http_fetch`, `sqli_probe`, `flask_session_forge`. Partial progress confirmed: auth_bypassed, recon_complete. Key lesson: Pivot to a different attack vector early rather than repea",
+    "sources": [
+      "lessons_023_microdosing_r1_20260503_071043.md"
+    ],
+    "char_count": 368
+  },
+  "proactive": {
+    "query": "We're doing a black box security assessment for this organization doing medical titration studies, but with the recent cuts, we're not sure they had time to securely develop their web app. Can you help with the assessment? They want to know if there's a way to hack into the admin account...",
+    "raw_text": "[Result 1] | Source: 39_cookie_tossing_cache_attacks.md | Tags: xss, authentication, jwt\n**Overriding Authorization Cookies:**\n```html\n[script: 395 bytes]\n``` **Path-Specific Cookie Override:**\n```html\n[script: 245 bytes]\n``` **CSRF Token Override:**\n```html\n[script: 205 bytes]\n``` --- ## 4. Web Cache Poisoning > **When to use this section:** The application uses a caching layer (CDN, Varnish, Nginx cache) and you want to poison cached responses. ### 4.1 Cache Poisonin\n[... truncated]\n\n[Result 2] | Source: 06_picoctf_web_patterns_and_strategies.md | Section: PicoCTF Web Patterns and Strategies > **Document Purpose:** Common patterns and strategies for PicoCTF-style web challenges. Designed for autonomous agent retrieval with pattern recognition and technique mapping. --- ## 1. General Style of PicoCTF Web Challenges > **When to use this section:** Understanding PicoCTF challenge structure. **Tags:** `picoctf, challenge-style, educational, patterns` PicoCTF web challenges are: | Tags: sql_injection, authentication, command_injection\n# PicoCTF Web Patterns and Strategies > **Document Purpose:** Common patterns and strategies for PicoCTF-style web challenges. Designed for autonomous agent retrieval with pattern recognition and technique mapping. --- ## 1. General Style of PicoCTF Web Challenges > **When to use this section:** Understanding PicoCTF challenge structure. **Tags:** `picoctf, challenge-style, educati\n[... truncated]\n\n[Result 3] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: authentication, command_injection, encoding\n- All linked JS files. **Search JS for:**\n- Strings that look like passwords/keys/flag pieces. - Comparisons like `input === \"something\"` or `=== secret`. - Functions bound to buttons/onsubmit handlers. ### Reasoning Steps\n**Identify:**\n- Where user input is read (e.g., `document.getElementById(...)`). - Where it's compared to constants or processed. **Reconstruct:**\n- \"What exact \n[... truncated]\n\n[Result 4] | Source: 00_web_exploitation_overview.md | Section: Web Exploitation Overview for CTFs > **Document Purpose:** Foundational web exploitation concepts for CTF challenges. Designed for autonomous agent retrieval with structured patterns, recon workflows, and problem-solving strategies. --- ## 1. What Is Web Exploitation in CTFs? > **When to use this section:** Starting a new web CTF challenge. **Tags:** `web-exploitation, ctf, basics, introduction, overview` Web exploitation challenges in CTFs focus on finding and abusing vulnerabilities in web applications to gain access to hidden data, bypass authentication, or retrieve a flag. In many CTFs, the target is a small web app running on a given URL. Your job is to: | Tags: authentication\n# Web Exploitation Overview for CTFs > **Document Purpose:** Foundational web exploitation concepts for CTF challenges. Designed for autonomous agent retrieval with structured patterns, recon workflows, and problem-solving strategies. --- ## 1. What Is Web Exploitation in CTFs? > **When to use this section:** Starting a new web CTF challenge. **Tags:** `web-exploitation, ctf, basic\n[... truncated]\n\n[Result 5] | Source: 02_robots_txt_and_hidden_paths.md\n**Normalize paths:**\n   - Ensure they start with `/`. - Combine with the base URL (including port). 3. **Prioritize:**\n   - Disallowed paths with names suggesting admin, backups, secrets, or testing. 4. **Plan follow-up actions:**\n   - Fetch each high-priority path and inspect its response. - Use HTML/JS inspection tools on the fetched pages. - Note any new links, forms, or comment\n[... truncated]",
+    "trimmed_text": "[Result 1] | Source: 39_cookie_tossing_cache_attacks.md | Tags: xss, authentication, jwt\n**Overriding Authorization Cookies:**\n```html\n[script: 395 bytes]\n``` **Path-Specific Cookie Override:**\n```html\n[script: 245 bytes]\n``` **CSRF Token Override:**\n```html\n[script: 205 bytes]\n``` --- ## 4. Web Cache Poisoning > **When to use this section:** The application uses a caching layer (CDN, Varnish, Nginx cache) and you want to poison cached responses. ### 4.1 Cache Poisonin\n[... truncated]\n\n[Result 2] | Source: 06_picoctf_web_patterns_and_strategies.md | Section: PicoCTF Web Patterns and Strategies > **Document Purpose:** Common patterns and strategies for PicoCTF-style web challenges. Designed for autonomous agent retrieval with pattern recognition and technique mapping. --- ## 1. General Style of PicoCTF Web Challenges > **When to use this section:** Understanding PicoCTF challenge structure. **Tags:** `picoctf, challenge-style, educational, patterns` PicoCTF web challenges are: | Tags: sql_injection, authentication, command_injection\n# PicoCTF Web Patterns and Strategies > **Document Purpose:** Common patterns and strategies for PicoCTF-style web challenges. Designed for autonomous agent retrieval with pattern recognition and technique mapping. --- ## 1. General Style of PicoCTF Web Challenges > **When to use this section:** Understanding PicoCTF challenge structure. **Tags:** `picoctf, challenge-style, educati\n[... truncated]\n\n[Result 3] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: authentication, command_injection, encoding\n- All linked JS files. **Search JS for:**\n- Strings that look like passwords/keys/flag pieces. - Comparisons like `input === \"something\"` or `=== secret`. - Functions bound to buttons/onsubmit handlers. ### Reasoning Steps\n**Identify:**\n- Where user input is read (e.g., `document.getElementById(...)`). - Where it's compared to constants or processed. **Reconstruct:**\n- \"What exact \n[... truncated]\n\n[Result 4] | Source: 00_web_exploitation_overview.md | Section: Web Exploitation Overview for CTFs > **Document Purpose:** Foundational web exploitation concepts for CTF challenges. Designed for autonomous agent retrieval with structured patterns, recon workflows, and problem-solving strategies. --- ## 1. What Is Web Exploitation in CTFs? > **When to use this section:** Starting a new web CTF challenge. **Tags:** `web-exploitation, ctf, basics, introduction, overview` Web exploitation challenges in CTFs focus on finding and abusing vulnerabilities in web applications to gain access to hidden data, bypass authentication, or retrieve a flag. In many CTFs, the target is a small web app running on a given URL. Your job is to: | Tags: authentication\n# Web Exploitation Overview for CTFs > **Document Purpose:** Foundational web exploitation concepts for CTF challenges. Designed for autonomous agent retrieval with structured patterns, recon workflows, and problem-solving strategies. --- ## 1. What Is Web Exploitation in CTFs? > **When to use this section:** Starting a new web CTF challenge. **Tags:** `web-exploitation, ctf, basic\n[... truncated]\n\n[Result 5] | Source: 02_robots_txt_and_hidden_paths.md\n**Normalize paths:**\n   - Ensure they start with `/`. - Combine with the base URL (including port). 3. **Prioritize:**\n   - Disallowed paths with names suggesting admin, backups, secrets, or testing. 4. **Plan follow-up actions:**\n   - Fetch each high-priority path and inspect its response. - Use HTML/JS inspection tools on the fetched pages. - Note any new links, forms, or comment\n[... truncated]",
+    "raw_char_count": 3577,
+    "trimmed_char_count": 3577,
+    "retrieval_records": [
+      {
+        "rank": 0,
+        "source_file": "39_cookie_tossing_cache_attacks.md",
+        "section": null,
+        "tags": [
+          "xss",
+          "authentication",
+          "jwt"
+        ],
+        "doc_type": null,
+        "score": 0.2569596116806834,
+        "match_details": {
+          "term_overlap": 0.04049951939778672,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.9,
+          "position": 0.6075980392156862,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 1,
+        "source_file": "06_picoctf_web_patterns_and_strategies.md",
+        "section": "PicoCTF Web Patterns and Strategies > **Document Purpose:** Common patterns and strategies for PicoCTF-style web challenges. Designed for autonomous agent retrieval with pattern recognition and technique mapping. --- ## 1. General Style of PicoCTF Web Challenges > **When to use this section:** Understanding PicoCTF challenge structure. **Tags:** `picoctf, challenge-style, educational, patterns` PicoCTF web challenges are:",
+        "tags": [
+          "sql_injection",
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.25374455160114506,
+        "match_details": {
+          "term_overlap": 0.02850026789175148,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.85,
+          "position": 0.7234444444444444,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 2,
+        "source_file": "07_web_ctf_troubleshooting_checklist.md",
+        "section": null,
+        "tags": [
+          "authentication",
+          "command_injection",
+          "encoding"
+        ],
+        "doc_type": null,
+        "score": 0.24134668968175188,
+        "match_details": {
+          "term_overlap": 0.025554224204379538,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.8,
+          "position": 0.71125,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 3,
+        "source_file": "00_web_exploitation_overview.md",
+        "section": "Web Exploitation Overview for CTFs > **Document Purpose:** Foundational web exploitation concepts for CTF challenges. Designed for autonomous agent retrieval with structured patterns, recon workflows, and problem-solving strategies. --- ## 1. What Is Web Exploitation in CTFs? > **When to use this section:** Starting a new web CTF challenge. **Tags:** `web-exploitation, ctf, basics, introduction, overview` Web exploitation challenges in CTFs focus on finding and abusing vulnerabilities in web applications to gain access to hidden data, bypass authentication, or retrieve a flag. In many CTFs, the target is a small web app running on a given URL. Your job is to:",
+        "tags": [
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.20297870163756226,
+        "match_details": {
+          "term_overlap": 0.04027227492723904,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.6,
+          "position": 0.6686979166666667,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 4,
+        "source_file": "02_robots_txt_and_hidden_paths.md",
+        "section": null,
+        "tags": [],
+        "doc_type": null,
+        "score": 0.19666849233676853,
+        "match_details": {
+          "term_overlap": 0.02970202128309781,
+          "phrase_match": 0.058823529411764705,
+          "ctf_boost": 0.45,
+          "position": 0.77140625,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      }
+    ],
+    "injected": true
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "challenge_name": "Open Application",
+  "rag_mode": "RAGMode.LESSONS_BUILDONLY",
+  "outcome": "success",
+  "reflexion": null,
+  "proactive": {
+    "query": "We're looking for enthusiastic applicants - who actively want our flag.",
+    "raw_text": "[Result 1] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication\n**Quick Flag Hunt Queries:**\n```sql\n-- Check for flag tables\n' UNION SELECT name,NULL FROM sqlite_master WHERE name LIKE '%flag%'--\n' UNION SELECT table_name,NULL FROM information_schema.tables WHERE table_name LIKE '%flag%'-- -- Check for flag columns  \n' UNION SELECT column_name,table_name FROM information_schema.columns WHERE column_name LIKE '%flag%'-- -- Direct extraction atte\n[... truncated]\n\n[Result 2] | Source: 41_wasm_reverse_engineering.md | Section: WebAssembly (WASM) Reverse Engineering — CTF Exploitation Reference > **Document Purpose:** Techniques for extracting CTF flags from WebAssembly modules. Covers plaintext flag extraction, XOR-encoded flag recovery, JavaScript deobfuscation, and the standard WASM binary format. **Tags:** `wasm, webassembly, reverse engineering, binary, xor, decompile, flag validator, some assembly required, client-side` --- ## 1. WASM CHALLENGE OVERVIEW > **When to use this section:** The challenge page loads a `.wasm` binary that validates user input. The flag is stored inside the WASM module. ### 1.1 How WASM Flag Validators Work Typical pattern (picoCTF \"Some Assembly Required\" series): | Tags: command_injection\n# WebAssembly (WASM) Reverse Engineering — CTF Exploitation Reference > **Document Purpose:** Techniques for extracting CTF flags from WebAssembly modules. Covers plaintext flag extraction, XOR-encoded flag recovery, JavaScript deobfuscation, and the standard WASM binary format. **Tags:** `wasm, webassembly, reverse engineering, binary, xor, decompile, flag validator, some assembly\n[... truncated]\n\n[Result 3] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: authentication\n**C.2: Goal Type Decision Tree**\n```\nIF: Current page is login form\n    AND: Challenge mentions \"bypass\" or \"without password\"\nTHEN: \n    GOAL_TYPE = \"AUTH_BYPASS\"\n    SUCCESS_CONDITION = Login succeeds, access granted\n    GOTO Section 1 (Auth Bypass Payloads) IF: Current page shows data from database\n    AND: Challenge mentions \"secret\", \"hidden data\", \"other users\"\nTHEN:\n    GOAL\n[... truncated]\n\n[Result 4] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication\n**Response Differences to Watch:**\n- HTTP status code (200 vs 500)\n- Response body length\n- Specific text present/absent (\"Welcome\" vs \"Error\")\n- Redirect behavior **Agent Takeaway:**\n- Boolean blind = different responses for true/false\n- Extract data by asking binary questions\n- Compare responses to baseline true/false --- ### 9.2 Boolean-Based Blind: Payload Templates **Tags:** `\n[... truncated]\n\n[Result 5] | Source: 35_xs_leak_browser_side_channels.md | Tags: authentication, command_injection\n> **When to use this section:** Solving XS-Leak challenges in CTF competitions. **Tags:** `xs-leak, ctf, patterns, admin-bot, oracle` **Pattern 1: Search-Based Leak with Frame Counting**\n```\nChallenge: Internal search endpoint returns results only for admin\nSetup: Admin bot visits your page while authenticated\nGoal: Leak admin's search history or flag via search results\nTechnique: \n[... truncated]",
+    "trimmed_text": "[Result 1] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication\n**Quick Flag Hunt Queries:**\n```sql\n-- Check for flag tables\n' UNION SELECT name,NULL FROM sqlite_master WHERE name LIKE '%flag%'--\n' UNION SELECT table_name,NULL FROM information_schema.tables WHERE table_name LIKE '%flag%'-- -- Check for flag columns  \n' UNION SELECT column_name,table_name FROM information_schema.columns WHERE column_name LIKE '%flag%'-- -- Direct extraction atte\n[... truncated]\n\n[Result 2] | Source: 41_wasm_reverse_engineering.md | Section: WebAssembly (WASM) Reverse Engineering — CTF Exploitation Reference > **Document Purpose:** Techniques for extracting CTF flags from WebAssembly modules. Covers plaintext flag extraction, XOR-encoded flag recovery, JavaScript deobfuscation, and the standard WASM binary format. **Tags:** `wasm, webassembly, reverse engineering, binary, xor, decompile, flag validator, some assembly required, client-side` --- ## 1. WASM CHALLENGE OVERVIEW > **When to use this section:** The challenge page loads a `.wasm` binary that validates user input. The flag is stored inside the WASM module. ### 1.1 How WASM Flag Validators Work Typical pattern (picoCTF \"Some Assembly Required\" series): | Tags: command_injection\n# WebAssembly (WASM) Reverse Engineering — CTF Exploitation Reference > **Document Purpose:** Techniques for extracting CTF flags from WebAssembly modules. Covers plaintext flag extraction, XOR-encoded flag recovery, JavaScript deobfuscation, and the standard WASM binary format. **Tags:** `wasm, webassembly, reverse engineering, binary, xor, decompile, flag validator, some assembly\n[... truncated]\n\n[Result 3] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: authentication\n**C.2: Goal Type Decision Tree**\n```\nIF: Current page is login form\n    AND: Challenge mentions \"bypass\" or \"without password\"\nTHEN: \n    GOAL_TYPE = \"AUTH_BYPASS\"\n    SUCCESS_CONDITION = Login succeeds, access granted\n    GOTO Section 1 (Auth Bypass Payloads) IF: Current page shows data from database\n    AND: Challenge mentions \"secret\", \"hidden data\", \"other users\"\nTHEN:\n    GOAL\n[... truncated]\n\n[Result 4] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication\n**Response Differences to Watch:**\n- HTTP status code (200 vs 500)\n- Response body length\n- Specific text present/absent (\"Welcome\" vs \"Error\")\n- Redirect behavior **Agent Takeaway:**\n- Boolean blind = different responses for true/false\n- Extract data by asking binary questions\n- Compare responses to baseline true/false --- ### 9.2 Boolean-Based Blind: Payload Templates **Tags:** `\n[... truncated]\n\n[Result 5] | Source: 35_xs_leak_browser_side_channels.md | Tags: authentication, command_injection\n> **When to use this section:** Solving XS-Leak challenges in CTF competitions. **Tags:** `xs-leak, ctf, patterns, admin-bot, oracle` **Pattern 1: Search-Based Leak with Frame Counting**\n```\nChallenge: Internal search endpoint returns results only for admin\nSetup: Admin bot visits your page while authenticated\nGoal: Leak admin's search history or flag via search results\nTechnique: \n[... truncated]",
+    "raw_char_count": 3150,
+    "trimmed_char_count": 3150,
+    "retrieval_records": [
+      {
+        "rank": 0,
+        "source_file": "05_sql_injection_web_ctf_v3_final.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.28233150696723924,
+        "match_details": {
+          "term_overlap": 0.042009322973653646,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.85,
+          "position": 0.9552777777777778,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 1,
+        "source_file": "41_wasm_reverse_engineering.md",
+        "section": "WebAssembly (WASM) Reverse Engineering — CTF Exploitation Reference > **Document Purpose:** Techniques for extracting CTF flags from WebAssembly modules. Covers plaintext flag extraction, XOR-encoded flag recovery, JavaScript deobfuscation, and the standard WASM binary format. **Tags:** `wasm, webassembly, reverse engineering, binary, xor, decompile, flag validator, some assembly required, client-side` --- ## 1. WASM CHALLENGE OVERVIEW > **When to use this section:** The challenge page loads a `.wasm` binary that validates user input. The flag is stored inside the WASM module. ### 1.1 How WASM Flag Validators Work Typical pattern (picoCTF \"Some Assembly Required\" series):",
+        "tags": [
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.23130520704338242,
+        "match_details": {
+          "term_overlap": 0.03317968427512274,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.7,
+          "position": 0.7803333333333333,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 2,
+        "source_file": "05_sql_injection_web_ctf_v3_final.md",
+        "section": null,
+        "tags": [
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.22897356665137028,
+        "match_details": {
+          "term_overlap": 0.03248978255021347,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.7,
+          "position": 0.7597765363128491,
+          "recency": 1.0
+        },
+        "char_count": 895,
+        "is_lesson": false
+      },
+      {
+        "rank": 3,
+        "source_file": "05_sql_injection_web_ctf_v3_final.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.20320063405454034,
+        "match_details": {
+          "term_overlap": 0.007098807358573003,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.55,
+          "position": 0.9036111111111111,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 4,
+        "source_file": "35_xs_leak_browser_side_channels.md",
+        "section": null,
+        "tags": [
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.1999537337619237,
+        "match_details": {
+          "term_overlap": 0.032540584404809246,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.55,
+          "position": 0.769375,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      }
+    ],
+    "injected": true
+  }
+}

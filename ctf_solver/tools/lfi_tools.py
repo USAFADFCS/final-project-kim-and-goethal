@@ -5,11 +5,12 @@ Provides utilities for detecting and exploiting file inclusion vulnerabilities
 via path traversal, PHP wrappers, log poisoning, and encoding bypasses.
 """
 
-import json
 import re
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class LfiProbeTool:
@@ -46,6 +47,25 @@ class LfiProbeTool:
         "'timeout' (default 10). Returns analysis of which payloads revealed file "
         "contents or triggered LFI indicators."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "data": {"type": "object"},
+            "os_target": {
+                "type": "string",
+                "enum": ["linux", "windows", "both"],
+                "default": "both",
+            },
+            "depth": {"type": "integer", "default": 5},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/?file=", "param": "file"}]
 
     # Detection patterns by OS
     LINUX_PATTERNS: List[Tuple[str, str]] = [
@@ -212,11 +232,9 @@ class LfiProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[LfiProbeTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "LfiProbeTool")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -521,11 +539,9 @@ class LfiPayloadGenerator:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[LfiPayloadGenerator] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "LfiPayloadGenerator")
+        if err:
+            return err
         operation = data.get("operation", "").strip().lower()
         if not operation:
             return (

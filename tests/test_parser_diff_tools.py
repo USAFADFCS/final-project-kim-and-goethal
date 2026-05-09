@@ -38,7 +38,7 @@ class TestParserDifferentialProbeTool:
     def test_invalid_json(self):
         result = self.tool.use("not valid json")
         assert "Error" in result
-        assert "Invalid JSON" in result
+        assert "tool_input must be JSON" in result
 
     def test_missing_url(self):
         result = self.tool.use(json.dumps({"param": "q"}))

@@ -1,11 +1,12 @@
 """IDOR enumeration probe (split from misc_probe_tools.py)."""
 
 import hashlib
-import json
 import re
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class IdorEnumeratorTool:
@@ -40,12 +41,57 @@ class IdorEnumeratorTool:
     description: str = (
         "Enumerate resources to detect IDOR (Insecure Direct Object Reference) "
         "vulnerabilities. Input must be JSON with 'url' (URL containing the ID) and "
-        "'param' (current ID value in URL or parameter). Optionally provide 'param_type' "
-        "(path/query/body, default path), 'param_name' (for query/body), 'range_start' "
-        "(default 0), 'range_end' (default 20), 'id_type' (sequential/md5, default "
-        "sequential), 'method' (default GET), 'headers', 'data', 'timeout' (default 10). "
-        "Returns enumeration results with anomaly detection. Range capped at 100 IDs."
+        "'param' (the CURRENT ID VALUE present in the URL/param — e.g. '1', "
+        "'e93028bdc1aa…', the literal string the server identifies the resource by). "
+        "Optionally: 'param_type' (path/query/body, default path); 'param_name' "
+        "(QUERY/BODY FIELD NAME, e.g. 'id'; ignored for path-IDOR); 'range_start' "
+        "(default 0); 'range_end' (default 100, capped at MAX_RANGE=100); 'id_type' "
+        "('sequential' tries 0,1,2…; 'md5' tries md5(0), md5(1), … — use 'md5' when "
+        "the current ID is a 32-char hex token); 'method' (default GET), 'headers', "
+        "'data', 'timeout' (default 10). Returns enumeration results with anomaly "
+        "detection. Range capped at 100 IDs."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "param_type": {
+                "type": "string",
+                "enum": ["path", "query", "body"],
+                "default": "path",
+            },
+            "param_name": {"type": "string", "default": "id"},
+            "range_start": {"type": "integer", "default": 0},
+            "range_end": {"type": "integer", "default": 100},
+            "id_type": {
+                "type": "string",
+                "enum": ["sequential", "md5"],
+                "default": "sequential",
+            },
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "headers": {"type": "object"},
+            "data": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/api/user/1",
+            "param": "1",
+            "param_type": "path",
+            "range_end": 50,
+        },
+        {
+            "url": "http://example.com/profile/user/e93028bdc1aacdfb3687181f2031765d",
+            "param": "e93028bdc1aacdfb3687181f2031765d",
+            "param_type": "path",
+            "id_type": "md5",
+            "range_end": 50,
+        },
+    ]
 
     # Flag patterns
     FLAG_PATTERNS: List[str] = [
@@ -85,17 +131,20 @@ class IdorEnumeratorTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[IdorEnumeratorTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "IdorEnumeratorTool")
+        if err:
+            return err
         url = data.get("url", "").strip() if isinstance(data.get("url"), str) else ""
         param = str(data.get("param", "")).strip()
         param_type = data.get("param_type", "path").strip().lower()
         param_name = data.get("param_name", "id").strip()
         range_start = data.get("range_start", 0)
-        range_end = data.get("range_end", 20)
+        # v3.10 P5b: default range_end raised from 20 to 100 (== MAX_RANGE).
+        # On the live Crystal Peak run gemma called IDOR with the default,
+        # tried md5(0..20), all 404'd, and abandoned the path. The
+        # privileged user_id was outside that window. 100 covers more
+        # ground without exceeding the existing safety cap.
+        range_end = data.get("range_end", 100)
         id_type = data.get("id_type", "sequential").strip().lower()
         method = (data.get("method") or "GET").upper()
         headers = data.get("headers") or {}
@@ -275,6 +324,35 @@ class IdorEnumeratorTool:
             status_counts[s] = status_counts.get(s, 0) + 1
         for status, count in sorted(status_counts.items()):
             output_lines.append(f"  Status {status}: {count} responses")
+
+        # v3.10 P5b: when no anomaly and no flag and every response was an
+        # error/404, the agent on the live Crystal Peak run abandoned IDOR
+        # after one narrow window. Surface a deterministic next-step
+        # hint so the model knows to expand the search rather than pivot
+        # to an unrelated tool.
+        only_misses = (
+            not flags_found
+            and not interesting_findings
+            and bool(response_lengths)
+            and all(
+                isinstance(entry["status"], int) and entry["status"] in (404, 403, 401)
+                for entry in results_table
+                if isinstance(entry["status"], int)
+            )
+        )
+        if only_misses:
+            next_start = range_end + 1
+            next_end = min(next_start + self.MAX_RANGE - 1, next_start + 99)
+            output_lines.append("")
+            output_lines.append(
+                "[NEXT STEP] All responses were 401/403/404 in this window. "
+                f"Expand search: retry with range_start={next_start}, "
+                f"range_end={next_end}. For CTF challenges where user IDs "
+                "are 4-digit (e.g. guest=3000 hint), also try "
+                "range_start=1000, range_end=1099 or other realistic "
+                "windows. Do NOT pivot to a different tool until the "
+                "IDOR search has covered plausible ID ranges."
+            )
 
         return "\n".join(output_lines)
 

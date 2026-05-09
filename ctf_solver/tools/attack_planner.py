@@ -5,8 +5,9 @@ Provides intelligent attack plan generation based on challenge type,
 current findings, and tools already tried.
 """
 
-import json
 from typing import Dict, List
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class AttackPlannerTool:
@@ -36,16 +37,71 @@ class AttackPlannerTool:
 
     name: str = "attack_planner"
     description: str = (
-        "Generate multi-phase attack plans for CTF challenges. Input must be JSON with keys: "
-        "'operation' ('suggest_plan' or 'suggest_next_step'), 'challenge_type' (e.g. "
-        "'sql_injection', 'xpath_injection', 'file_inclusion', 'command_injection', 'ssrf', "
+        "Generate multi-phase attack plans for CTF challenges. BOTH 'operation' AND "
+        "'challenge_type' are REQUIRED — calls missing either will be rejected. Input "
+        "must be JSON with keys: 'operation' (REQUIRED — one of 'suggest_plan' or "
+        "'suggest_next_step'), 'challenge_type' (REQUIRED — one of 'sql_injection', "
+        "'xpath_injection', 'file_inclusion', 'command_injection', 'ssrf', "
         "'nosql_injection', 'crypto', 'deserialization', 'file_upload', 'filter_bypass', "
-        "'ssti', 'xxe', 'jwt', 'unknown'). Optional keys: 'current_findings' (string describing "
+        "'ssti', 'xxe', 'jwt', 'unknown'; pass 'unknown' if the vuln class is not yet "
+        "identified). Optional keys: 'current_findings' (string describing "
         "what you know so far), 'tools_tried' (list of tool names already used), "
-        "'steps_completed' (list of completed step descriptions), 'last_result' (string with "
-        "last tool output). Use this tool to get a structured attack plan or determine the "
-        "next best action."
+        "'steps_completed' (list of completed step descriptions), 'last_result' (string "
+        "with last tool output). Use this tool to get a structured attack plan or "
+        "determine the next best action."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": ["suggest_plan", "suggest_next_step"],
+            },
+            "challenge_type": {
+                "type": "string",
+                "enum": [
+                    "sql_injection",
+                    "xpath_injection",
+                    "file_inclusion",
+                    "command_injection",
+                    "ssrf",
+                    "nosql_injection",
+                    "crypto",
+                    "deserialization",
+                    "file_upload",
+                    "filter_bypass",
+                    "ssti",
+                    "xxe",
+                    "jwt",
+                    "unknown",
+                ],
+            },
+            "current_findings": {"type": "string"},
+            "tools_tried": {"type": "array", "items": {"type": "string"}},
+            "steps_completed": {"type": "array", "items": {"type": "string"}},
+            "last_result": {"type": "string"},
+        },
+        "required": ["operation", "challenge_type"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"operation": "suggest_plan", "challenge_type": "sql_injection"},
+        {
+            "operation": "suggest_next_step",
+            "challenge_type": "ssti",
+            "current_findings": "{{7*7}} reflects 49",
+            "tools_tried": ["http_fetch", "ssti_probe"],
+        },
+        # v3.10 P5c: explicit "unknown" sample for the early-recon case
+        # (the live Crystal Peak run hit "challenge_type required" twice
+        # because the model assumed only operation was needed).
+        {
+            "operation": "suggest_next_step",
+            "challenge_type": "unknown",
+            "current_findings": "Logged in as guest; profile shows ID:3000.",
+            "tools_tried": ["deep_recon", "form_submit", "idor_enumerator"],
+        },
+    ]
 
     # Predefined attack plans keyed by challenge type.
     # Each plan is a list of (step_description, tool_name) tuples.
@@ -205,14 +261,9 @@ class AttackPlannerTool:
         pass
 
     def use(self, tool_input: str) -> str:
-        # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[AttackPlannerTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
+        data, err = parse_json_input(tool_input, "AttackPlannerTool")
+        if err:
+            return err
 
         operation = data.get("operation")
         if not operation:

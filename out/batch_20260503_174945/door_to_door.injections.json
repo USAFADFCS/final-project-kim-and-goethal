@@ -1,0 +1,122 @@
+{
+  "challenge_name": "Door to Door",
+  "rag_mode": "RAGMode.LESSONS_WRITE",
+  "outcome": "success",
+  "reflexion": {
+    "text": "Prior runs on 'Door to Door' (2 total: 2 success):\n\n✓ MOST RECENT SUCCESS: In this automated challenge, the user leveraged two tools: deep_recon for reconnaissance and http_fetch for data retrieval, ultimately achieving success in just three steps. They confirmed the presence of Server-Side Template Injection (SSTI) and completed their reconnaissance phase, leading to a successful exploit. The strategy involved making precise HTTP GET requests to gather information from the endpoint with a specific ID, revealing a JSON response that may have included exploitable data.  Exploit: - `http_fetch` input: {\"url\": \"http://80z71idg.chals.mctf.io/api/house.php\", \"params\": {\"id\": \"13\"}, \"max_body\": 4000}\n\n**Seq hash:** -3769854150990368204",
+    "sources": [
+      "lessons_018_door-to-door_r2_20260417_073459.md"
+    ],
+    "char_count": 739
+  },
+  "proactive": {
+    "query": "We're going door to door looking for candy, but I think there's one house that has decided to hide itself on the list...",
+    "raw_text": "[Result 1] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: sql_injection, authentication, command_injection\n- Cookies, sessions, or roles, but you're unsure how to systematically test them. **You see:**\n- SQL errors, but are unsure how to interpret them. - Encoded/obfuscated strings in JS or cookies that look like base64/hex but you're not certain. **You've done basic recon (HTML, robots, JS, cookies, forms) and:**\n- Need guidance on which attack pattern fits the hints. ### Use ctf_knowl\n[... truncated]\n\n[Result 2] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication\n**B.5: Signal Type Summary**\n```\nSIGNAL_TYPE is one of:\n┌─────────────────────┬─────────────────────────────────────────┐\n│ ERROR_BASED         │ SQL errors visible in response          │\n│ BOOLEAN_DIFFERENTIAL│ True/false conditions change response   │\n│ TIME_DIFFERENTIAL   │ SLEEP delays detectable                 │\n│ NO_SIGNAL           │ No observable difference                \n[... truncated]\n\n[Result 3] | Source: lessons_017_door-to-door_r1_20260417_073459.md | Section: General Web Exploitation: When facing a General Web Exploitation challenge with these tools avai **Type:** experience_success | Tags: ssti\n# General Web Exploitation: When facing a General Web Exploitation challenge with these tools avai **Type:** experience_success\n**Category:** General Web Exploitation\n**Challenge:** Door To Door\n**Challenge URL:** http://80z71idg.chals.mctf.io/\n**Auto-generated:** 2026-04-17\n**Tags:** unknown, success, experience, do\n**Confidence:** medium\n**Site fingerprint:** title:House Treat Ba\n[... truncated]\n\n[Result 4] | Source: lessons_018_door-to-door_r2_20260417_073459.md | Section: General Web Exploitation: When you achieve 'ssti_confirmed' during a General Web Exploitation ch **Type:** experience_success | Tags: ssti\n# General Web Exploitation: When you achieve 'ssti_confirmed' during a General Web Exploitation ch **Type:** experience_success\n**Category:** General Web Exploitation\n**Challenge:** Door To Door\n**Challenge URL:** http://80z71idg.chals.mctf.io/\n**Auto-generated:** 2026-04-17\n**Tags:** unknown, success, experience, do\n**Confidence:** high\n**Site fingerprint:** title:House Treat Bag \n[... truncated]\n\n[Result 5] | Source: 05_sql_injection_web_ctf_v3_final.md | Section: 20.1 Scenario Overview and Purpose **Tags:** `sqli, practice, scenarios, rag, examples, training, cases` **Purpose of This Section:** | Tags: sql_injection, authentication\n extraction **Agent Takeaway:**\n- Use these scenarios as pattern templates\n- Match observed behavior to scenario type\n- Apply the diagnostic step literally\n- Adapt based on actual response --- ### 20.2 Scenario 1: Classic Login Form Auth Bypass **Tags:** `sqli, scenario, login, auth-bypass, form, practice` **CHALLENGE HINT:**\n```\n\"Admin Panel Access\"\nCan you log in as admin? We're \n[... truncated]",
+    "trimmed_text": "[Result 1] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: sql_injection, authentication, command_injection\n- Cookies, sessions, or roles, but you're unsure how to systematically test them. **You see:**\n- SQL errors, but are unsure how to interpret them. - Encoded/obfuscated strings in JS or cookies that look like base64/hex but you're not certain. **You've done basic recon (HTML, robots, JS, cookies, forms) and:**\n- Need guidance on which attack pattern fits the hints. ### Use ctf_knowl\n[... truncated]\n\n[Result 2] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication\n**B.5: Signal Type Summary**\n```\nSIGNAL_TYPE is one of:\n┌─────────────────────┬─────────────────────────────────────────┐\n│ ERROR_BASED         │ SQL errors visible in response          │\n│ BOOLEAN_DIFFERENTIAL│ True/false conditions change response   │\n│ TIME_DIFFERENTIAL   │ SLEEP delays detectable                 │\n│ NO_SIGNAL           │ No observable difference                \n[... truncated]\n\n[Result 3] | Source: lessons_017_door-to-door_r1_20260417_073459.md | Section: General Web Exploitation: When facing a General Web Exploitation challenge with these tools avai **Type:** experience_success | Tags: ssti\n# General Web Exploitation: When facing a General Web Exploitation challenge with these tools avai **Type:** experience_success\n**Category:** General Web Exploitation\n**Challenge:** Door To Door\n**Challenge URL:** http://80z71idg.chals.mctf.io/\n**Auto-generated:** 2026-04-17\n**Tags:** unknown, success, experience, do\n**Confidence:** medium\n**Site fingerprint:** title:House Treat Ba\n[... truncated]\n\n[Result 4] | Source: lessons_018_door-to-door_r2_20260417_073459.md | Section: General Web Exploitation: When you achieve 'ssti_confirmed' during a General Web Exploitation ch **Type:** experience_success | Tags: ssti\n# General Web Exploitation: When you achieve 'ssti_confirmed' during a General Web Exploitation ch **Type:** experience_success\n**Category:** General Web Exploitation\n**Challenge:** Door To Door\n**Challenge URL:** http://80z71idg.chals.mctf.io/\n**Auto-generated:** 2026-04-17\n**Tags:** unknown, success, experience, do\n**Confidence:** high\n**Site fingerprint:** title:House Treat Bag \n[... truncated]\n\n[Result 5] | Source: 05_sql_injection_web_ctf_v3_final.md | Section: 20.1 Scenario Overview and Purpose **Tags:** `sqli, practice, scenarios, rag, examples, training, cases` **Purpose of This Section:** | Tags: sql_injection, authentication\n extraction **Agent Takeaway:**\n- Use these scenarios as pattern templates\n- Match observed behavior to scenario type\n- Apply the diagnostic step literally\n- Adapt based on actual response --- ### 20.2 Scenario 1: Classic Login Form Auth Bypass **Tags:** `sqli, scenario, login, auth-bypass, form, practice` **CHALLENGE HINT:**\n```\n\"Admin Panel Access\"\nCan you log in as admin? We're \n[... truncated]",
+    "raw_char_count": 2899,
+    "trimmed_char_count": 2899,
+    "retrieval_records": [
+      {
+        "rank": 0,
+        "source_file": "07_web_ctf_troubleshooting_checklist.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication",
+          "command_injection",
+          "encoding"
+        ],
+        "doc_type": null,
+        "score": 0.28816513378867936,
+        "match_details": {
+          "term_overlap": 0.04055172336058729,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.95,
+          "position": 0.8194444444444445,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 1,
+        "source_file": "05_sql_injection_web_ctf_v3_final.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.2737635299006851,
+        "match_details": {
+          "term_overlap": 0.029316232159120097,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.95,
+          "position": 0.7203703703703703,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 2,
+        "source_file": "lessons_017_door-to-door_r1_20260417_073459.md",
+        "section": "General Web Exploitation: When facing a General Web Exploitation challenge with these tools avai **Type:** experience_success",
+        "tags": [
+          "ssti"
+        ],
+        "doc_type": null,
+        "score": 0.20316264834525818,
+        "match_details": {
+          "term_overlap": 0.03784639784215444,
+          "phrase_match": 0.13043478260869565,
+          "ctf_boost": 0.4,
+          "position": 0.7371527777777778,
+          "recency": 0.884086827512403
+        },
+        "char_count": 1200,
+        "is_lesson": true
+      },
+      {
+        "rank": 3,
+        "source_file": "lessons_018_door-to-door_r2_20260417_073459.md",
+        "section": "General Web Exploitation: When you achieve 'ssti_confirmed' during a General Web Exploitation ch **Type:** experience_success",
+        "tags": [
+          "ssti"
+        ],
+        "doc_type": null,
+        "score": 0.19809539048468436,
+        "match_details": {
+          "term_overlap": 0.03701301901149903,
+          "phrase_match": 0.13043478260869565,
+          "ctf_boost": 0.4,
+          "position": 0.6886111111111112,
+          "recency": 0.884086827512403
+        },
+        "char_count": 1200,
+        "is_lesson": true
+      },
+      {
+        "rank": 4,
+        "source_file": "05_sql_injection_web_ctf_v3_final.md",
+        "section": "20.1 Scenario Overview and Purpose **Tags:** `sqli, practice, scenarios, rag, examples, training, cases` **Purpose of This Section:**",
+        "tags": [
+          "sql_injection",
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.17514194588533816,
+        "match_details": {
+          "term_overlap": 0.030702086935567533,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.45,
+          "position": 0.7286111111111111,
+          "recency": 1.0
+        },
+        "char_count": 450,
+        "is_lesson": false
+      }
+    ],
+    "injected": true
+  }
+}

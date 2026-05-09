@@ -4,11 +4,12 @@ SSRF (Server-Side Request Forgery) detection and exploitation tools for CTF solv
 Provides utilities for detecting SSRF vulnerabilities and generating bypass payloads.
 """
 
-import json
 import re
 from typing import Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class SsrfProbeTool:
@@ -42,6 +43,24 @@ class SsrfProbeTool:
         "(cloud/internal/protocols/all), and 'timeout'. The tool injects internal/metadata "
         "URLs and detects SSRF by analyzing response differences."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "data": {"type": "object"},
+            "targets": {
+                "type": "string",
+                "enum": ["cloud", "internal", "protocols", "all"],
+                "default": "all",
+            },
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/proxy", "param": "url"}]
 
     # Cloud metadata endpoint targets
     CLOUD_TARGETS = [
@@ -109,11 +128,9 @@ class SsrfProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[SsrfProbeTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "SsrfProbeTool")
+        if err:
+            return err
         url = data.get("url", "").strip()
         param = data.get("param", "").strip()
         method = data.get("method", "GET").upper()
@@ -329,11 +346,9 @@ class SsrfPayloadGenerator:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[SsrfPayloadGenerator] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "SsrfPayloadGenerator")
+        if err:
+            return err
         operation = data.get("operation", "").lower().strip()
         target_ip = data.get("target_ip", "127.0.0.1").strip()
         target_port = data.get("target_port", 80)

@@ -7,14 +7,25 @@ Provides command-line interface for running the CTF solving agent.
 import argparse
 import asyncio
 import logging
+import os
 import re
 import sys
+import time
+import warnings
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+
+# Quiet the transformers ``__path__`` deprecation flood at import time
+# (see ctf_solver/ui/streamlit_app.py for the full rationale). Set
+# before any submodule import so the env var is in place when
+# ``sentence-transformers`` initialises.
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+warnings.filterwarnings("ignore", message=r"Accessing `__path__` from .*")
 
 from ctf_solver.agent import build_agent
 from ctf_solver.config import (
     COMMON_FLAG_PATTERNS,
+    RAG_ALL_READ_MODES,
     RAG_EXPERIENCE_MODES,
     RAG_WRITE_MODES,
     SolverConfig,
@@ -23,12 +34,13 @@ from ctf_solver.config import (
 from ctf_solver.consolidate_knowledge import consolidate_lessons_knowledge
 from ctf_solver.failure_analyzer import (
     _detect_partial_successes,
-    find_and_compress_prior_lesson,
+    find_and_compress_prior_lesson_with_sources,
     run_lessons_learned_pipeline,
 )
 from ctf_solver.prompts import get_initial_message
 from ctf_solver.rag import get_active_knowledge_tool
 from ctf_solver.run_tracker import RunTracker
+from ctf_solver.tools.core import summarize_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +144,18 @@ Examples:
         default=20,
         help="Maximum number of agent reasoning steps (default: 20)",
     )
+    parser.add_argument(
+        "--history-window-size",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Sliding-window cap on planner history sent to the LLM each turn. "
+            "Default: 16 (= 2 anchors + 14 most-recent messages, ~7 turns; tuned "
+            "for Ollama 16k contexts).  Pass 0 to disable windowing and send full "
+            "memory.  Env var: CTF_HISTORY_WINDOW (also accepts 'none'/'off')."
+        ),
+    )
 
     # Knowledge base configuration
     parser.add_argument(
@@ -222,9 +246,42 @@ Examples:
         default=None,
         help=(
             "Constrain local model decoding to the ReAct JSON envelope. "
-            "'auto' (default via config): apply to Ollama, no-op elsewhere. "
-            "'none': disable. 'json_schema': force apply. "
+            "'auto' (default via config): apply to Ollama and MLX, no-op "
+            "elsewhere. 'none': disable. 'json_schema': force apply. "
             "Overrides CTF_GRAMMAR_MODE."
+        ),
+    )
+
+    # Explicit provider selection (overrides model-name auto-detection).
+    parser.add_argument(
+        "--llm-provider",
+        choices=["openai", "anthropic", "ollama", "mlx", "hybrid"],
+        default=None,
+        help=(
+            "Explicit LLM provider. Default: inferred from --model (claude* → "
+            "anthropic, mlx-community/* → mlx, name:tag → ollama, else openai). "
+            "Overrides CTF_LLM_PROVIDER."
+        ),
+    )
+
+    # MLX-specific tuning (only read when provider is mlx)
+    parser.add_argument(
+        "--mlx-kv-bits",
+        type=int,
+        default=None,
+        help=(
+            "KV-cache quantization for MLX generation (e.g. 4 for 4-bit KV "
+            "after a 512-token warmup). Saves ~6 GB on long contexts. "
+            "Env var: CTF_MLX_KV_BITS. Ignored for non-MLX providers."
+        ),
+    )
+    parser.add_argument(
+        "--mlx-seed",
+        type=int,
+        default=None,
+        help=(
+            "Random seed for MLX reproducibility (sets mx.random.seed). "
+            "Env var: CTF_MLX_SEED. Ignored for non-MLX providers."
         ),
     )
 
@@ -402,6 +459,10 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         docs_dirs=args.docs_dirs if args.docs_dirs else None,
         kb_files=args.kb_files if args.kb_files else None,
         max_steps=args.max_steps if args.max_steps != 20 else None,
+        # 0 is the sentinel for "disable windowing" — _windowed_history
+        # treats 0 the same as None so it round-trips through merge_with_args
+        # (which skips None overrides).
+        history_window_size=args.history_window_size,
         verbose=args.verbose if args.verbose else None,
         rag_mode=args.rag_mode if args.rag_mode else None,
         use_llm_for_lessons=True if args.llm_lessons else None,
@@ -412,6 +473,9 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
             args.ollama_num_ctx if args.ollama_num_ctx is not None else None
         ),
         grammar_mode=args.grammar_mode,
+        llm_provider=args.llm_provider,
+        mlx_kv_bits=args.mlx_kv_bits,
+        mlx_seed=args.mlx_seed,
     )
 
 
@@ -449,7 +513,13 @@ async def run_agent(config: SolverConfig) -> str:
     tracker = RunTracker()
     tracker.challenge_url = config.challenge_url or ""
     tracker.challenge_description = config.challenge_description or ""
-    agent = build_agent(config, tracker=tracker)
+
+    # Phase C: buffer structured per-step events on the tracker. The batch
+    # log writer flushes events_buffer to <slug>.events.jsonl at end-of-run.
+    def _event_writer(evt: Dict[str, Any]) -> None:
+        tracker.events_buffer.append(evt)
+
+    agent = build_agent(config, tracker=tracker, event_writer=_event_writer)
     logger.info("Agent built successfully.")
 
     # Generate initial message
@@ -468,16 +538,38 @@ async def run_agent(config: SolverConfig) -> str:
     # by challenge_name only — URL matching was removed as fragile), inject a
     # compressed verbal reflection so the agent avoids repeating past mistakes.
     # (Shinn et al. NeurIPS 2023; Wang et al. LONGMEM 2024)
-    if config.rag_mode in RAG_EXPERIENCE_MODES and config.challenge_name:
-        prior_reflection = find_and_compress_prior_lesson(
-            challenge_name=config.challenge_name,
-            challenge_url=config.challenge_url,
-            lessons_docs_dir=config.lessons_docs_dir,
-            fallback_failure_docs_dir=config.failure_docs_dir,
+    if config.rag_mode in RAG_EXPERIENCE_MODES and (
+        config.challenge_name or config.challenge_url
+    ):
+        prior_reflection, reflexion_sources = (
+            find_and_compress_prior_lesson_with_sources(
+                challenge_name=config.challenge_name,
+                challenge_url=config.challenge_url,
+                lessons_docs_dir=config.lessons_docs_dir,
+                fallback_failure_docs_dir=config.failure_docs_dir,
+                challenge_description=config.challenge_description,
+            )
         )
         if prior_reflection:
             print("[Reflexion] Prior lesson found — injecting compressed reflection.")
             tracker.prior_reflection_injected = True
+            # Phase A4: structured payload for tracing (the bool flag above
+            # is preserved for back-compat with existing analysis code).
+            tracker.reflexion_payload = {
+                "text": prior_reflection,
+                "sources": list(reflexion_sources),
+                "char_count": len(prior_reflection),
+            }
+            # Phase C: structured event so events.jsonl shows the injection.
+            tracker.events_buffer.append(
+                {
+                    "event": "rag_reflexion",
+                    "step": 0,
+                    "sources": list(reflexion_sources),
+                    "text_len": len(prior_reflection),
+                    "ts": time.time(),
+                }
+            )
             initial_message += (
                 "\n\n## Prior Attempt Analysis\n"
                 "> A previous run on this challenge was analyzed. "
@@ -491,7 +583,10 @@ async def run_agent(config: SolverConfig) -> str:
     # it happens to call ctf_knowledge_query mid-run.  Gated by
     # ``enable_proactive_rag`` (default on) so the agent can opt out when it
     # prefers on-demand retrieval and tighter first-turn prompts.
-    if config.rag_mode in RAG_EXPERIENCE_MODES and config.enable_proactive_rag:
+    # v3.8: fires in any RAG mode that has a KB loaded (ORIGINAL too) so
+    # curated-only setups also benefit; previously gated only on the
+    # experience modes which left ORIGINAL users out.
+    if config.rag_mode in RAG_ALL_READ_MODES and config.enable_proactive_rag:
         active_tool = get_active_knowledge_tool()
         if active_tool is not None:
             query = (
@@ -503,17 +598,56 @@ async def run_agent(config: SolverConfig) -> str:
                 f"[RAG] Proactive knowledge injection attempted (query: {query!r:.80})."
             )
             proactive_results = active_tool.use(query)
+            # Phase A2/A4: capture the per-chunk retrieval records that the
+            # tool just stashed. Done unconditionally (even on "no relevant
+            # information") so the brief slide can show "queried, but pool
+            # was empty" cases too.
+            retrieval_records = list(getattr(active_tool, "last_retrieval_records", []))
             if proactive_results and "No relevant information" not in proactive_results:
                 print(
                     "[RAG] Proactive knowledge injection succeeded — results injected."
                 )
+                # Cap the injected block so it cannot crowd out tool
+                # observations on local-model 16k contexts (v3.10 P3a).
+                # Pre-cap can run ~2.6 KB; post-cap is ~1.5 KB.
+                trimmed = summarize_for_llm(
+                    proactive_results, max_chars=1500, flag_regex=None
+                )
+                tracker.proactive_rag_payload = {
+                    "query": query,
+                    "raw_text": proactive_results,
+                    "trimmed_text": trimmed,
+                    "raw_char_count": len(proactive_results),
+                    "trimmed_char_count": len(trimmed),
+                    "retrieval_records": retrieval_records,
+                    "injected": True,
+                }
+                tracker.events_buffer.append(
+                    {
+                        "event": "rag_proactive",
+                        "step": 0,
+                        "query": query,
+                        "n_records": len(retrieval_records),
+                        "trimmed_char_count": len(trimmed),
+                        "ts": time.time(),
+                    }
+                )
                 initial_message += (
                     "\n\n## Relevant Background Knowledge\n"
                     "> Retrieved from the knowledge base before the run. "
-                    "Apply these lessons to your approach.\n\n" + proactive_results
+                    "Apply these lessons to your approach.\n\n" + trimmed
                 )
             else:
                 print("[RAG] Proactive knowledge injection: no relevant results found.")
+                tracker.proactive_rag_payload = {
+                    "query": query,
+                    "raw_text": proactive_results or "",
+                    "trimmed_text": "",
+                    "raw_char_count": len(proactive_results or ""),
+                    "trimmed_char_count": 0,
+                    "retrieval_records": retrieval_records,
+                    "injected": False,
+                }
 
     print("\n=== Agent Input ===")
     print(initial_message)
@@ -553,6 +687,17 @@ async def run_agent(config: SolverConfig) -> str:
         tracker.outcome = "partial"
     else:
         tracker.outcome = "failure"
+
+    # Phase B2-B3: roll up token usage from per-call records (populated by
+    # TokenTrackingAdapter) into the tracker's authoritative fields and
+    # compute cost. No-op if the adapter never appended any records (e.g.
+    # tiktoken missing AND fairlib's char-based path took over).
+    if tracker.per_call_tokens:
+        # Don't overwrite per_call_tokens — set_token_usage_from_adapter
+        # replaces it; pass a copy so the original list survives.
+        tracker.set_token_usage_from_adapter(
+            list(tracker.per_call_tokens), config.model_name
+        )
 
     print("\n=== Agent Final Answer ===")
     print(response)
@@ -677,8 +822,62 @@ async def main() -> None:
     await run_agent(config)
 
 
+def _warn_if_unsafe_libomp_env() -> None:
+    """On darwin venvs that ship multiple libomp.dylib copies (torch +
+    sklearn + faiss-cpu), the first ``faiss::IndexIDMap::search_ex``
+    call segfaults during the proactive RAG injection.  ``scripts/run.sh``
+    sets ``DYLD_INSERT_LIBRARIES`` to force a single libomp; users who
+    invoke ``python -m ctf_solver.runner`` directly bypass that and hit
+    the crash with exit code 0 + no traceback.  Print one line so the
+    next debugger sees the cause immediately.
+    """
+    if sys.platform != "darwin":
+        return
+    if os.environ.get("DYLD_INSERT_LIBRARIES"):
+        return
+    # Skip the warning when the user explicitly turned RAG off — the
+    # FAISS path won't run, so the libomp race can't trigger.
+    argv = sys.argv
+    rag_off = "--rag-mode=none" in argv or (
+        "--rag-mode" in argv
+        and argv.index("--rag-mode") + 1 < len(argv)
+        and argv[argv.index("--rag-mode") + 1] == "none"
+    )
+    if rag_off:
+        return
+    venv = Path(sys.prefix)
+    faiss_omp = (
+        venv
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+        / "faiss"
+        / ".dylibs"
+        / "libomp.dylib"
+    )
+    torch_omp = (
+        venv
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+        / "torch"
+        / "lib"
+        / "libomp.dylib"
+    )
+    if faiss_omp.is_file() and torch_omp.is_file():
+        print(
+            "[WARN] Detected multiple libomp.dylib copies in the active venv "
+            "(faiss + torch). On Apple Silicon this can SIGSEGV the proactive "
+            "RAG query without a Python traceback (exit code 0). Run via "
+            "scripts/run.sh which sets DYLD_INSERT_LIBRARIES, or pass "
+            "--rag-mode none. Memory note: memory/faiss_libomp_crash.md.",
+            file=sys.stderr,
+        )
+
+
 def cli_main() -> None:
     """Entry point for console script."""
+    _warn_if_unsafe_libomp_env()
     asyncio.run(main())
 
 

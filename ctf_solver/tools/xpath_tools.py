@@ -4,11 +4,12 @@ XPath Injection tools for CTF solving.
 Provides XPath injection detection, blind boolean extraction, and payload generation.
 """
 
-import json
 import re
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class XPathProbeTool:
@@ -44,6 +45,22 @@ class XPathProbeTool:
         "'timeout' (default 10). Returns analysis of which payloads triggered different "
         "responses indicating XPath injection."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "POST"},
+            "data": {"type": "object"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com/login", "param": "username", "method": "POST"}
+    ]
 
     # Probe payloads: (payload, expected_boolean, description)
     # True-condition probes should return a different response than false-condition probes
@@ -127,11 +144,9 @@ class XPathProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[XPathProbeTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "XPathProbeTool")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -732,11 +747,9 @@ class XPathBlindBooleanTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[XPathBlindBooleanTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "XPathBlindBooleanTool")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -1320,11 +1333,9 @@ class XPathPayloadGenerator:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[XPathPayloadGenerator] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "XPathPayloadGenerator")
+        if err:
+            return err
         operation = data.get("operation", "").strip()
         if not operation:
             return (

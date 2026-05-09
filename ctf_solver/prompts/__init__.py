@@ -14,6 +14,7 @@ from ctf_solver.prompts.templates import (
     JSON_API_EXAMPLE,
     ROBOTS_EXAMPLE,
     SELF_REFLECTION_EXAMPLE,
+    XXE_RAW_BODY_EXAMPLE,
     get_initial_message,
     get_role_definition,
     get_system_prompt,
@@ -31,4 +32,5 @@ __all__ = [
     "JSON_API_EXAMPLE",
     "COOKIE_BYPASS_EXAMPLE",
     "DEEP_RECON_EXAMPLE",
+    "XXE_RAW_BODY_EXAMPLE",
 ]

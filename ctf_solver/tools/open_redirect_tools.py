@@ -1,10 +1,11 @@
 """Open-redirect probe (split from misc_probe_tools.py)."""
 
-import json
 import re
 from typing import List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class OpenRedirectProbeTool:
@@ -40,6 +41,21 @@ class OpenRedirectProbeTool:
         "URIs, Unicode dots, and CRLF injection. Returns structured report with "
         "vulnerable payloads and exploitation suggestions."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "data": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com/redirect", "param": "url"},
+    ]
 
     # Redirect payloads: (payload, description)
     PAYLOADS: List[Tuple[str, str]] = [
@@ -83,11 +99,9 @@ class OpenRedirectProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[OpenRedirectProbeTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "OpenRedirectProbeTool")
+        if err:
+            return err
         url = data.get("url", "").strip() if isinstance(data.get("url"), str) else ""
         param = (
             data.get("param", "").strip() if isinstance(data.get("param"), str) else ""

@@ -5,11 +5,12 @@ Provides utilities for detecting insecure deserialization vulnerabilities across
 PHP, Python, Java, and .NET applications, and generating exploitation payloads.
 """
 
-import json
 import re
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class DeserializationProbeTool:
@@ -43,6 +44,26 @@ class DeserializationProbeTool:
         "The tool injects malformed serialized payloads and analyzes responses for "
         "deserialization indicators and error differentials."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "POST"},
+            "data": {"type": "object"},
+            "format": {
+                "type": "string",
+                "enum": ["php", "python", "java", "dotnet", "auto"],
+                "default": "auto",
+            },
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com/api", "param": "data", "format": "php"},
+    ]
 
     # Detection indicators by format
     PHP_INDICATORS: List[str] = [
@@ -120,11 +141,9 @@ class DeserializationProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[DeserializationProbeTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "DeserializationProbeTool")
+        if err:
+            return err
         url = data.get("url", "").strip()
         param = data.get("param", "").strip()
         method = data.get("method", "GET").upper()
@@ -436,6 +455,29 @@ class DeserializationPayloadGenerator:
         "provide 'command' for RCE payloads (default 'id'). Returns ready-to-use payloads, "
         "gadget chain references, and detection guidance."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "php_payloads",
+                    "python_payloads",
+                    "java_references",
+                    "yaml_payloads",
+                    "detection_tips",
+                ],
+            },
+            "command": {"type": "string", "default": "id"},
+            "format": {"type": "string"},
+        },
+        "required": ["operation"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"operation": "php_payloads", "command": "id"},
+        {"operation": "detection_tips"},
+    ]
 
     VALID_OPERATIONS: List[str] = [
         "php_payloads",
@@ -447,11 +489,9 @@ class DeserializationPayloadGenerator:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[DeserializationPayloadGenerator] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "DeserializationPayloadGenerator")
+        if err:
+            return err
         operation = data.get("operation", "").lower().strip()
         command = data.get("command", "id")
         fmt = data.get("format", "all").lower()

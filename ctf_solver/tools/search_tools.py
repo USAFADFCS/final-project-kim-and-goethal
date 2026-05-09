@@ -4,9 +4,10 @@ Search and pattern matching tools for CTF solving.
 Provides regex search, response analysis, and SQL pattern detection.
 """
 
-import json
 import re
 from typing import List
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class RegexSearchTool:
@@ -35,16 +36,22 @@ class RegexSearchTool:
         "Use this tool to find flags, secrets, or patterns in HTTP responses, "
         "JavaScript code, or any text content."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "pattern": {"type": "string", "description": "Python regex"},
+            "max_matches": {"type": "integer", "default": 50},
+        },
+        "required": ["text", "pattern"],
+        "additionalProperties": False,
+    }
+    samples = [{"text": "<body>...</body>", "pattern": r"FLAG\{[^}]+\}"}]
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[RegexSearchTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "RegexSearchTool")
+        if err:
+            return err
         text = data.get("text")
         pattern = data.get("pattern")
         max_matches = data.get("max_matches", 50)
@@ -117,6 +124,17 @@ class ResponseSearchTool:
         "'context_lines' (optional int, default 2). Use this tool to find "
         "error messages, hints, or indicators of vulnerabilities in responses."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "keywords": {"type": "array", "items": {"type": "string"}},
+            "context_lines": {"type": "integer", "default": 2},
+        },
+        "required": ["text"],
+        "additionalProperties": False,
+    }
+    samples = [{"text": "...response...", "keywords": ["error", "flag", "admin"]}]
 
     # Default keywords for general CTF/web exploitation
     DEFAULT_KEYWORDS = [
@@ -133,14 +151,9 @@ class ResponseSearchTool:
     ]
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[ResponseSearchTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "ResponseSearchTool")
+        if err:
+            return err
         text = data.get("text")
         keywords = data.get("keywords", [])
         context_lines = data.get("context_lines", 2)
@@ -236,6 +249,13 @@ class SqlPatternHintTool:
         "matching lines with a short explanatory note. Use this tool when "
         "investigating potential SQL injection vulnerabilities."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {"text": {"type": "string"}},
+        "required": ["text"],
+        "additionalProperties": False,
+    }
+    samples = [{"text": "<body>SQL syntax error near 'WHERE'</body>"}]
 
     # Common SQL/logging hints (lowercase for comparison)
     SQL_PATTERNS = [
@@ -263,14 +283,9 @@ class SqlPatternHintTool:
     ]
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[SqlPatternHintTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "SqlPatternHintTool")
+        if err:
+            return err
         text = data.get("text")
         if not isinstance(text, str):
             return "[SqlPatternHintTool] Error: 'text' must be a string."

@@ -15,6 +15,8 @@ from typing import Dict, List, Optional
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class CryptoProbeTool:
     """
@@ -53,6 +55,32 @@ class CryptoProbeTool:
         "For token_analysis, collects multiple tokens to analyze patterns. "
         "Optionally provide 'method' (GET/POST), 'data', 'block_size', 'num_samples', 'timeout'."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "crypto_type": {
+                "type": "string",
+                "enum": ["padding_oracle", "ecb_detect", "token_analysis"],
+            },
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "data": {"type": "object"},
+            "ciphertext": {"type": "string"},
+            "block_size": {"type": "integer", "default": 16},
+            "num_samples": {"type": "integer", "default": 5},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param", "crypto_type"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/decrypt",
+            "param": "token",
+            "crypto_type": "ecb_detect",
+        },
+    ]
 
     CRYPTO_TYPES = {"padding_oracle", "ecb_detect", "token_analysis"}
 
@@ -61,11 +89,9 @@ class CryptoProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CryptoProbeTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "CryptoProbeTool")
+        if err:
+            return err
         url = data.get("url", "").strip()
         param = data.get("param", "").strip()
         method = data.get("method", "GET").upper()
@@ -661,6 +687,32 @@ class CryptoAnalyzerTool:
         "For xor_analysis, provide 'ciphertext' (hex). For frequency_analysis, provide 'text'. "
         "Optionally provide 'block_size' for cipher mode detection."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "identify_encoding",
+                    "detect_cipher_mode",
+                    "analyze_key",
+                    "xor_analysis",
+                    "frequency_analysis",
+                ],
+            },
+            "text": {"type": "string"},
+            "ciphertext": {"type": "string"},
+            "key": {"type": "string"},
+            "keys": {"type": "array"},
+            "block_size": {"type": "integer", "default": 16},
+        },
+        "required": ["operation"],
+        "additionalProperties": True,
+    }
+    samples = [
+        {"operation": "identify_encoding", "text": "SGVsbG8gV29ybGQ="},
+        {"operation": "detect_cipher_mode", "ciphertext": "aabbccdd"},
+    ]
 
     OPERATIONS = {
         "identify_encoding",
@@ -715,11 +767,9 @@ class CryptoAnalyzerTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CryptoAnalyzerTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "CryptoAnalyzerTool")
+        if err:
+            return err
         operation = data.get("operation", "").strip().lower()
         if not operation:
             return "[CryptoAnalyzerTool] Error: 'operation' is required."
@@ -1169,16 +1219,34 @@ class CryptoPayloadGenerator:
         "hash_extension). Returns step-by-step methodology, explanation of the attack, "
         "and Python pseudocode templates for exploitation."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "padding_oracle",
+                    "ecb_attack",
+                    "bit_flip",
+                    "hash_extension",
+                ],
+            },
+        },
+        "required": ["operation"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"operation": "padding_oracle"},
+        {"operation": "hash_extension"},
+    ]
 
     OPERATIONS = {"padding_oracle", "ecb_attack", "bit_flip", "hash_extension"}
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CryptoPayloadGenerator] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "CryptoPayloadGenerator")
+        if err:
+            return err
         operation = data.get("operation", "").strip().lower()
         if not operation:
             return "[CryptoPayloadGenerator] Error: 'operation' is required."

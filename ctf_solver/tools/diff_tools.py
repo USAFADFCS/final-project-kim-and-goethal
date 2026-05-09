@@ -10,6 +10,8 @@ from typing import List, Optional, Tuple
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class ResponseDiffTool:
     """
@@ -41,6 +43,23 @@ class ResponseDiffTool:
         "Returns length differences, content changes, and heuristics for SQLi/error detection. "
         "Use this tool to compare responses from different inputs to detect vulnerabilities."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "response1": {"type": "string"},
+            "response2": {"type": "string"},
+            "mode": {
+                "type": "string",
+                "enum": ["summary", "detailed", "length_only"],
+                "default": "summary",
+            },
+        },
+        "required": ["response1", "response2"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"response1": "Hello world", "response2": "Hello SQL error", "mode": "summary"}
+    ]
 
     # Keywords that suggest error-based differences
     ERROR_KEYWORDS = [
@@ -77,11 +96,9 @@ class ResponseDiffTool:
     ]
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[ResponseDiffTool] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "ResponseDiffTool")
+        if err:
+            return err
         response1 = data.get("response1", "")
         response2 = data.get("response2", "")
         mode = data.get("mode", "summary").lower()
@@ -252,16 +269,35 @@ class TimingCompareTool:
         "in seconds to flag, default 3.0), optional 'timeout' (request timeout, default 15). "
         "Use this tool to detect time-based blind SQL injection."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "params1": {"type": "object"},
+            "params2": {"type": "object"},
+            "headers": {"type": "object"},
+            "threshold": {"type": "number", "default": 3.0},
+            "timeout": {"type": "integer", "default": 15},
+        },
+        "required": ["url", "params1", "params2"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/?id=1",
+            "params1": {"id": "1"},
+            "params2": {"id": "1' AND SLEEP(5)--"},
+        }
+    ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[TimingCompareTool] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "TimingCompareTool")
+        if err:
+            return err
         url = data.get("url")
         method = data.get("method", "GET").upper()
         params1 = data.get("params1", {})
@@ -394,16 +430,21 @@ class ResponseFingerprinter:
         "Returns a fingerprint object with length, line count, keyword presence, "
         "and content hash. Use this to quickly categorize responses."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {"response": {"type": "string"}},
+        "required": ["response"],
+        "additionalProperties": False,
+    }
+    samples = [{"response": "Hello world"}]
 
     ERROR_KEYWORDS = ["error", "exception", "sql", "warning", "failed", "invalid"]
     SUCCESS_KEYWORDS = ["welcome", "success", "flag", "admin", "dashboard"]
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[ResponseFingerprinter] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "ResponseFingerprinter")
+        if err:
+            return err
         response = data.get("response", "")
         if not isinstance(response, str):
             return "[ResponseFingerprinter] Error: 'response' must be a string."

@@ -10,6 +10,8 @@ import json
 import urllib.parse
 from typing import Optional
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class EncodingTool:
     """
@@ -49,6 +51,49 @@ class EncodingTool:
         "optionally 'key' (for xor operation, hex string like 'deadbeef'). "
         "Use this tool to decode cookies, parameters, obfuscated strings, or encode payloads."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "base64_encode",
+                    "base64_decode",
+                    "base32_encode",
+                    "base32_decode",
+                    "url_encode",
+                    "url_decode",
+                    "double_url_encode",
+                    "hex_encode",
+                    "hex_decode",
+                    "html_entity_encode",
+                    "html_entity_decode",
+                    "rot13",
+                    "binary_to_ascii",
+                    "ascii_to_binary",
+                    "jwt_decode",
+                    "unicode_normalize",
+                    "unicode_escape",
+                    "unicode_unescape",
+                    "reverse_string",
+                    "xor",
+                    "octal_encode",
+                    "octal_decode",
+                ],
+            },
+            "key": {
+                "type": "string",
+                "description": "Hex key for xor operation",
+            },
+        },
+        "required": ["text", "operation"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"text": "SGVsbG8=", "operation": "base64_decode"},
+        {"text": "deadbeef", "operation": "xor", "key": "ff"},
+    ]
 
     # Valid operations
     OPERATIONS = {
@@ -78,14 +123,9 @@ class EncodingTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[EncodingTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "EncodingTool")
+        if err:
+            return err
         text = data.get("text")
         operation = data.get("operation")
         key = data.get("key")
@@ -342,11 +382,9 @@ class HashIdentifierTool:
     def use(self, tool_input: str) -> str:
         import re
 
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[HashIdentifierTool] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "HashIdentifierTool")
+        if err:
+            return err
         hash_value = data.get("hash", "").strip()
         if not hash_value:
             return "[HashIdentifierTool] Error: 'hash' is required."

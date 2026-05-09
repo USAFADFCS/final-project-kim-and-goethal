@@ -96,8 +96,9 @@ class TestPromptWiringByPlanner:
         assert "CRITICAL RESPONSE FORMAT RULES" in role_text
         assert "single, valid JSON object" in role_text
 
-        # Six CTF few-shot examples are appended.
-        assert len(pb.examples) == 6
+        # Seven CTF few-shot examples are appended (v3.3 Phase 3b added
+        # XXE_RAW_BODY_EXAMPLE to teach escaped inner quotes in raw_body).
+        assert len(pb.examples) == 7
 
     def test_simple_reactplanner_role_contains_tool_input_json_guidance(self):
         """Without this guidance, local models produce Python-like

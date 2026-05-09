@@ -1,0 +1,117 @@
+{
+  "challenge_name": "Cookie Crackdown",
+  "rag_mode": "RAGMode.LESSONS_BUILDONLY",
+  "outcome": "success",
+  "reflexion": null,
+  "proactive": {
+    "query": "We're auditing some websites to check if they're GDPR compliant, and I'm pretty sure this site isn't...",
+    "raw_text": "[Result 1] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: sql_injection, authentication, command_injection\n- Check if new cookies appear after actions (login, clicking buttons). --- ## 2. \"I'm Stuck\" Sanity Checklist > **When to use this section:** No progress after initial attempts. **Tags:** `troubleshooting, stuck, sanity-check, basics` **Have I...** - [ ] Looked at `/robots.txt`? - [ ] Viewed the full HTML source, not just devtools DOM? - [ ] Inspected all external JS files referenc\n[... truncated]\n\n[Result 2] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication, command_injection\n**Tags:** `sqli, waf, filter, bypass, strategy, alternatives, troubleshooting` **When Bypass Attempts Fail:** ```\nDECISION TREE: FILTER TOO STRONG Step 1: REDUCE ASSUMPTIONS\n├── Maybe it's not SQLi after all? ├── Different vulnerability type? └── Different parameter vulnerable? Step 2: TRY ALTERNATE ENDPOINTS\n├── Different pages on same site\n├── API endpoints vs web forms\n├── Mobil\n[... truncated]\n\n[Result 3] | Source: 18_graphql_attacks.md | Tags: sql_injection, authentication\nquery { user(id: 1) { id username email } }\n``` **Mutation:**\n```graphql\nmutation { updateUser(id: 1, role: \"admin\") { role } }\n``` **Batch Request:**\n```json\n[{\"query\":\"...\"}, {\"query\":\"...\"}]\n``` **Alias Enumeration:**\n```graphql\n{ u1:user(id:1){id} u2:user(id:2){id} }\n``` **SQLi Test:**\n```graphql\n{ user(id: \"1' OR '1'='1\") { id } }\n``` **Key Attacks:**\n```\n1. Introspection - di\n[... truncated]\n\n[Result 4] | Source: 20_imagemagick_exploitation.md | Section: ImageMagick Exploitation - CTF Reference > **Document Purpose:** Actionable ImageMagick exploitation techniques for CTF challenges involving server-side image generation, processing, or conversion. Designed for autonomous agent retrieval with copy-paste payloads and attack chains. --- ## 1. QUICK REFERENCE: When to Suspect ImageMagick > **When to use this section:** You see a web app that generates, resizes, converts, or renders images on the server — especially when user-controlled text (headlines, labels, watermarks, captions) is rendered onto images. **Tags:** `imagemagick, image-processing, file-read, rce, server-side, convert, gd, imagick` **Indicators:** | Tags: command_injection\n# ImageMagick Exploitation - CTF Reference > **Document Purpose:** Actionable ImageMagick exploitation techniques for CTF challenges involving server-side image generation, processing, or conversion. Designed for autonomous agent retrieval with copy-paste payloads and attack chains. --- ## 1. QUICK REFERENCE: When to Suspect ImageMagick > **When to use this section:** You see a web\n[... truncated]\n\n[Result 5] | Source: 06_picoctf_web_patterns_and_strategies.md | Tags: authentication, command_injection\n**Inspect discovered resources**\n   - If you find an old admin panel, login form, or config file:\n     - View source. - Check for hardcoded credentials, secrets, or debug info. --- ### 6.3 Example Reasoning Path **Tags:** `reasoning, example, backup-workflow` - Challenge text: \"The developers left something old lying around.\"\n- Reasoning:\n  1. Check `robots.txt` and HTML comments. \n[... truncated]",
+    "trimmed_text": "[Result 1] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: sql_injection, authentication, command_injection\n- Check if new cookies appear after actions (login, clicking buttons). --- ## 2. \"I'm Stuck\" Sanity Checklist > **When to use this section:** No progress after initial attempts. **Tags:** `troubleshooting, stuck, sanity-check, basics` **Have I...** - [ ] Looked at `/robots.txt`? - [ ] Viewed the full HTML source, not just devtools DOM? - [ ] Inspected all external JS files referenc\n[... truncated]\n\n[Result 2] | Source: 05_sql_injection_web_ctf_v3_final.md | Tags: sql_injection, authentication, command_injection\n**Tags:** `sqli, waf, filter, bypass, strategy, alternatives, troubleshooting` **When Bypass Attempts Fail:** ```\nDECISION TREE: FILTER TOO STRONG Step 1: REDUCE ASSUMPTIONS\n├── Maybe it's not SQLi after all? ├── Different vulnerability type? └── Different parameter vulnerable? Step 2: TRY ALTERNATE ENDPOINTS\n├── Different pages on same site\n├── API endpoints vs web forms\n├── Mobil\n[... truncated]\n\n[Result 3] | Source: 18_graphql_attacks.md | Tags: sql_injection, authentication\nquery { user(id: 1) { id username email } }\n``` **Mutation:**\n```graphql\nmutation { updateUser(id: 1, role: \"admin\") { role } }\n``` **Batch Request:**\n```json\n[{\"query\":\"...\"}, {\"query\":\"...\"}]\n``` **Alias Enumeration:**\n```graphql\n{ u1:user(id:1){id} u2:user(id:2){id} }\n``` **SQLi Test:**\n```graphql\n{ user(id: \"1' OR '1'='1\") { id } }\n``` **Key Attacks:**\n```\n1. Introspection - di\n[... truncated]\n\n[Result 4] | Source: 20_imagemagick_exploitation.md | Section: ImageMagick Exploitation - CTF Reference > **Document Purpose:** Actionable ImageMagick exploitation techniques for CTF challenges involving server-side image generation, processing, or conversion. Designed for autonomous agent retrieval with copy-paste payloads and attack chains. --- ## 1. QUICK REFERENCE: When to Suspect ImageMagick > **When to use this section:** You see a web app that generates, resizes, converts, or renders images on the server — especially when user-controlled text (headlines, labels, watermarks, captions) is rendered onto images. **Tags:** `imagemagick, image-processing, file-read, rce, server-side, convert, gd, imagick` **Indicators:** | Tags: command_injection\n# ImageMagick Exploitation - CTF Reference > **Document Purpose:** Actionable ImageMagick exploitation techniques for CTF challenges involving server-side image generation, processing, or conversion. Designed for autonomous agent retrieval with copy-paste payloads and attack chains. --- ## 1. QUICK REFERENCE: When to Suspect ImageMagick > **When to use this section:** You see a web\n[... truncated]\n\n[Result 5] | Source: 06_picoctf_web_patterns_and_strategies.md | Tags: authentication, command_injection\n**Inspect discovered resources**\n   - If you find an old admin panel, login form, or config file:\n     - View source. - Check for hardcoded credentials, secrets, or debug info. --- ### 6.3 Example Reasoning Path **Tags:** `reasoning, example, backup-workflow` - Challenge text: \"The developers left something old lying around.\"\n- Reasoning:\n  1. Check `robots.txt` and HTML comments. \n[... truncated]",
+    "raw_char_count": 3185,
+    "trimmed_char_count": 3185,
+    "retrieval_records": [
+      {
+        "rank": 0,
+        "source_file": "07_web_ctf_troubleshooting_checklist.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.29762921003708603,
+        "match_details": {
+          "term_overlap": 0.04310711600180597,
+          "phrase_match": 0.0,
+          "ctf_boost": 1.0,
+          "position": 0.8038636363636363,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 1,
+        "source_file": "05_sql_injection_web_ctf_v3_final.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.27820365006606057,
+        "match_details": {
+          "term_overlap": 0.02696745849848466,
+          "phrase_match": 0.0,
+          "ctf_boost": 1.0,
+          "position": 0.6741666666666667,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 2,
+        "source_file": "18_graphql_attacks.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.23760504201680677,
+        "match_details": {
+          "term_overlap": 0.0,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.75,
+          "position": 0.8760504201680672,
+          "recency": 1.0
+        },
+        "char_count": 476,
+        "is_lesson": false
+      },
+      {
+        "rank": 3,
+        "source_file": "20_imagemagick_exploitation.md",
+        "section": "ImageMagick Exploitation - CTF Reference > **Document Purpose:** Actionable ImageMagick exploitation techniques for CTF challenges involving server-side image generation, processing, or conversion. Designed for autonomous agent retrieval with copy-paste payloads and attack chains. --- ## 1. QUICK REFERENCE: When to Suspect ImageMagick > **When to use this section:** You see a web app that generates, resizes, converts, or renders images on the server — especially when user-controlled text (headlines, labels, watermarks, captions) is rendered onto images. **Tags:** `imagemagick, image-processing, file-read, rce, server-side, convert, gd, imagick` **Indicators:**",
+        "tags": [
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.23264293506420192,
+        "match_details": {
+          "term_overlap": 0.014784420993838171,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.7,
+          "position": 0.8672916666666667,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 4,
+        "source_file": "06_picoctf_web_patterns_and_strategies.md",
+        "section": null,
+        "tags": [
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.2278256445662814,
+        "match_details": {
+          "term_overlap": 0.0365148689914611,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.7,
+          "position": 0.7321969696969698,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      }
+    ],
+    "injected": true
+  }
+}

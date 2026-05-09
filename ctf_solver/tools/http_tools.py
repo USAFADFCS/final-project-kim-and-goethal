@@ -14,7 +14,7 @@ from typing import List, Optional
 
 import requests
 
-from ctf_solver.tools.core import parse_json_input
+from ctf_solver.tools.core import parse_json_input, summarize_for_llm
 
 # Broad CTF flag pattern: PREFIX{content} — catches most CTF flag formats.
 # Used to scan full response bodies before truncation so flags beyond
@@ -105,12 +105,56 @@ class HttpFetchTool:
         "'insecure' (optional bool, default false) to skip SSL certificate "
         "verification for self-signed or invalid certificates."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "Target URL"},
+            "method": {
+                "type": "string",
+                "enum": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+                "default": "GET",
+            },
+            "params": {"type": "object", "description": "Query parameters"},
+            "headers": {"type": "object", "description": "Request headers"},
+            "body": {
+                "type": "object",
+                "description": "JSON body for POST/PUT/PATCH/DELETE; mutually exclusive with raw_body",
+            },
+            "raw_body": {
+                "type": "string",
+                "description": 'Raw string body. Set Content-Type via headers. Inner double quotes must be \\" inside JSON.',
+            },
+            "max_body": {"type": "integer", "default": 4000},
+            "timeout": {"type": "integer", "default": 10},
+            "follow_redirects": {"type": "boolean", "default": True},
+            "auth": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "[username, password] for HTTP Basic Auth",
+            },
+            "insecure": {
+                "type": "boolean",
+                "default": False,
+                "description": "Skip SSL verification for self-signed certs",
+            },
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com/", "method": "GET"},
+        {
+            "url": "http://example.com/api/login",
+            "method": "POST",
+            "body": {"username": "admin", "password": "x"},
+        },
+    ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        data, err = parse_json_input(tool_input, "HttpFetchTool")
+        data, err = parse_json_input(tool_input, "HttpFetchTool", url_field="url")
         if err:
             return err
 
@@ -273,7 +317,22 @@ class HttpFetchTool:
                 body_preview = text[:max_body_int]
                 if len(text) > max_body_int:
                     body_preview += "\n...[truncated]..."
+                # Phase 2: strip <style>/<script> bodies and collapse
+                # repeated lines so CSS boilerplate does not dominate
+                # the observation. Flag-preservation contract: any flag
+                # match hiding inside a stripped region is appended
+                # verbatim so _scan_for_flags below (and the agent's
+                # downstream detection) cannot silently lose it.
+                body_preview = summarize_for_llm(
+                    body_preview,
+                    max_chars=max_body_int,
+                    flag_regex=_FLAG_SCAN_RE,
+                )
             else:
+                # max_body_int == 0 → caller asked for the full body
+                # verbatim (used for explicit "show me everything"
+                # re-fetches, e.g. when a flag is beyond truncation).
+                # Do not summarize: the caller wants raw content.
                 body_preview = text
 
         # Scan full response for flags BEFORE truncation so flags beyond
@@ -356,12 +415,39 @@ class FormSubmitTool:
         "is sent as a JSON request body. Returns status, headers, and a truncated "
         "body. Use this tool to submit login forms, file uploads, or API requests."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"]},
+            "data": {
+                "type": "object",
+                "description": "Form fields (or JSON body if Content-Type is application/json)",
+            },
+            "headers": {"type": "object"},
+            "max_body": {"type": "integer", "default": 4000},
+            "multipart": {"type": "boolean", "default": False},
+            "files": {
+                "type": "object",
+                "description": "File uploads keyed by field_name → {filename, content, content_type}",
+            },
+        },
+        "required": ["url", "method"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/login",
+            "method": "POST",
+            "data": {"user": "admin", "pw": "x"},
+        },
+    ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        data, err = parse_json_input(tool_input, "FormSubmitTool")
+        data, err = parse_json_input(tool_input, "FormSubmitTool", url_field="url")
         if err:
             return err
 
@@ -479,6 +565,12 @@ class FormSubmitTool:
             body_preview = text[:max_body_int]
             if len(text) > max_body_int:
                 body_preview += "\n...[truncated]..."
+            # Phase 2: summarize — same rationale as HttpFetchTool.
+            body_preview = summarize_for_llm(
+                body_preview,
+                max_chars=max_body_int,
+                flag_regex=_FLAG_SCAN_RE,
+            )
         else:
             body_preview = text
 

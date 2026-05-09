@@ -7,10 +7,11 @@ Provides sandboxed command execution so the agent can run arbitrary CLI tools
 Works on macOS and Linux (any POSIX system).
 """
 
-import json
 import os
 import subprocess
 from typing import Optional
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class ShellExecuteTool:
@@ -53,6 +54,22 @@ class ShellExecuteTool:
         "Commands are killed after the timeout. Do NOT use for long-running "
         "interactive commands."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "command": {"type": "string"},
+            "timeout": {"type": "integer", "default": 30},
+            "working_dir": {"type": "string"},
+            "max_output": {"type": "integer", "default": 8000},
+            "stdin_data": {"type": "string"},
+        },
+        "required": ["command"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"command": "echo hello"},
+        {"command": "python3 -c 'print(1+1)'", "timeout": 10},
+    ]
 
     # Commands that could damage the host system
     BLOCKED_PATTERNS = [
@@ -162,30 +179,9 @@ class ShellExecuteTool:
     def use(self, tool_input: str) -> str:
         """Execute a shell command and return the result."""
         # Parse JSON input — with escape preprocessing fallback for Python regex patterns
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            # LLMs often embed Python regex patterns (\\{, \\[, \\d) in JSON strings.
-            # These are invalid JSON escapes, causing parse failures. Try to fix them.
-            exc_str = str(exc).lower()
-            if "escape" in exc_str or "invalid" in exc_str:
-                try:
-                    fixed = self._fix_json_escapes(tool_input)
-                    data = json.loads(fixed)
-                except (json.JSONDecodeError, Exception):
-                    return (
-                        f"[ShellExecuteTool] Error: tool_input must be JSON. "
-                        f"Decoding failed with: {exc}\n"
-                        "Tip: JSON strings cannot contain raw backslash-brace (\\{) or "
-                        "backslash-bracket (\\[) sequences. Use \\\\{ and \\\\[ instead, "
-                        "or write the Python script to a file via a simpler command."
-                    )
-            else:
-                return (
-                    f"[ShellExecuteTool] Error: tool_input must be JSON. "
-                    f"Decoding failed with: {exc}"
-                )
-
+        data, err = parse_json_input(tool_input, "ShellExecuteTool")
+        if err:
+            return err
         command = data.get("command")
         if not command or not isinstance(command, str):
             return (

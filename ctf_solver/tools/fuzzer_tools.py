@@ -4,13 +4,14 @@ Fuzzer tools for CTF solving.
 Provides parameter fuzzing / request repeater capabilities similar to Burp Intruder's Sniper mode.
 """
 
-import json
 import re
 import time
 from collections import Counter
 from typing import Dict, List, Optional
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class RequestRepeaterTool:
@@ -64,6 +65,44 @@ class RequestRepeaterTool:
         "'max_requests' (optional int, default/cap 200), 'timeout' (optional int, default 10). "
         "Returns a table of results with status codes, lengths, timing, and anomaly detection."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "wordlist": {
+                "type": "string",
+                "enum": [
+                    "common_passwords",
+                    "common_usernames",
+                    "common_pins",
+                    "sqli_auth_bypass",
+                ],
+            },
+            "values": {"type": "array"},
+            "data": {"type": "object"},
+            "body_template": {"type": "string"},
+            "headers": {"type": "object"},
+            "match_status": {"type": "integer"},
+            "match_regex": {"type": "string"},
+            "filter_status": {"type": "integer"},
+            "filter_length": {"type": "integer"},
+            "max_requests": {"type": "integer", "default": 200},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/login",
+            "param": "password",
+            "method": "POST",
+            "wordlist": "common_passwords",
+            "data": {"username": "admin"},
+        }
+    ]
 
     FUZZ_MARKER: str = "\u00a7FUZZ\u00a7"
 
@@ -159,14 +198,9 @@ class RequestRepeaterTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[RequestRepeaterTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "RequestRepeaterTool")
+        if err:
+            return err
         # --- Validate required fields ---
         url = data.get("url")
         if not url or not isinstance(url, str):

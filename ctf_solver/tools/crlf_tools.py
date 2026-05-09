@@ -1,10 +1,11 @@
 """CRLF / HTTP header injection probe (split from misc_probe_tools.py)."""
 
-import json
 import re
 from typing import List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class CrlfProbeTool:
@@ -38,6 +39,21 @@ class CrlfProbeTool:
         "CR-only, response splitting, Unicode CRLF, cookie injection, and redirect "
         "injection. Returns a structured report of vulnerable payloads."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "data": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com/redirect", "param": "url"},
+    ]
 
     # CRLF injection payloads: (payload_suffix, description, detection_header, detection_value)
     PAYLOADS: List[Tuple[str, str, str, str]] = [
@@ -114,11 +130,9 @@ class CrlfProbeTool:
         return None
 
     def use(self, tool_input: str) -> str:
-        # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CrlfProbeTool] Error: Invalid JSON input. {exc}"
+        data, err = parse_json_input(tool_input, "CrlfProbeTool")
+        if err:
+            return err
 
         url = data.get("url", "").strip() if isinstance(data.get("url"), str) else ""
         param = (

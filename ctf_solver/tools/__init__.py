@@ -14,6 +14,7 @@ from ctf_solver.tools.cmdi_tools import (
     CommandInjectionPayloadGenerator,
     CommandInjectionProbeTool,
 )
+from ctf_solver.tools.crlf_tools import CrlfProbeTool
 from ctf_solver.tools.crypto_tools import (
     CryptoAnalyzerTool,
     CryptoPayloadGenerator,
@@ -42,18 +43,17 @@ from ctf_solver.tools.fuzzer_tools import RequestRepeaterTool
 from ctf_solver.tools.graphql_tools import GraphqlIntrospectionTool, GraphqlQueryTool
 from ctf_solver.tools.html_tools import HtmlInspectorTool, JavaScriptSourceTool
 from ctf_solver.tools.http_tools import FormSubmitTool, HttpFetchTool
+from ctf_solver.tools.idor_tools import IdorEnumeratorTool
 from ctf_solver.tools.jwt_tools import JwtTool
 from ctf_solver.tools.lfi_tools import LfiPayloadGenerator, LfiProbeTool
 from ctf_solver.tools.logging_wrapper import LoggingToolWrapper
-from ctf_solver.tools.crlf_tools import CrlfProbeTool
-from ctf_solver.tools.idor_tools import IdorEnumeratorTool
-from ctf_solver.tools.open_redirect_tools import OpenRedirectProbeTool
-from ctf_solver.tools.php_juggling_tools import PhpTypeJugglingTool
-from ctf_solver.tools.prototype_pollution_tools import PrototypePollutionTool
 from ctf_solver.tools.nosql_tools import NosqlPayloadGenerator, NosqlProbeTool
 from ctf_solver.tools.oauth_tools import OAuthPayloadGenerator, OAuthProbeTool
+from ctf_solver.tools.open_redirect_tools import OpenRedirectProbeTool
 from ctf_solver.tools.parser_diff_tools import ParserDifferentialProbeTool
 from ctf_solver.tools.php_filter_tools import PhpFilterChainTool
+from ctf_solver.tools.php_juggling_tools import PhpTypeJugglingTool
+from ctf_solver.tools.prototype_pollution_tools import PrototypePollutionTool
 from ctf_solver.tools.race_tools import RaceConditionTool
 from ctf_solver.tools.recon_tools import DeepReconTool, SecurityHeaderAnalyzerTool
 from ctf_solver.tools.search_tools import (

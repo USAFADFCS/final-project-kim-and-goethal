@@ -6,11 +6,12 @@ web application firewalls and input filters, with special focus on SQLite
 bypass techniques learned from real CTF challenge failures.
 """
 
-import json
 import re
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class FilterEnumeratorTool:
@@ -48,6 +49,23 @@ class FilterEnumeratorTool:
         "(default 10). Returns a structured report listing which keywords and operators "
         "are blocked vs allowed, enabling targeted payload construction."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "POST"},
+            "data": {"type": "object"},
+            "filter_type": {"type": "string", "default": "sql"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com/login", "param": "username", "method": "POST"},
+    ]
 
     # SQL keywords to test
     SQL_KEYWORDS: List[str] = [
@@ -184,11 +202,9 @@ class FilterEnumeratorTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[FilterEnumeratorTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "FilterEnumeratorTool")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -436,6 +452,29 @@ class PayloadMutatorTool:
         "optional 'db_type' ('sqlite', 'mysql', 'postgresql', default 'sqlite'). "
         "Returns all valid bypass variants with explanations of substitutions applied."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "payload": {"type": "string"},
+            "blocked_keywords": {"type": "array", "items": {"type": "string"}},
+            "max_length": {"type": "integer", "default": 0},
+            "db_type": {
+                "type": "string",
+                "enum": ["sqlite", "mysql", "postgresql"],
+                "default": "sqlite",
+            },
+        },
+        "required": ["payload"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "payload": "' OR '1'='1' --",
+            "blocked_keywords": ["or", "=", "--"],
+            "max_length": 35,
+            "db_type": "sqlite",
+        },
+    ]
 
     # Bypass strategies: blocked_token -> list of (replacement, description)
     # Case-insensitive matching is used for keyword lookups.
@@ -711,11 +750,9 @@ class PayloadMutatorTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[PayloadMutatorTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "PayloadMutatorTool")
+        if err:
+            return err
         # Validate required fields
         payload = data.get("payload")
         if not payload or not isinstance(payload, str):

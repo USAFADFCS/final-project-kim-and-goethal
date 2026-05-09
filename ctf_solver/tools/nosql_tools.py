@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class NosqlProbeTool:
     """
@@ -50,6 +52,30 @@ class NosqlProbeTool:
         "'timeout' (default 10). Returns analysis of which payloads triggered NoSQL errors, "
         "authentication bypasses, or response differentials."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "POST"},
+            "data": {"type": "object"},
+            "injection_type": {
+                "type": "string",
+                "enum": ["query_param", "json_body", "both"],
+                "default": "both",
+            },
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/api/users",
+            "param": "username",
+            "method": "POST",
+        }
+    ]
 
     # Query parameter payloads: appended to param name via bracket notation
     QUERY_PARAM_PAYLOADS: List[Tuple[str, str]] = [
@@ -526,11 +552,9 @@ class NosqlProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[NosqlProbeTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "NosqlProbeTool")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -1044,11 +1068,9 @@ class NosqlPayloadGenerator:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[NosqlPayloadGenerator] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "NosqlPayloadGenerator")
+        if err:
+            return err
         operation = data.get("operation", "").strip()
         valid_ops = ("auth_bypass", "data_extraction", "operators", "couchdb")
         if not operation:

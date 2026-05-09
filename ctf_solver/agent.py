@@ -39,10 +39,12 @@ from ctf_solver.config import (
     LLMProviderType,
     RAGMode,
     SolverConfig,
+    extract_candidate_flags,
 )
 from ctf_solver.llm import (
     create_adapter_from_config,
 )
+from ctf_solver.phases import PhaseStateMachine
 from ctf_solver.prompts import (
     COOKIE_BYPASS_EXAMPLE,
     DEEP_RECON_EXAMPLE,
@@ -50,6 +52,7 @@ from ctf_solver.prompts import (
     JSON_API_EXAMPLE,
     ROBOTS_EXAMPLE,
     SELF_REFLECTION_EXAMPLE,
+    XXE_RAW_BODY_EXAMPLE,
     get_role_definition,
     get_system_prompt,
 )
@@ -138,6 +141,7 @@ from ctf_solver.tools import (
     XxePayloadGenerator,
     XxeProbeTool,
 )
+from ctf_solver.tools.logging_wrapper import STUCK_HARD_STOP_TAG
 
 logger = logging.getLogger(__name__)
 
@@ -286,11 +290,12 @@ class CTFAgent(SimpleAgent):
         flag_regex: str = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}",
         log_callback: Optional[Callable[[str], None]] = None,
         history_window_size: Optional[int] = None,
-        opener_pack: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+        opener_pack: Optional[List[Any]] = None,
         enable_parallel_tools: bool = False,
         native_system_prompt: Optional[str] = None,
         trace_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         thinking_step_ref: Optional[Dict[str, int]] = None,
+        enable_phase_gate: bool = False,
         **kwargs,
     ):
         """
@@ -338,7 +343,7 @@ class CTFAgent(SimpleAgent):
         self._log_fn = log_callback or print
         self._premature_fa_count = 0
         self._history_window_size = history_window_size
-        self._opener_pack: List[Tuple[str, Dict[str, Any]]] = list(opener_pack or [])
+        self._opener_pack: List[Any] = list(opener_pack or [])
         self._parallel_tools_enabled = enable_parallel_tools
         self._native_system_prompt = native_system_prompt
         self._trace_callback = trace_callback
@@ -361,6 +366,10 @@ class CTFAgent(SimpleAgent):
         # Tool-call history for Gap C: flags 3rd+ identical invocations
         # as redundant so the stall clock ignores them.
         self._tool_call_history: List[Tuple[str, str]] = []
+        # v3.8 phase state machine — gates exploit tools behind a
+        # confirmed category signal.  Off by default for backwards
+        # compatibility; build_agent flips it on when configured.
+        self._phase_machine = PhaseStateMachine(enabled=enable_phase_gate)
         self._patch_planner_parsing()
 
     # ── Stall detection ────────────────────────────────────────────
@@ -571,12 +580,13 @@ class CTFAgent(SimpleAgent):
     def _windowed_history(self) -> List[Message]:
         """Return the history view passed to the planner.
 
-        If ``_history_window_size`` is None, returns the full memory; otherwise
-        keeps the first 2 "anchor" messages + the last (window - 2) messages.
+        If ``_history_window_size`` is None or 0 (the "disabled" sentinel),
+        returns the full memory; otherwise keeps the first 2 "anchor" messages
+        + the last (window - 2) messages.
         """
         history = self.memory.get_history()
         window = self._history_window_size
-        if window is None or len(history) <= window:
+        if not window or len(history) <= window:
             return history
         anchor_count = min(2, len(history))
         tail_count = max(0, window - anchor_count)
@@ -585,14 +595,31 @@ class CTFAgent(SimpleAgent):
     def _run_opener_pack(self) -> None:
         """Pre-execute deterministic recon before the LLM loop.
 
-        Each (tool_name, input_dict) pair is dispatched through the normal
-        tool executor so LoggingToolWrapper still scans the output for
-        flags and records the call in the tracker.  Outputs are appended to
-        memory as system observations, so the first LLM turn starts with
-        pre-primed context and does not burn a step on robots.txt / path
-        enumeration / similar zero-reasoning calls.
+        Each opener step is either:
+          * a static ``(tool_name, input_dict)`` pair, OR
+          * a callable that takes the list of prior ``(tool_name,
+            output_str)`` observations and returns ``(tool_name,
+            input_dict)`` — or ``None`` to skip — based on what's been
+            seen so far. This is what the v3.8 ``recon_dag`` uses to
+            promote roles or follow up on discovered paths.
+
+        Outputs are appended to memory as system observations so the
+        first LLM turn starts with pre-primed context and does not burn
+        a step on zero-reasoning recon.
         """
-        for tool_name, tool_input_dict in self._opener_pack:
+        prior_observations: List[Tuple[str, str]] = []
+        for step in self._opener_pack:
+            if callable(step):
+                try:
+                    resolved = step(prior_observations)
+                except Exception as exc:
+                    self._log_fn(f"[Opener] callable step failed: {exc}")
+                    continue
+                if resolved is None:
+                    continue
+                tool_name, tool_input_dict = resolved
+            else:
+                tool_name, tool_input_dict = step
             try:
                 tool_input = json.dumps(tool_input_dict)
             except (TypeError, ValueError) as exc:
@@ -602,8 +629,10 @@ class CTFAgent(SimpleAgent):
                 output = self.tool_executor.execute(tool_name, tool_input)
             except Exception as exc:
                 output = f"[Opener] {tool_name} failed: {exc}"
+            output_str = str(output)
+            prior_observations.append((tool_name, output_str))
             self._log_fn(
-                f"[Opener] {tool_name} → {len(str(output))} chars of observation"
+                f"[Opener] {tool_name} → {len(output_str)} chars of observation"
             )
             self.memory.add_message(
                 Message(
@@ -1070,7 +1099,23 @@ class CTFAgent(SimpleAgent):
         FinalAnswer, which causes premature termination when the LLM returns
         a conversational response (e.g. "I found the password, let me try
         logging in...").  This patch intercepts that fallback path.
+
+        Also dispatches to ``_patch_simple_planner_parsing`` when the
+        active planner is ``SimpleReActPlanner`` (local-model path) —
+        its ``_parse_simplified_response`` has the same silent-FinalAnswer
+        failure mode on Gemma4's ``---\\n{...}`` output pattern.
         """
+        # Always try to patch the simple planner — it's a distinct
+        # failure mode from _parse_json_response and the two patches are
+        # independent. See the 2026-04-23 recentTestRun.txt regression:
+        # Gemma4 + v3.2 grammar constraint emits valid JSON prefixed with
+        # ``---\n``, which SimpleReActPlanner's stock JSON fallback
+        # (``json.loads(text.strip())``) rejects, silently returning
+        # FinalAnswer(raw). The raw contains a literal ``MetaCTF{...}``
+        # in the LLM's thought, which the premature-FA guard misread as
+        # a real flag — 5 fake "successes" in one batch.
+        self._patch_simple_planner_parsing()
+
         if not hasattr(self.planner, "_parse_json_response"):
             return
         original_parse = self.planner._parse_json_response
@@ -1175,14 +1220,239 @@ class CTFAgent(SimpleAgent):
 
         self.planner._parse_json_response = _robust_parse
 
+    # ── Simple-planner (KV-format) monkey-patch ─────────────────────
+    def _patch_simple_planner_parsing(self):
+        """Robustify ``SimpleReActPlanner._parse_simplified_response``.
+
+        Gemma4 and similar local models under the v3.2 grammar constraint
+        emit valid JSON envelopes but frequently prepend ``---\\n`` (an
+        artifact of the model's chat template or a stray Markdown
+        horizontal-rule delimiter). fairlib's stock parser runs the KV
+        regex first (no match — it's JSON), then falls back to
+        ``json.loads(text.strip())`` which rejects the prefix, then
+        catches the ValueError and silently returns
+        ``FinalAnswer(text=raw_response)``. The raw response contains a
+        literal ``MetaCTF{...}`` in the LLM's thought (paraphrase of the
+        prompt's ``Flag format: {flag_regex}`` instruction), which the
+        premature-FinalAnswer guard's old raw-regex ``_has_flag`` check
+        misread as a real flag — producing 5/14 fake successes in the
+        2026-04-23 batch (see recentTestRun.txt).
+
+        This patch: strip ``---``-style delimiter prefixes and markdown
+        code fences; try to parse the result as a ReAct envelope; on
+        success, convert to ``(Thought, Action)`` or ``FinalAnswer`` based
+        on ``action.tool_name``. If the envelope path fails, delegate to
+        the original parser; if it still returns a non-intentional
+        FinalAnswer, inject the same format-error recovery action the
+        ReActPlanner patch uses so the step budget is not wasted.
+        """
+        if not hasattr(self.planner, "_parse_simplified_response"):
+            return
+        original_parse = self.planner._parse_simplified_response
+        agent = self
+
+        # Strip ``---`` or ``~~~`` delimiter lines at the very start only.
+        # Matches one or more dashes/tildes followed by the line end —
+        # never strips ``---`` that appears inside thought text.
+        _prefix_delimiter_re = re.compile(r"^(?:-{3,}|~{3,})\s*(?:\n|$)")
+
+        def _try_envelope(maybe_json: str):
+            """Parse ``maybe_json`` as a ReAct envelope.
+
+            Returns ``(Thought, Action)`` / ``FinalAnswer`` on success,
+            or None on failure. Imports from fairlib inside the function
+            to mirror the pattern used by the JSON-planner patch
+            (avoids top-of-file import bloat and fragile test
+            monkey-patching across module boundaries).
+            """
+            from fairlib.core.message import Action, Thought
+            from fairlib.core.message import FinalAnswer as FA
+
+            try:
+                data = json.loads(maybe_json)
+            except (json.JSONDecodeError, ValueError):
+                return None
+            if not isinstance(data, dict):
+                return None
+            action_obj = data.get("action")
+            if not isinstance(action_obj, dict):
+                return None
+            tool_name = action_obj.get("tool_name")
+            if not isinstance(tool_name, str) or not tool_name.strip():
+                return None
+            tool_input = action_obj.get("tool_input")
+            thought_text = data.get("thought") or ""
+            if not isinstance(thought_text, str):
+                thought_text = str(thought_text)
+
+            # Intentional final_answer call — honor it verbatim so the
+            # downstream guard can still evaluate whether a real flag is
+            # present. The guard itself will block placeholder-only
+            # answers via the Phase 3a _has_flag update.
+            if tool_name.strip().lower() == "final_answer":
+                final_text = str(tool_input) if tool_input is not None else ""
+                return FA(text=final_text)
+
+            # tool_input can be a nested dict/list; the downstream tool
+            # expects a JSON string input, so stringify.
+            if isinstance(tool_input, (dict, list)):
+                tool_input_str = json.dumps(tool_input)
+            elif tool_input is None:
+                tool_input_str = ""
+            else:
+                tool_input_str = str(tool_input)
+
+            return (
+                Thought(text=thought_text),
+                Action(tool_name=tool_name.strip(), tool_input=tool_input_str),
+            )
+
+        def _robust_simple_parse(response_text: str):
+            from fairlib.core.message import Action, Thought
+            from fairlib.core.message import FinalAnswer as FA
+
+            text = (response_text or "").strip()
+
+            # 1. Strip a single leading ``---`` / ``~~~`` delimiter line.
+            cleaned = _prefix_delimiter_re.sub("", text, count=1).strip()
+            # 2. Strip markdown code fences (handles ```json ... ``` and ``` ... ```).
+            if cleaned.startswith("```"):
+                cleaned = _MD_FENCE_OPEN.sub("", cleaned)
+                cleaned = _MD_FENCE_CLOSE.sub("", cleaned)
+                cleaned = cleaned.strip()
+
+            # 3. Happy path: cleaned text IS the envelope.
+            envelope = _try_envelope(cleaned)
+            if envelope is not None:
+                agent._consecutive_format_errors = 0
+                return envelope
+
+            # 4. Fallback: extract the first balanced JSON object from prose.
+            embedded = _extract_json_object(cleaned)
+            if embedded is not None:
+                envelope = _try_envelope(embedded)
+                if envelope is not None:
+                    agent._consecutive_format_errors = 0
+                    return envelope
+
+            # 5. Nothing matched the envelope shape — delegate to the
+            # stock parser which handles the KV-format path (``Thought:``
+            # / ``Action:`` / ``tool_name:``). If that produces a real
+            # (Thought, Action) tuple, take it; otherwise treat its
+            # FinalAnswer as suspect and inject the recovery action.
+            try:
+                result = original_parse(response_text)
+            except Exception:  # defensive: the stock parser has bugs too
+                result = FA(text=response_text)
+
+            if not isinstance(result, FA):
+                agent._consecutive_format_errors = 0
+                return result
+
+            # 6. The stock parser returned FinalAnswer. Two sub-cases:
+            #    a) Intentional final_answer (the KV-format parser saw
+            #       ``tool_name: final_answer`` or similar) — we can't
+            #       distinguish this from a silent-FA fallback at this
+            #       layer, so err on the side of trusting it ONLY when
+            #       the FA text contains a non-placeholder flag; the
+            #       premature-FA guard at agent.py:1407 will re-evaluate
+            #       with the same Phase 3a _has_flag logic and block
+            #       anything spurious.
+            #    b) Silent-FA fallback (the failure mode we care about)
+            #       — inject the format-error recovery action so the
+            #       step budget is preserved.
+            #
+            # Short-circuit trust path: if the original FA text is a
+            # short, flag-shaped string, it's probably case (a).
+            fa_text = getattr(result, "text", "") or ""
+            if fa_text.strip() and len(fa_text.strip()) < 300:
+                # Likely a real final_answer call — trust the guard.
+                agent._consecutive_format_errors = 0
+                return result
+
+            # Otherwise treat as a format error.
+            agent._format_error_count = getattr(agent, "_format_error_count", 0) + 1
+            agent._consecutive_format_errors = (
+                getattr(agent, "_consecutive_format_errors", 0) + 1
+            )
+            agent._log_fn(
+                f"[Parser] SimpleReActPlanner produced a long non-structured "
+                f"FinalAnswer (format error #{agent._format_error_count}, "
+                f"{agent._consecutive_format_errors} consecutive). "
+                "Injecting format-error continuation instead of terminating."
+            )
+
+            # Same 3-strike force-stop as the JSON-planner patch.
+            if agent._consecutive_format_errors >= 3:
+                agent._log_fn("[Parser] 3 consecutive format errors — force-stopping.")
+                return FA(
+                    text=(
+                        "AGENT STOPPED: Unable to produce parseable "
+                        "structured responses after 3 consecutive format "
+                        f"errors. Total format errors: {agent._format_error_count}."
+                    )
+                )
+
+            return (
+                Thought(
+                    text=(
+                        "[FORMAT RECOVERY] My previous response could not be "
+                        "parsed as either a JSON envelope or a KV block. "
+                        "I must respond with a JSON object like "
+                        '{"thought": "...", "action": {"tool_name": "...", '
+                        '"tool_input": "..."}} — starting with \'{\', no '
+                        "``---`` prefix, no markdown fences, no prose."
+                    )
+                ),
+                Action(
+                    tool_name="__format_error__",
+                    tool_input=(
+                        "YOUR RESPONSE COULD NOT BE PARSED. Re-emit your "
+                        "next turn as a raw JSON object with exactly two "
+                        "top-level keys: 'thought' and 'action'. Do NOT "
+                        "prepend '---', '~~~', or markdown fences. "
+                        "Continue solving the challenge."
+                    ),
+                ),
+            )
+
+        self.planner._parse_simplified_response = _robust_simple_parse
+
     # ── Flag detection ──────────────────────────────────────────────
     def _has_flag(self, text: str = "") -> bool:
-        """Return True if a flag has been found anywhere."""
+        """Return True if a non-placeholder flag has been found anywhere.
+
+        Delegates to ``extract_candidate_flags`` so the premature-
+        FinalAnswer guard uses the same noise filter that the TSV
+        extractor uses. This closes the 2026-04-23 regression where
+        the LLM's own thought text paraphrased ``Flag format:
+        MetaCTF{...}`` and the raw ``re.search(self._flag_regex,
+        text)`` happily matched the ``MetaCTF{...}`` placeholder —
+        bypassing the guard and recording a fake "success".
+
+        v3.8 provenance check: if the tracker has not already recorded
+        a flag from a real tool output, any flag-shaped string in the
+        model's own text must appear verbatim in some prior tool
+        observation. Otherwise the model can hallucinate a regex-valid
+        flag (the 26B-local failure mode) and the guard would accept it.
+        """
         if self._tracker and self._tracker.candidate_flags_found:
+            # Tracker's list is populated by LoggingToolWrapper from
+            # real tool outputs — already provenance-grounded.
             return True
-        if text and re.search(self._flag_regex, text):
+        if not text:
+            return False
+        candidates = extract_candidate_flags(text, self._flag_regex)
+        if not candidates:
+            return False
+        # No tracker available (some tests bypass it): preserve the old
+        # regex-only behavior. With a tracker, require provenance.
+        if self._tracker is None or not hasattr(self._tracker, "tool_call_log"):
             return True
-        return False
+        all_outputs = " ".join(
+            str(entry.get("output", "")) for entry in self._tracker.tool_call_log
+        )
+        return any(c in all_outputs for c in candidates)
 
     # ── Exploitable-finding detection ──────────────────────────────
     def _has_unexploited_findings(self, text: str) -> bool:
@@ -1308,6 +1578,9 @@ class CTFAgent(SimpleAgent):
         self._seen_paths = set()
         self._seen_statuses = set()
         self._tool_call_history = []
+        # v3.8 phase gate: reset to RECON at start of each run so
+        # back-to-back challenges in a batch don't inherit unlocks.
+        self._phase_machine.reset()
 
         # Pre-loop deterministic recon (no-op when no opener pack configured).
         if self._opener_pack:
@@ -1449,6 +1722,21 @@ class CTFAgent(SimpleAgent):
             # ── Normal thought + action ──
             try:
                 thought, action = plan_result
+                # v3.9 N.1: when the model emits ``tool_input`` as an
+                # object (under the per-tool ``oneOf`` grammar), the
+                # downstream tool's ``use(tool_input: str)`` still expects
+                # a JSON-encoded string. Coerce here once so the rest of
+                # the loop (logging, dispatch, repetition hash) sees a
+                # uniform string. fairlib's ReActPlanner passes through
+                # whatever ``tool_input`` shape the JSON had — including
+                # dict — so this coercion catches the new oneOf path
+                # without disturbing the legacy string path.
+                if isinstance(action.tool_input, (dict, list)):
+                    action.tool_input = json.dumps(action.tool_input)
+                elif action.tool_input is None:
+                    action.tool_input = ""
+                elif not isinstance(action.tool_input, str):
+                    action.tool_input = str(action.tool_input)
                 print(f"Thought: {thought.text}")
                 print(
                     f"Action: Using tool '{action.tool_name}' with input '{action.tool_input}'"
@@ -1514,6 +1802,13 @@ class CTFAgent(SimpleAgent):
                     "pivoting to a different attack vector."
                 )
                 print(f"Observation: {observation_output}")
+            elif not self._phase_machine.allowed(action.tool_name):
+                # v3.8 phase gate: block exploit tools whose category has
+                # not yet been confirmed by a probe signal.  Render a
+                # short error observation that explains how to unblock,
+                # then continue without consuming a step.
+                observation_output = f"[PHASE-GATE] {self._phase_machine.reason_blocked(action.tool_name)}"
+                print(f"Observation: {observation_output}")
             else:
                 try:
                     observation_output = self.tool_executor.execute(
@@ -1523,6 +1818,17 @@ class CTFAgent(SimpleAgent):
                 except Exception as e:
                     observation_output = f"Error: {e}"
                     print(observation_output)
+                # Feed observation back to phase machine so the next call
+                # sees any newly-unlocked categories.
+                transition = self._phase_machine.observe(
+                    action.tool_name, str(observation_output)
+                )
+                if transition is not None:
+                    target_phase, category = transition
+                    self._log_fn(
+                        f"[Agent] Phase advance → {target_phase.value} "
+                        f"(category={category})."
+                    )
 
             turn_messages.append(
                 Message(
@@ -1539,6 +1845,46 @@ class CTFAgent(SimpleAgent):
                     "timestamp": time.time(),
                 }
             )
+
+            # Hard-stop signal from LoggingToolWrapper.StuckDetector: the
+            # same (tool, input) pair has been hit `hard_stop_threshold`
+            # times.  Force-advance the stall machinery so the model sees
+            # an escalating nudge on the next turn instead of waiting for
+            # the soft stall-window clock to fire.
+            if STUCK_HARD_STOP_TAG in str(observation_output):
+                self._stall_checks = max(self._stall_checks, 1) + 1
+                # Pull `_last_progress_step` back so the next iteration's
+                # stall window definitely crosses the threshold even if
+                # this turn would otherwise have been counted as progress.
+                self._last_progress_step = max(
+                    0, (step + 1) - self._STALL_THRESHOLD - 1
+                )
+                self._log_fn(
+                    f"[Agent] Hard-stop signal observed for "
+                    f"'{action.tool_name}'; advancing stall tier."
+                )
+
+            # v3.8 P1 recovery-prompt tag: when ``parse_json_input`` returns
+            # an error with a ``→ Hint:`` line, surface it as a separate
+            # ``[RECOVERY-HINT]`` system message so the next planner turn
+            # sees a tagged directive instead of the hint buried in an
+            # observation that the model may ignore.  Only fires for
+            # malformed-input errors — genuine semantic tool errors stay as
+            # plain observations.
+            obs_str = str(observation_output)
+            if "→ Hint:" in obs_str and "tool_input must be JSON" in obs_str:
+                hint_line = obs_str.split("→ Hint:", 1)[1].strip().split("\n", 1)[0]
+                turn_messages.append(
+                    Message(
+                        role="system",
+                        content=(
+                            "[RECOVERY-HINT] Your last call to "
+                            f"'{action.tool_name}' failed JSON parsing. "
+                            "Re-emit a single valid JSON object on your "
+                            f"next turn. Specifically: {hint_line}"
+                        ),
+                    )
+                )
 
             # Update stall-detection signals. Progress in THIS step resets
             # the counter; first RAG query is recorded for diagnostics.
@@ -1673,6 +2019,7 @@ def build_agent(
     log_callback: Optional[Callable[[str], None]] = None,
     tracker: Optional[RunTracker] = None,
     trace_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    event_writer: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> SimpleAgent:
     """
     Construct and return a SimpleAgent wired up with:
@@ -1698,6 +2045,14 @@ def build_agent(
     if config.model_name and config.model_name.startswith("claude"):
         provider = LLMProviderType.ANTHROPIC
         config.llm_provider = LLMProviderType.ANTHROPIC
+    elif config.model_name and config.model_name.startswith("mlx-community/"):
+        # Auto-route MLX-quantized models from the mlx-community HF org so
+        # users can pick an MLX model without also passing --llm-provider.
+        # Checked BEFORE the Ollama heuristic because some MLX model names
+        # (e.g. "mlx-community/gemma-4-*") would otherwise match the "gemma"
+        # Ollama prefix and get misrouted.
+        provider = LLMProviderType.MLX
+        config.llm_provider = LLMProviderType.MLX
     elif config.model_name and _looks_like_ollama_model(config.model_name):
         # Local Ollama model names follow name:tag form (e.g.
         # "llama3.1:latest", "edgerunner-medium:latest", "gpt-oss:20b").
@@ -1841,6 +2196,9 @@ def build_agent(
     cookie_inspector_tool = CookieInspectorTool(session=shared_session)
     cookie_set_tool = CookieSetTool(session=shared_session)
     form_submit_tool = FormSubmitTool(session=shared_session)
+    from ctf_solver.tools.auto_form_submit import AutoFormSubmitTool
+
+    auto_form_submit_tool = AutoFormSubmitTool(session=shared_session)
     js_source_tool = JavaScriptSourceTool(session=shared_session)
     response_search_tool = ResponseSearchTool()
     sql_pattern_hint_tool = SqlPatternHintTool()
@@ -1858,14 +2216,24 @@ def build_agent(
     path_enumerator_tool = PathEnumeratorTool(session=shared_session)
     backup_finder_tool = BackupFileFinder(session=shared_session)
 
-    # SQL Injection tools
-    sqli_probe_tool = SqliProbeTool(session=shared_session)
-    sqli_column_counter_tool = SqliColumnCounter(session=shared_session)
+    # SQL Injection tools — collapsed to ``sqli_attack`` when
+    # ``enable_collapsed_families`` is on; legacy 5-tool surface otherwise.
+    if config.enable_collapsed_families:
+        from ctf_solver.tools.collapsed_sqli import CollapsedSqliTool
 
-    # Blind SQL Injection tools
-    blind_sqli_boolean_tool = BlindSqliBooleanTool(session=shared_session)
-    blind_sqli_time_tool = BlindSqliTimeTool(session=shared_session)
-    sqli_data_dumper_tool = SqliDataDumper(session=shared_session)
+        collapsed_sqli_tool = CollapsedSqliTool(session=shared_session)
+        sqli_probe_tool = None
+        sqli_column_counter_tool = None
+        blind_sqli_boolean_tool = None
+        blind_sqli_time_tool = None
+        sqli_data_dumper_tool = None
+    else:
+        collapsed_sqli_tool = None
+        sqli_probe_tool = SqliProbeTool(session=shared_session)
+        sqli_column_counter_tool = SqliColumnCounter(session=shared_session)
+        blind_sqli_boolean_tool = BlindSqliBooleanTool(session=shared_session)
+        blind_sqli_time_tool = BlindSqliTimeTool(session=shared_session)
+        sqli_data_dumper_tool = SqliDataDumper(session=shared_session)
 
     # JWT tools (no session needed)
     jwt_tool = JwtTool()
@@ -1878,10 +2246,21 @@ def build_agent(
     file_upload_tool = FileUploadTool(session=shared_session)
     upload_location_finder = UploadLocationFinder(session=shared_session)
 
-    # XXE tools
-    xxe_probe_tool = XxeProbeTool(session=shared_session)
-    xxe_payload_generator = XxePayloadGenerator()
-    xxe_doctype_builder = XxeDocTypeBuilder()
+    # XXE tools — collapsed to a single ``xxe_attack`` entry point when
+    # ``enable_collapsed_families`` is on (v3.8 P0).  When off, register
+    # the legacy 3-tool surface for backwards compatibility.
+    if config.enable_collapsed_families:
+        from ctf_solver.tools.collapsed_xxe import CollapsedXxeTool
+
+        collapsed_xxe_tool = CollapsedXxeTool(session=shared_session)
+        xxe_probe_tool = None
+        xxe_payload_generator = None
+        xxe_doctype_builder = None
+    else:
+        collapsed_xxe_tool = None
+        xxe_probe_tool = XxeProbeTool(session=shared_session)
+        xxe_payload_generator = XxePayloadGenerator()
+        xxe_doctype_builder = XxeDocTypeBuilder()
 
     # Shell execution tool (general-purpose command runner)
     shell_tool = ShellExecuteTool()
@@ -1914,19 +2293,39 @@ def build_agent(
     cmdi_probe_tool = CommandInjectionProbeTool(session=shared_session)
     cmdi_payload_generator = CommandInjectionPayloadGenerator()
 
-    # Crypto tools
-    crypto_probe_tool = CryptoProbeTool(session=shared_session)
-    crypto_analyzer_tool = CryptoAnalyzerTool()
-    crypto_payload_generator = CryptoPayloadGenerator()
+    # Crypto tools — collapsed to ``crypto_attack`` when
+    # ``enable_collapsed_families`` is on.
+    if config.enable_collapsed_families:
+        from ctf_solver.tools.collapsed_crypto import CollapsedCryptoTool
+
+        collapsed_crypto_tool = CollapsedCryptoTool(session=shared_session)
+        crypto_probe_tool = None
+        crypto_analyzer_tool = None
+        crypto_payload_generator = None
+    else:
+        collapsed_crypto_tool = None
+        crypto_probe_tool = CryptoProbeTool(session=shared_session)
+        crypto_analyzer_tool = CryptoAnalyzerTool()
+        crypto_payload_generator = CryptoPayloadGenerator()
 
     # Deserialization tools
     deserialization_probe_tool = DeserializationProbeTool(session=shared_session)
     deserialization_payload_generator = DeserializationPayloadGenerator()
 
-    # XSS tools
-    xss_probe_tool = XssProbeTool(session=shared_session)
-    xss_payload_generator = XssPayloadGenerator()
-    csp_analyzer_tool = CspAnalyzerTool(session=shared_session)
+    # XSS tools — collapsed to ``xss_attack`` when
+    # ``enable_collapsed_families`` is on.
+    if config.enable_collapsed_families:
+        from ctf_solver.tools.collapsed_xss import CollapsedXssTool
+
+        collapsed_xss_tool = CollapsedXssTool(session=shared_session)
+        xss_probe_tool = None
+        xss_payload_generator = None
+        csp_analyzer_tool = None
+    else:
+        collapsed_xss_tool = None
+        xss_probe_tool = XssProbeTool(session=shared_session)
+        xss_payload_generator = XssPayloadGenerator()
+        csp_analyzer_tool = CspAnalyzerTool(session=shared_session)
 
     # GraphQL tools
     graphql_introspection_tool = GraphqlIntrospectionTool(session=shared_session)
@@ -1985,6 +2384,7 @@ def build_agent(
         cookie_inspector_tool,
         cookie_set_tool,
         form_submit_tool,
+        auto_form_submit_tool,
         js_source_tool,
         response_search_tool,
         sql_pattern_hint_tool,
@@ -1995,19 +2395,29 @@ def build_agent(
         response_fingerprint_tool,
         path_enumerator_tool,
         backup_finder_tool,
-        sqli_probe_tool,
-        sqli_column_counter_tool,
-        blind_sqli_boolean_tool,
-        blind_sqli_time_tool,
-        sqli_data_dumper_tool,
+        # SQLi: single collapsed tool OR five legacy tools, never both.
+        *(
+            [collapsed_sqli_tool]
+            if collapsed_sqli_tool is not None
+            else [
+                sqli_probe_tool,
+                sqli_column_counter_tool,
+                blind_sqli_boolean_tool,
+                blind_sqli_time_tool,
+                sqli_data_dumper_tool,
+            ]
+        ),
         jwt_tool,
         ssti_probe_tool,
         ssti_exploit_suggester,
         file_upload_tool,
         upload_location_finder,
-        xxe_probe_tool,
-        xxe_payload_generator,
-        xxe_doctype_builder,
+        # XXE: single collapsed tool OR three legacy tools, never both.
+        *(
+            [collapsed_xxe_tool]
+            if collapsed_xxe_tool is not None
+            else [xxe_probe_tool, xxe_payload_generator, xxe_doctype_builder]
+        ),
         shell_tool,
         xpath_probe_tool,
         xpath_blind_boolean_tool,
@@ -2023,14 +2433,24 @@ def build_agent(
         nosql_payload_generator,
         cmdi_probe_tool,
         cmdi_payload_generator,
-        crypto_probe_tool,
-        crypto_analyzer_tool,
-        crypto_payload_generator,
+        # Crypto: single collapsed tool OR three legacy tools, never both.
+        *(
+            [collapsed_crypto_tool]
+            if collapsed_crypto_tool is not None
+            else [
+                crypto_probe_tool,
+                crypto_analyzer_tool,
+                crypto_payload_generator,
+            ]
+        ),
         deserialization_probe_tool,
         deserialization_payload_generator,
-        xss_probe_tool,
-        xss_payload_generator,
-        csp_analyzer_tool,
+        # XSS: single collapsed tool OR three legacy tools, never both.
+        *(
+            [collapsed_xss_tool]
+            if collapsed_xss_tool is not None
+            else [xss_probe_tool, xss_payload_generator, csp_analyzer_tool]
+        ),
         graphql_introspection_tool,
         graphql_query_tool,
         race_condition_tool,
@@ -2062,6 +2482,7 @@ def build_agent(
             flag_regex=config.flag_regex,
             log_callback=log_fn,
             tracker=tracker,
+            event_writer=event_writer,
         )
         tool_registry.register_tool(wrapped)
 
@@ -2110,6 +2531,7 @@ def build_agent(
                 flag_regex=config.flag_regex,
                 log_callback=log_fn,
                 tracker=tracker,
+                event_writer=event_writer,
             )
             tool_registry.register_tool(wrapped_rag)
             log_fn(
@@ -2119,6 +2541,46 @@ def build_agent(
             log_fn(
                 "[Agent] WARNING: RAG knowledge base not available; 'ctf_knowledge_query' tool disabled"
             )
+
+    # MLX: lock the grammar-constrained schema's ``tool_name`` enum to the
+    # exact set of tools the dispatcher recognizes. Without this, Outlines'
+    # FSM allows any string for ``tool_name`` and Gemma4 hallucinates names
+    # like ``'deeply recon'`` or ``'http_{fetch}'`` (see MLXtestrun.txt).
+    # ``hasattr`` guard keeps this a no-op for every other provider.
+    if hasattr(llm, "set_allowed_tool_names"):
+        try:
+            registered_tool_names = list(tool_registry.get_all_tools().keys())
+            if registered_tool_names:
+                llm.set_allowed_tool_names(registered_tool_names)
+                log_fn(
+                    f"[Agent] MLX: constrained tool_name enum to "
+                    f"{len(registered_tool_names)} registered tools."
+                )
+        except Exception as e:
+            log_fn(f"[Agent] WARNING: failed to constrain MLX tool_name enum: {e}")
+
+    # v3.9 N.1: per-tool ``tool_input`` discrimination via ``oneOf``.
+    # MLX uses Outlines (full Draft-07 support); Ollama tries the same
+    # schema and falls back internally if its grammar parser rejects
+    # ``oneOf``. ``hasattr`` guard keeps this a no-op for hosted backends
+    # which do not need / use the grammar path.
+    if hasattr(llm, "set_tool_descriptors"):
+        try:
+            from ctf_solver.tools.schema import (
+                collect_tool_descriptors as _collect_for_grammar,
+            )
+
+            descriptors = _collect_for_grammar(tool_registry.get_all_tools().values())
+            if descriptors:
+                llm.set_tool_descriptors(descriptors)
+                schemed = sum(1 for _, _, s, _ in descriptors if s is not None)
+                log_fn(
+                    f"[Agent] grammar: per-tool oneOf wired with "
+                    f"{schemed}/{len(descriptors)} tools schema-constrained "
+                    f"(rest use string-tool_input fallback branch)."
+                )
+        except Exception as e:
+            log_fn(f"[Agent] WARNING: failed to wire per-tool grammar: {e}")
 
     # Planner dispatch: smaller/local models (Ollama) get SimpleReActPlanner
     # (key-value `Thought:` / `Action:` format), which is more forgiving than
@@ -2159,11 +2621,19 @@ def build_agent(
         # the FAIR defaults, causing Claude to produce wrong JSON structure.
         pb.format_instructions.clear()
 
-        # 1. Full system prompt with format rules, exploitation protocols, flag regex
+        # 1. Full system prompt with format rules, exploitation protocols, flag regex.
+        # v3.8: pass the registered tool list so the prompt also gets an
+        # auto-rendered ``## Tool catalog`` section sourced from each tool's
+        # ``parameters_schema`` — bridges the prose listing already in the
+        # template with typed argument signatures the model can copy.
+        from ctf_solver.tools.schema import collect_tool_descriptors
+
+        tool_descriptors = collect_tool_descriptors(tool_registry.get_all_tools())
         role_text = get_system_prompt(
             platform_name=config.platform_name,
             flag_regex=config.flag_regex,
             custom_prompt=config.agent_system_prompt,
+            tool_descriptors=tool_descriptors,
         )
         pb.role_definition = RoleDefinition(role_text)
 
@@ -2176,6 +2646,7 @@ def build_agent(
         pb.examples.append(JS_ANALYSIS_EXAMPLE)
         pb.examples.append(JSON_API_EXAMPLE)
         pb.examples.append(COOKIE_BYPASS_EXAMPLE)
+        pb.examples.append(XXE_RAW_BODY_EXAMPLE)
         pb.examples.append(DEEP_RECON_EXAMPLE)
 
     # === Tool executor, memory, and agent ===
@@ -2184,8 +2655,16 @@ def build_agent(
 
     # Compose opener pack when enabled — two zero-reasoning recon calls that
     # every picoCTF web writeup starts with.  Skipped when no challenge_url.
-    opener_pack: Optional[List[Tuple[str, Dict[str, Any]]]] = None
-    if config.enable_opener_pack and config.challenge_url:
+    # When ``enable_recon_dag`` is on, the static opener pack is replaced
+    # with the richer DAG (5 static + 2 observation-driven steps).
+    opener_pack: Optional[List[Any]] = None
+    if config.enable_recon_dag:
+        from ctf_solver.recon_dag import compose_recon_dag
+
+        dag = compose_recon_dag(config.challenge_url)
+        if dag:
+            opener_pack = list(dag)
+    elif config.enable_opener_pack and config.challenge_url:
         opener_pack = [
             ("robots_txt", {"base_url": config.challenge_url}),
             (
@@ -2211,6 +2690,7 @@ def build_agent(
         history_window_size=config.history_window_size,
         opener_pack=opener_pack,
         enable_parallel_tools=config.enable_parallel_tools,
+        enable_phase_gate=config.enable_phase_gate,
         # The JSON-ReAct path gets the system prompt via the planner's
         # RoleDefinition; the native loop doesn't use the planner, so pass
         # the same text directly so both paths see identical instructions.

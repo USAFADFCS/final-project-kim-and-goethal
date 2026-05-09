@@ -14,6 +14,7 @@ from ctf_solver.llm.adapters import (
     HybridAdapter,
     # Enums and configs
     LLMProvider,
+    MLXAdapter,
     ModelConfig,
     OllamaAdapter,
     check_provider_available,
@@ -30,6 +31,7 @@ __all__ = [
     # Adapters
     "AnthropicAdapter",
     "OllamaAdapter",
+    "MLXAdapter",
     "HybridAdapter",
     # Factory functions
     "create_adapter",

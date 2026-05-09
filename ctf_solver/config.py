@@ -21,6 +21,7 @@ class LLMProviderType(str, Enum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     OLLAMA = "ollama"
+    MLX = "mlx"
     HYBRID = "hybrid"
 
 
@@ -54,6 +55,18 @@ RAG_EXPERIENCE_MODES: frozenset = frozenset(
     {
         RAGMode.LESSONS_WRITE,
         RAGMode.LESSONS_READONLY,
+    }
+)
+
+#: Modes that have any knowledge base loaded — i.e., everything except NONE.
+#: Used to gate proactive RAG injection so the curated docs in ORIGINAL mode
+#: also get pre-injected at challenge start, not only the experience modes.
+RAG_ALL_READ_MODES: frozenset = frozenset(
+    {
+        RAGMode.ORIGINAL,
+        RAGMode.LESSONS_WRITE,
+        RAGMode.LESSONS_READONLY,
+        RAGMode.LESSONS_BUILDONLY,
     }
 )
 
@@ -115,6 +128,16 @@ _PLACEHOLDER_FLAG_CONTENTS = frozenset(
         "replace_me",
         "insert_flag",
         "todo",
+        # v3.3 Phase 3a additions — LLMs paraphrasing the prompt's
+        # "Flag format: MetaCTF{...}" description produce a literal
+        # ellipsis placeholder in their thought text. The raw flag
+        # regex happily matches ``MetaCTF{...}`` (three dots are valid
+        # ``[^\n\r{}]`` chars), which was bypassing the premature-
+        # FinalAnswer guard and fabricating 5/8 "successes" in the
+        # 2026-04-23 batch. Cover the common ASCII and Unicode forms.
+        "...",
+        "..",
+        "…",  # HORIZONTAL ELLIPSIS (U+2026)
     }
 )
 
@@ -203,17 +226,39 @@ class SolverConfig:
     # Agent configuration
     agent_system_prompt: Optional[str] = None
     max_steps: int = 20
-    # Optional sliding-window cap on planner history. None = send full memory
-    # (legacy). Set to e.g. 20 to bound per-turn input at ~2k history tokens
-    # for long runs.  First 2 messages (original task + primed context) are
-    # always preserved; only the middle is truncated.
-    history_window_size: Optional[int] = None
+    # Sliding-window cap on planner history.  First 2 messages (original
+    # task + primed context) are always preserved; only the middle is
+    # truncated.  Default 16 (= 2 anchors + 14 most-recent messages,
+    # roughly the last 7 ReAct turns) targets Ollama 16k contexts where
+    # full memory routinely overflows past step ~10.  Set to None to send
+    # full memory (legacy behaviour, useful for short integration tests).
+    # Override per-run with --history-window-size or env CTF_HISTORY_WINDOW.
+    history_window_size: Optional[int] = 16
     # Default-on: run a small deterministic recon batch (robots.txt + common
     # path enumeration) before the LLM loop starts, injecting results as
     # observations. Saves 2-3 LLM turns on every challenge with a challenge_url.
     # Short-circuited when challenge_url is None so headless / unit-test paths
     # are unaffected (see build_agent() in agent.py).
     enable_opener_pack: bool = True
+    # v3.8: gate exploit tools behind a confirmed category signal so the
+    # 26B local model cannot, e.g., call sqli_data_dumper before any
+    # sqli_probe confirmation.  Recon / planning / RAG / encoding /
+    # final_answer are always allowed; a positive probe observation
+    # unlocks that category's tools.  Off by default so legacy callers
+    # see no behaviour change.
+    enable_phase_gate: bool = False
+    # v3.8: register collapsed family tools (e.g. xxe_attack) instead of
+    # the individual {xxe_probe, xxe_payload_generator, xxe_doctype_builder}
+    # set.  Reduces dispatch surface from 75 → ~70 once all families
+    # collapse, with one schema per family covering all operations.  Off
+    # by default while we incrementally migrate one family at a time.
+    enable_collapsed_families: bool = False
+    # v3.8 P2: replace the static ``opener_pack`` (two zero-reasoning calls)
+    # with the richer ``recon_dag`` — five static recon calls plus
+    # observation-driven follow-ups (role-cookie promotion, interesting-path
+    # follow-up). Off by default; the legacy opener_pack remains the v3.7
+    # behaviour. When True, ``enable_opener_pack`` is ignored.
+    enable_recon_dag: bool = False
     # Opt-in: route LLM calls through the native-tools adapter + multi-tool-per-turn
     # loop (``_arun_native_tools`` / ``_arun_native_tools_openai``).  Default off
     # for safety — tests exercise the legacy JSON-ReAct path.
@@ -289,9 +334,20 @@ class SolverConfig:
     # active provider is Ollama, the adapter passes a JSON schema to
     # llama.cpp via the ``format=`` parameter so the decoder can only emit
     # valid ``{"thought", "action": {"tool_name", "tool_input"}}`` output.
-    # "auto" = apply to Ollama, no-op elsewhere; "none" = never apply;
+    # MLX applies the schema via Outlines (``JsonSchema`` + FSM-masked logits).
+    # "auto" = apply to Ollama/MLX, no-op elsewhere; "none" = never apply;
     # "json_schema" = force apply (provider must support the kwarg).
     grammar_mode: str = "auto"
+
+    # MLX provider tuning (only read when llm_provider == MLX).
+    # ``mlx_kv_bits=4`` turns on 4-bit KV-cache quantization after a 512-token
+    # warmup, saving ~6 GB on long contexts. ``mlx_seed`` sets
+    # ``mx.random.seed(...)`` for reproducible sampling. ``mlx_prewarm`` fires
+    # a 1-token generate after load to compile Metal kernels and materialize
+    # MoE experts so the first real call doesn't eat a 15-20 s latency spike.
+    mlx_kv_bits: Optional[int] = None
+    mlx_seed: Optional[int] = None
+    mlx_prewarm: bool = True
 
     # Runtime configuration
     verbose: bool = False
@@ -365,6 +421,11 @@ class SolverConfig:
             docs_dirs=docs_dirs,
             kb_files=kb_files,
             max_steps=int(os.getenv("CTF_MAX_STEPS", "20")),
+            history_window_size=(
+                None
+                if os.getenv("CTF_HISTORY_WINDOW", "").lower() in ("none", "0", "off")
+                else int(os.getenv("CTF_HISTORY_WINDOW", "16"))
+            ),
             model_name=os.getenv("CTF_MODEL_NAME", "gpt-4o"),
             llm_provider=os.getenv("CTF_LLM_PROVIDER", "openai"),
             openai_api_key=os.getenv("OPENAI_API_KEY"),
@@ -396,6 +457,17 @@ class SolverConfig:
             ollama_num_ctx=int(os.getenv("CTF_OLLAMA_NUM_CTX", "16384")),
             # Grammar-constrained decoding
             grammar_mode=os.getenv("CTF_GRAMMAR_MODE", "auto"),
+            # MLX-specific
+            mlx_kv_bits=(
+                int(os.environ["CTF_MLX_KV_BITS"])
+                if os.getenv("CTF_MLX_KV_BITS")
+                else None
+            ),
+            mlx_seed=(
+                int(os.environ["CTF_MLX_SEED"]) if os.getenv("CTF_MLX_SEED") else None
+            ),
+            mlx_prewarm=os.getenv("CTF_MLX_PREWARM", "true").lower()
+            in ("true", "1", "yes"),
         )
 
     def merge_with_args(self, **kwargs) -> "SolverConfig":
@@ -416,6 +488,7 @@ class SolverConfig:
             "docs_dirs": self.docs_dirs.copy(),
             "kb_files": self.kb_files.copy(),
             "max_steps": self.max_steps,
+            "history_window_size": self.history_window_size,
             "model_name": self.model_name,
             "llm_provider": self.llm_provider,
             "openai_api_key": self.openai_api_key,
@@ -435,6 +508,10 @@ class SolverConfig:
             "ollama_num_ctx": self.ollama_num_ctx,
             # Grammar-constrained decoding
             "grammar_mode": self.grammar_mode,
+            # MLX-specific
+            "mlx_kv_bits": self.mlx_kv_bits,
+            "mlx_seed": self.mlx_seed,
+            "mlx_prewarm": self.mlx_prewarm,
             # Caching configuration
             "cache_enabled": self.cache_enabled,
             "cache_ttl": self.cache_ttl,

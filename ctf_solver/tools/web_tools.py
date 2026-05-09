@@ -4,11 +4,12 @@ Web-specific tools for CTF solving.
 Provides robots.txt parsing and cookie manipulation capabilities.
 """
 
-import json
 from typing import List, Optional
 from urllib.parse import urlparse
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class RobotsTxtTool:
@@ -35,18 +36,26 @@ class RobotsTxtTool:
         "readable summary and suggested paths to explore. Use this tool to "
         "discover hidden or restricted paths on the web server."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "base_url": {
+                "type": "string",
+                "description": "Site root URL, e.g. https://example.com",
+            }
+        },
+        "required": ["base_url"],
+        "additionalProperties": False,
+    }
+    samples = [{"base_url": "http://example.com"}]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[RobotsTxtTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
+        data, err = parse_json_input(tool_input, "RobotsTxtTool")
+        if err:
+            return err
 
         base_url = data.get("base_url")
         if not isinstance(base_url, str) or not base_url:
@@ -154,18 +163,29 @@ class CookieInspectorTool:
         "Use this tool to examine session cookies, authentication tokens, or "
         "any other cookies that might be relevant to the challenge."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "base_url": {
+                "type": "string",
+                "description": "URL whose host is used to filter cookies",
+            },
+            "domain": {
+                "type": "string",
+                "description": "Cookie domain (alternative to base_url)",
+            },
+        },
+        "additionalProperties": False,
+    }
+    samples = [{"base_url": "http://example.com"}]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[CookieInspectorTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
+        data, err = parse_json_input(tool_input, "CookieInspectorTool")
+        if err:
+            return err
 
         base_url = data.get("base_url")
         domain = data.get("domain")
@@ -236,18 +256,33 @@ class CookieSetTool:
         "Use this tool to manipulate session state, bypass authentication checks, or test "
         "cookie-based vulnerabilities."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "domain": {"type": "string"},
+            "name": {"type": "string"},
+            "value": {
+                "type": "string",
+                "description": "Required for set; ignored when delete=true",
+            },
+            "path": {"type": "string", "default": "/"},
+            "delete": {"type": "boolean", "default": False},
+        },
+        "required": ["domain", "name"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"domain": "example.com", "name": "role", "value": "admin"},
+        {"domain": "example.com", "name": "session", "delete": True},
+    ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[CookieSetTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
+        data, err = parse_json_input(tool_input, "CookieSetTool")
+        if err:
+            return err
 
         domain = data.get("domain")
         name = data.get("name")

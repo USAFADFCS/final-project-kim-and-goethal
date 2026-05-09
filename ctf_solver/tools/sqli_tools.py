@@ -4,11 +4,12 @@ SQL Injection testing tools for CTF solving.
 Provides automated SQL injection payload testing and column counting for UNION attacks.
 """
 
-import json
 import re
 from typing import List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class SqliProbeTool:
@@ -50,6 +51,39 @@ class SqliProbeTool:
         "Returns analysis of which payloads triggered SQL errors, authentication bypasses, "
         "or other interesting responses."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"]},
+            "param": {"type": "string"},
+            "payload_set": {
+                "type": "string",
+                "enum": [
+                    "auth_bypass",
+                    "error_based",
+                    "union_detect",
+                    "sqlite_bypass",
+                    "custom",
+                ],
+            },
+            "custom_payloads": {"type": "array", "items": {"type": "string"}},
+            "data": {"type": "object"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "method", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/login",
+            "method": "POST",
+            "param": "username",
+            "payload_set": "auth_bypass",
+            "data": {"password": "x"},
+        },
+    ]
 
     # Authentication bypass payloads - designed to return true or bypass login
     AUTH_BYPASS_PAYLOADS: List[str] = [
@@ -322,11 +356,9 @@ class SqliProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[SqliProbeTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "SqliProbeTool")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -638,11 +670,9 @@ class SqliColumnCounter:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[SqliColumnCounter] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "SqliColumnCounter")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):

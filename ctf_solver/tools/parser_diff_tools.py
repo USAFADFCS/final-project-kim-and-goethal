@@ -8,10 +8,11 @@ bypasses.
 Parser differentials appeared in Google CTF, DiceCTF, corCTF, HITCON 2023.
 """
 
-import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class ParserDifferentialProbeTool:
@@ -51,6 +52,33 @@ class ParserDifferentialProbeTool:
         "Tests for parsing differences between front-end/back-end that lead to bypasses "
         "(HPP, Content-Type confusion, URL parsing tricks, encoding differences)."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "tests": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "duplicate_params",
+                        "content_type",
+                        "url_parsing",
+                        "encoding",
+                        "chunked",
+                    ],
+                },
+            },
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com/api/endpoint", "param": "user"},
+    ]
 
     # Duplicate parameter payloads for HPP
     HPP_PAYLOADS: List[Tuple[str, str]] = [
@@ -283,11 +311,9 @@ class ParserDifferentialProbeTool:
         return findings
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[ParserDifferentialProbeTool] Error: Invalid JSON. {exc}"
-
+        data, err = parse_json_input(tool_input, "ParserDifferentialProbeTool")
+        if err:
+            return err
         url = data.get("url")
         if not url or not isinstance(url, str):
             return "[ParserDifferentialProbeTool] Error: 'url' (string) is required."

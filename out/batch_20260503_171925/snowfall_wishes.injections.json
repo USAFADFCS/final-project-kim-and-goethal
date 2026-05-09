@@ -1,0 +1,116 @@
+{
+  "challenge_name": "Snowfall Wishes",
+  "rag_mode": "RAGMode.LESSONS_BUILDONLY",
+  "outcome": "success",
+  "reflexion": null,
+  "proactive": {
+    "query": "Can you check out our cool new wishing website we're offering as an elf benefit? Maybe one day you'll even get access to our VIP wish package...",
+    "raw_text": "[Result 1] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: sql_injection, authentication, command_injection\n- Cookies, sessions, or roles, but you're unsure how to systematically test them. **You see:**\n- SQL errors, but are unsure how to interpret them. - Encoded/obfuscated strings in JS or cookies that look like base64/hex but you're not certain. **You've done basic recon (HTML, robots, JS, cookies, forms) and:**\n- Need guidance on which attack pattern fits the hints. ### Use ctf_knowl\n[... truncated]\n\n[Result 2] | Source: 34_css_injection_exfiltration.md | Tags: command_injection\n> **When to use this section:** A secret value is stored in an HTML attribute (e.g., `value=`, `data-token=`, `href=`) and you need to leak it character by character. ### 2.1 Basic Attribute Selector Technique **Tags:** `css-injection, exfiltration, attribute-selector, csrf-token, hidden-input` **Concept:** CSS attribute selectors can match partial attribute values. By testing each\n[... truncated]\n\n[Result 3] | Source: 03_html_js_and_client_side_validation.md | Tags: authentication, command_injection\n**View the HTML and JS code.**\n   - Understand what the client-side code is checking. 2. **Derive the expected \"correct\" input.**\n   - For example, the correct password, token, or code based on JS logic. 3. **Send that value directly in an HTTP request.**\n   - Use a form submission tool or raw HTTP request. - Ignore any UI restrictions or JS validation that prevents form submission\n[... truncated]\n\n[Result 4] | Source: 24_nosql_injection.md | Tags: authentication\n**Agent Takeaway:**\n- Try BOTH query parameter AND JSON body formats\n- `$ne` (not equal to empty) is the most common bypass\n- Use `nosql_probe` tool for automated testing\n- If the app uses JSON content type, prefer JSON body injection --- ## 2. AUTHENTICATION BYPASS > **When to use this section:** You need to bypass a login form backed by MongoDB. ### 2.1 Operator-Based Bypass **Ta\n[... truncated]\n\n[Result 5] | Source: 17_race_conditions.md | Tags: authentication, race_condition\nSet \"Concurrent requests\" to maximum (10-20)\n5. Start attack\n6. Check how many succeeded\n``` **Agent Takeaway:**\n- Target purchase/transfer/withdraw endpoints\n- Send 20-50 concurrent requests\n- Check actual balance after attack --- ### 3.2 Transfer Race Condition **Tags:** `race-condition, transfer, money, balance` **Attack Scenario:**\n```\nAccount A: $100\nAccount B: $0 Attack: Send\n[... truncated]",
+    "trimmed_text": "[Result 1] | Source: 07_web_ctf_troubleshooting_checklist.md | Tags: sql_injection, authentication, command_injection\n- Cookies, sessions, or roles, but you're unsure how to systematically test them. **You see:**\n- SQL errors, but are unsure how to interpret them. - Encoded/obfuscated strings in JS or cookies that look like base64/hex but you're not certain. **You've done basic recon (HTML, robots, JS, cookies, forms) and:**\n- Need guidance on which attack pattern fits the hints. ### Use ctf_knowl\n[... truncated]\n\n[Result 2] | Source: 34_css_injection_exfiltration.md | Tags: command_injection\n> **When to use this section:** A secret value is stored in an HTML attribute (e.g., `value=`, `data-token=`, `href=`) and you need to leak it character by character. ### 2.1 Basic Attribute Selector Technique **Tags:** `css-injection, exfiltration, attribute-selector, csrf-token, hidden-input` **Concept:** CSS attribute selectors can match partial attribute values. By testing each\n[... truncated]\n\n[Result 3] | Source: 03_html_js_and_client_side_validation.md | Tags: authentication, command_injection\n**View the HTML and JS code.**\n   - Understand what the client-side code is checking. 2. **Derive the expected \"correct\" input.**\n   - For example, the correct password, token, or code based on JS logic. 3. **Send that value directly in an HTTP request.**\n   - Use a form submission tool or raw HTTP request. - Ignore any UI restrictions or JS validation that prevents form submission\n[... truncated]\n\n[Result 4] | Source: 24_nosql_injection.md | Tags: authentication\n**Agent Takeaway:**\n- Try BOTH query parameter AND JSON body formats\n- `$ne` (not equal to empty) is the most common bypass\n- Use `nosql_probe` tool for automated testing\n- If the app uses JSON content type, prefer JSON body injection --- ## 2. AUTHENTICATION BYPASS > **When to use this section:** You need to bypass a login form backed by MongoDB. ### 2.1 Operator-Based Bypass **Ta\n[... truncated]\n\n[Result 5] | Source: 17_race_conditions.md | Tags: authentication, race_condition\nSet \"Concurrent requests\" to maximum (10-20)\n5. Start attack\n6. Check how many succeeded\n``` **Agent Takeaway:**\n- Target purchase/transfer/withdraw endpoints\n- Send 20-50 concurrent requests\n- Check actual balance after attack --- ### 3.2 Transfer Race Condition **Tags:** `race-condition, transfer, money, balance` **Attack Scenario:**\n```\nAccount A: $100\nAccount B: $0 Attack: Send\n[... truncated]",
+    "raw_char_count": 2458,
+    "trimmed_char_count": 2458,
+    "retrieval_records": [
+      {
+        "rank": 0,
+        "source_file": "07_web_ctf_troubleshooting_checklist.md",
+        "section": null,
+        "tags": [
+          "sql_injection",
+          "authentication",
+          "command_injection",
+          "encoding"
+        ],
+        "doc_type": null,
+        "score": 0.27100149894496406,
+        "match_details": {
+          "term_overlap": 0.026651474635137368,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.95,
+          "position": 0.7034090909090909,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 1,
+        "source_file": "34_css_injection_exfiltration.md",
+        "section": null,
+        "tags": [
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.24787216396149267,
+        "match_details": {
+          "term_overlap": 0.021581451570398227,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.8,
+          "position": 0.7923958333333333,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 2,
+        "source_file": "03_html_js_and_client_side_validation.md",
+        "section": null,
+        "tags": [
+          "authentication",
+          "command_injection"
+        ],
+        "doc_type": null,
+        "score": 0.21978423127162935,
+        "match_details": {
+          "term_overlap": 0.02788071706796231,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.7,
+          "position": 0.6863194444444445,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 3,
+        "source_file": "24_nosql_injection.md",
+        "section": null,
+        "tags": [
+          "authentication"
+        ],
+        "doc_type": null,
+        "score": 0.20571676643169695,
+        "match_details": {
+          "term_overlap": 0.009465527190353524,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.6,
+          "position": 0.8193055555555556,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      },
+      {
+        "rank": 4,
+        "source_file": "17_race_conditions.md",
+        "section": null,
+        "tags": [
+          "authentication",
+          "race_condition"
+        ],
+        "doc_type": null,
+        "score": 0.19830998692987067,
+        "match_details": {
+          "term_overlap": 0.01729282446753379,
+          "phrase_match": 0.0,
+          "ctf_boost": 0.5,
+          "position": 0.9139285714285714,
+          "recency": 1.0
+        },
+        "char_count": 1200,
+        "is_lesson": false
+      }
+    ],
+    "injected": true
+  }
+}

@@ -1,7 +1,8 @@
 """PHP type-juggling probe (split from misc_probe_tools.py)."""
 
-import json
 from typing import List, Tuple
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class PhpTypeJugglingTool:
@@ -35,6 +36,32 @@ class PhpTypeJugglingTool:
         "default md5). Returns known magic hash values, bypass payloads, comparison "
         "tables, and exploitation guidance for PHP loose type comparison vulnerabilities."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "magic_hashes",
+                    "strcmp_bypass",
+                    "loose_comparison",
+                    "type_coercion",
+                ],
+            },
+            "hash_type": {
+                "type": "string",
+                "enum": ["md5", "sha1", "sha256"],
+                "default": "md5",
+            },
+            "target_value": {"type": "string"},
+        },
+        "required": ["operation"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"operation": "magic_hashes", "hash_type": "md5"},
+        {"operation": "strcmp_bypass"},
+    ]
 
     VALID_OPERATIONS = (
         "magic_hashes",
@@ -67,11 +94,9 @@ class PhpTypeJugglingTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[PhpTypeJugglingTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "PhpTypeJugglingTool")
+        if err:
+            return err
         operation = data.get("operation", "").strip().lower()
         if not operation:
             return (

@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Tuple
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class BlindSqliBooleanTool:
     """
@@ -53,6 +55,46 @@ class BlindSqliBooleanTool:
         "optional 'detect_oracle_inversion' (bool, auto-detect if oracle is inverted), "
         "optional 'data', 'headers', 'timeout'. Returns extracted data or condition result."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"]},
+            "param": {"type": "string"},
+            "operation": {
+                "type": "string",
+                "enum": ["extract_char", "extract_length", "test_condition"],
+            },
+            "true_condition": {"type": "string"},
+            "false_condition": {"type": "string"},
+            "payload_template": {"type": "string"},
+            "query": {"type": "string"},
+            "position": {"type": "integer"},
+            "detect_oracle_inversion": {"type": "boolean"},
+            "data": {"type": "object"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": [
+            "url",
+            "method",
+            "param",
+            "operation",
+            "true_condition",
+            "false_condition",
+        ],
+        "additionalProperties": True,
+    }
+    samples = [
+        {
+            "url": "http://example.com/login",
+            "method": "POST",
+            "param": "username",
+            "operation": "test_condition",
+            "true_condition": "' OR '1'='1",
+            "false_condition": "' OR '1'='2",
+        }
+    ]
 
     # Common payload templates for different databases
     PAYLOAD_TEMPLATES: Dict[str, Dict[str, str]] = {
@@ -233,11 +275,9 @@ class BlindSqliBooleanTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[BlindSqliBooleanTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "BlindSqliBooleanTool")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -491,6 +531,41 @@ class BlindSqliTimeTool:
         "optional 'position' (char position), optional 'prefix'/'suffix', optional "
         "'data', 'headers', 'timeout'. Returns timing analysis or extracted data."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"]},
+            "param": {"type": "string"},
+            "operation": {
+                "type": "string",
+                "enum": ["detect", "extract_char", "extract_length"],
+            },
+            "db_type": {
+                "type": "string",
+                "enum": ["mysql", "postgresql", "mssql", "sqlite", "oracle"],
+            },
+            "delay": {"type": "integer", "default": 3},
+            "query": {"type": "string"},
+            "position": {"type": "integer"},
+            "prefix": {"type": "string"},
+            "suffix": {"type": "string"},
+            "data": {"type": "object"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 15},
+        },
+        "required": ["url", "method", "param", "operation", "db_type"],
+        "additionalProperties": True,
+    }
+    samples = [
+        {
+            "url": "http://example.com/login",
+            "method": "POST",
+            "param": "username",
+            "operation": "detect",
+            "db_type": "mysql",
+        }
+    ]
 
     # Time-based injection templates by database
     TIME_TEMPLATES: Dict[str, Dict[str, str]] = {
@@ -572,11 +647,9 @@ class BlindSqliTimeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[BlindSqliTimeTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "BlindSqliTimeTool")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):
@@ -813,6 +886,43 @@ class SqliDataDumper:
         "for time: 'delay', optional 'prefix'/'suffix', optional 'data', 'headers', "
         "'timeout'. Returns the fully extracted string."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"]},
+            "param": {"type": "string"},
+            "technique": {"type": "string", "enum": ["boolean", "time"]},
+            "db_type": {
+                "type": "string",
+                "enum": ["mysql", "postgresql", "mssql", "sqlite", "oracle"],
+            },
+            "query": {"type": "string"},
+            "max_length": {"type": "integer", "default": 50},
+            "true_condition": {"type": "string"},
+            "false_condition": {"type": "string"},
+            "delay": {"type": "integer", "default": 3},
+            "prefix": {"type": "string"},
+            "suffix": {"type": "string"},
+            "data": {"type": "object"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 15},
+        },
+        "required": ["url", "method", "param", "technique", "query"],
+        "additionalProperties": True,
+    }
+    samples = [
+        {
+            "url": "http://example.com/login",
+            "method": "POST",
+            "param": "username",
+            "technique": "boolean",
+            "db_type": "mysql",
+            "query": "SELECT password FROM users LIMIT 1",
+            "true_condition": "' OR '1'='1",
+            "false_condition": "' OR '1'='2",
+        }
+    ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
@@ -821,11 +931,9 @@ class SqliDataDumper:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[SqliDataDumper] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "SqliDataDumper")
+        if err:
+            return err
         # Validate required fields
         url = data.get("url")
         if not url or not isinstance(url, str):

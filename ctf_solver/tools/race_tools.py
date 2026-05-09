@@ -7,7 +7,6 @@ race attack technique from PortSwigger's "Smashing the state machine"
 (Black Hat USA 2023).
 """
 
-import json
 import socket
 import ssl
 import time
@@ -17,6 +16,8 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class RaceConditionTool:
@@ -71,6 +72,35 @@ class RaceConditionTool:
         "technique for sub-1ms synchronization. Returns per-request results "
         "and race condition analysis."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "POST"},
+            "data": {"type": "object"},
+            "body": {"type": "string"},
+            "headers": {"type": "object"},
+            "cookies": {"type": "object"},
+            "concurrency": {"type": "integer", "default": 10},
+            "repeat": {"type": "integer", "default": 1},
+            "timeout": {"type": "integer", "default": 15},
+            "mode": {
+                "type": "string",
+                "enum": ["thread", "single_packet"],
+                "default": "thread",
+            },
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/transfer",
+            "method": "POST",
+            "data": {"amount": "100"},
+            "concurrency": 20,
+        }
+    ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
@@ -445,14 +475,9 @@ class RaceConditionTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[RaceConditionTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "RaceConditionTool")
+        if err:
+            return err
         url = data.get("url")
         if not url or not isinstance(url, str):
             return "[RaceConditionTool] Error: 'url' (string) is required in the input JSON."

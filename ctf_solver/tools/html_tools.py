@@ -4,12 +4,13 @@ HTML and JavaScript inspection tools for CTF solving.
 Provides HTML structure analysis and JavaScript source extraction.
 """
 
-import json
 from typing import List, Optional
 from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup, Comment
+
+from ctf_solver.tools.core import parse_json_input
 
 # Optional JS beautifier (if installed)
 try:
@@ -52,6 +53,19 @@ class HtmlInspectorTool:
         "comments, forms, meta tags, and hidden inputs. NOTE: For full inline "
         "JavaScript code, use 'javascript_source' — this tool only shows previews."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "Page to fetch and inspect"},
+            "html": {
+                "type": "string",
+                "description": "Raw HTML to inspect (use instead of url)",
+            },
+            "max_items": {"type": "integer", "default": 30},
+        },
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/"}]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
@@ -64,14 +78,9 @@ class HtmlInspectorTool:
         return resp.text or ""
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[HtmlInspectorTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "HtmlInspectorTool")
+        if err:
+            return err
         url = data.get("url")
         html = data.get("html")
         max_items = data.get("max_items", 50)
@@ -310,6 +319,21 @@ class JavaScriptSourceTool:
         "readable summary labeling each script block. Use this tool to analyze "
         "client-side validation, password checks, or hidden logic in JavaScript."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "html": {"type": "string"},
+            "base_url": {
+                "type": "string",
+                "description": "Resolves relative <script src=…> URLs",
+            },
+            "max_scripts": {"type": "integer", "default": 20},
+            "max_chars_per_script": {"type": "integer", "default": 5000},
+        },
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/", "base_url": "http://example.com"}]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
@@ -330,14 +354,9 @@ class JavaScriptSourceTool:
         return code
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[JavaScriptSourceTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "JavaScriptSourceTool")
+        if err:
+            return err
         url = data.get("url")
         html = data.get("html")
         base_url = data.get("base_url")

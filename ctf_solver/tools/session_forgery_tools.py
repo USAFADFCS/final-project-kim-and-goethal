@@ -14,6 +14,8 @@ from typing import List, Optional
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class FlaskSessionForgeryTool:
     """
@@ -38,11 +40,54 @@ class FlaskSessionForgeryTool:
     name: str = "flask_session_forge"
     description: str = (
         "Decode, analyze, and forge Flask/itsdangerous session cookies. "
-        "Input must be JSON with 'operation' (decode, forge, brute_secret, analyze). "
-        "For decode/analyze: provide 'cookie'. For forge: provide 'data' (dict of claims) "
-        "and 'secret'. For brute_secret: provide 'cookie' and optionally 'wordlist' "
-        "(list of secrets to try). Returns decoded session data or forged cookies."
+        "Input must be JSON with 'operation' (decode, forge, brute_secret, analyze, "
+        "debug_endpoint_probe). For decode/analyze: provide 'cookie'. For forge: provide "
+        "'data' (dict of claims) and 'secret'. For brute_secret: provide 'cookie' and "
+        "optionally 'wordlist' (list of secrets to try). Returns decoded session data or "
+        "forged cookies."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "decode",
+                    "forge",
+                    "brute_secret",
+                    "analyze",
+                    "debug_endpoint_probe",
+                ],
+            },
+            "cookie": {
+                "type": "string",
+                "description": "Flask session cookie (decode/analyze/brute_secret)",
+            },
+            "data": {
+                "type": "object",
+                "description": "Session claims dict (forge)",
+            },
+            "secret": {
+                "type": "string",
+                "description": "Signing secret (forge)",
+            },
+            "wordlist": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Secrets to try (brute_secret)",
+            },
+            "url": {
+                "type": "string",
+                "description": "Target base URL (debug_endpoint_probe)",
+            },
+        },
+        "required": ["operation"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"operation": "decode", "cookie": ".eJwlzs..."},
+        {"operation": "forge", "data": {"role": "admin"}, "secret": "topsecret"},
+    ]
 
     VALID_OPERATIONS = (
         "decode",
@@ -514,11 +559,9 @@ class FlaskSessionForgeryTool:
     )
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[FlaskSessionForgeryTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "FlaskSessionForgeryTool")
+        if err:
+            return err
         operation = (data.get("operation") or "").strip().lower()
         if not operation:
             return (
@@ -985,11 +1028,9 @@ class DomClobberingPayloadGenerator:
     VALID_OPERATIONS = ("overwrite_var", "form_hijack", "reference")
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[DomClobberingPayloadGenerator] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "DomClobberingPayloadGenerator")
+        if err:
+            return err
         operation = (data.get("operation") or "").strip().lower()
         if not operation:
             return (

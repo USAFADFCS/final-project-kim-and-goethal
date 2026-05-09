@@ -18,6 +18,19 @@ from fairlib.core.message import Message
 # Tools whose first successful output we use for site fingerprinting
 _FINGERPRINT_TOOLS = {"http_fetch", "form_submit"}
 
+# Phase B2: per-million-token prices for cost estimation. Conservative
+# public list-prices as of 2026-05; cached input is priced per OpenAI's
+# documented schedule. Unknown models fall back to the gpt-5.2 row, which
+# is fine for "$X order of magnitude" reporting on the brief.
+_PRICE_PER_M_TOKENS: Dict[str, Dict[str, float]] = {
+    "gpt-5.2": {"input": 1.25, "cached": 0.125, "output": 10.0},
+    "gpt-5.1": {"input": 1.25, "cached": 0.125, "output": 10.0},
+    "gpt-4o": {"input": 2.50, "cached": 1.25, "output": 10.0},
+    "gpt-4o-mini": {"input": 0.15, "cached": 0.075, "output": 0.60},
+    "claude-opus-4-7": {"input": 15.0, "cached": 1.50, "output": 75.0},
+    "claude-sonnet-4-6": {"input": 3.0, "cached": 0.30, "output": 15.0},
+}
+
 # Regex patterns for fingerprint extraction (compiled once)
 _TITLE_RE = re.compile(r"<title[^>]*>([^<]{1,80})</title>", re.IGNORECASE)
 _H1_RE = re.compile(r"<h1[^>]*>([^<]{1,80})</h1>", re.IGNORECASE)
@@ -98,6 +111,33 @@ class RunTracker:
     # Detailed tool call log for failure analysis
     tool_call_log: List[Dict[str, Any]] = field(default_factory=list)
 
+    # Phase A1+A4: structured Reflexion injection payload, captured at
+    # injection time so post-run analysis can show the agent the exact
+    # compressed text and the source lessons_*.md filenames it was
+    # distilled from. None when no reflexion fired.
+    reflexion_payload: Optional[Dict[str, Any]] = None
+
+    # Phase A2+A4: structured proactive-RAG payload, with the query, the
+    # raw retrieved text, the trimmed text actually injected, and per-chunk
+    # retrieval records (source_file, score, match_details, etc.). None when
+    # no proactive injection fired or returned no relevant results.
+    proactive_rag_payload: Optional[Dict[str, Any]] = None
+
+    # Phase B2: real token usage drained from the LLM adapter at end-of-run
+    # (replaces the chars/4 estimate in prompt_tokens / completion_tokens).
+    actual_prompt_tokens: int = 0
+    actual_completion_tokens: int = 0
+    cached_prompt_tokens: int = 0
+    est_cost_usd: float = 0.0
+    per_call_tokens: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Phase C: in-memory buffer of structured per-step events (one dict per
+    # tool call, RAG injection, stall nudge, etc.). The batch log writer
+    # flushes this to ``<slug>.events.jsonl`` at end-of-run. Emission is
+    # never on the hot path — the LoggingToolWrapper appends here via an
+    # event_writer callback wired in by build_agent / runner.
+    events_buffer: List[Dict[str, Any]] = field(default_factory=list)
+
     def start(self) -> None:
         self.start_time = time.time()
 
@@ -175,7 +215,47 @@ class RunTracker:
             "stall_nudges_fired": list(self.stall_nudges_fired),
             "first_rag_query_step": self.first_rag_query_step,
             "redundant_tool_calls": self.redundant_tool_calls,
+            # Phase A: structured injection payloads (None when not fired)
+            "reflexion_payload": self.reflexion_payload,
+            "proactive_rag_payload": self.proactive_rag_payload,
+            # Phase B: real token usage from adapter (0 when adapter doesn't
+            # populate per-call stats — e.g. local Ollama path)
+            "actual_prompt_tokens": self.actual_prompt_tokens,
+            "actual_completion_tokens": self.actual_completion_tokens,
+            "cached_prompt_tokens": self.cached_prompt_tokens,
+            "est_cost_usd": round(self.est_cost_usd, 6),
+            # Phase C: per-step events buffer (flushed to events.jsonl by the
+            # batch log writer). Kept as a list of dicts for direct
+            # JSONL serialization.
+            "events_buffer": list(self.events_buffer),
         }
+
+    def set_token_usage_from_adapter(
+        self, call_stats: List[Dict[str, Any]], model: str
+    ) -> None:
+        """Drain per-call token records from the LLM adapter and roll them
+        up into ``actual_prompt_tokens`` / ``actual_completion_tokens`` /
+        ``cached_prompt_tokens`` / ``est_cost_usd``.
+
+        Each entry in ``call_stats`` is a dict with keys ``prompt_tokens``,
+        ``completion_tokens``, ``cached_tokens`` (all int). Anything missing
+        is treated as 0. ``per_call_tokens`` is replaced verbatim so the
+        sidecar JSON can show per-step token usage if needed.
+        """
+        self.per_call_tokens = list(call_stats)
+        prompt = sum(int(s.get("prompt_tokens", 0) or 0) for s in call_stats)
+        completion = sum(int(s.get("completion_tokens", 0) or 0) for s in call_stats)
+        cached = sum(int(s.get("cached_tokens", 0) or 0) for s in call_stats)
+        self.actual_prompt_tokens = prompt
+        self.actual_completion_tokens = completion
+        self.cached_prompt_tokens = cached
+        prices = _PRICE_PER_M_TOKENS.get(model, _PRICE_PER_M_TOKENS["gpt-5.2"])
+        billed_prompt = max(prompt - cached, 0)
+        self.est_cost_usd = (
+            billed_prompt * prices["input"]
+            + cached * prices["cached"]
+            + completion * prices["output"]
+        ) / 1_000_000
 
 
 class TokenTrackingAdapter(AbstractChatModel):
@@ -183,22 +263,83 @@ class TokenTrackingAdapter(AbstractChatModel):
     Transparent wrapper around any AbstractChatModel that records token
     estimates in a RunTracker.
 
-    Delegates all calls to the inner adapter and estimates token counts
-    from message character lengths (~4 chars/token).
+    Delegates all calls to the inner adapter. By default uses tiktoken for
+    accurate token counts when available (Phase B1) — falls back to the
+    legacy ~4-chars-per-token estimate when tiktoken can't load an encoding
+    for the model. Per-call records are appended to ``tracker.per_call_tokens``
+    so post-run cost rollup works without touching fairlib internals.
     """
 
     def __init__(self, inner: AbstractChatModel, tracker: RunTracker) -> None:
         self.inner = inner
         self.tracker = tracker
+        # Lazy-init tiktoken encoder (one per process). None when tiktoken
+        # is unavailable or the model name doesn't map to an encoding —
+        # in which case we fall back to chars/4.
+        self._encoder: Optional[Any] = None
+        self._encoder_resolved = False
 
     # Forward attribute access so fairlib sees model_name, etc.
     def __getattr__(self, name: str) -> Any:
         return getattr(self.inner, name)
 
+    def _resolve_encoder(self) -> Optional[Any]:
+        if self._encoder_resolved:
+            return self._encoder
+        self._encoder_resolved = True
+        try:
+            import tiktoken  # type: ignore
+
+            model_name = getattr(self.inner, "model_name", "") or ""
+            try:
+                self._encoder = tiktoken.encoding_for_model(model_name)
+            except Exception:
+                # Unknown model (e.g. gpt-5.2 not yet in tiktoken's table):
+                # cl100k_base is the right default for current OpenAI models.
+                self._encoder = tiktoken.get_encoding("cl100k_base")
+        except ImportError:
+            self._encoder = None
+        return self._encoder
+
+    def _count_tokens(self, text: str) -> Optional[int]:
+        if not text:
+            return 0
+        encoder = self._resolve_encoder()
+        if encoder is None:
+            return None
+        try:
+            return len(encoder.encode(text, disallowed_special=()))
+        except Exception:
+            return None
+
     def _estimate(self, messages: List[Message], result: Message) -> None:
-        prompt_chars = sum(len(m.content or "") for m in messages)
-        completion_chars = len(result.content or "")
-        self.tracker.record_llm_call(prompt_chars, completion_chars)
+        prompt_text = "".join(m.content or "" for m in messages)
+        completion_text = result.content or ""
+        prompt_tokens = self._count_tokens(prompt_text)
+        completion_tokens = self._count_tokens(completion_text)
+        if prompt_tokens is None or completion_tokens is None:
+            # Tiktoken unavailable — fall back to chars/4 estimate.
+            prompt_chars = len(prompt_text)
+            completion_chars = len(completion_text)
+            self.tracker.record_llm_call(prompt_chars, completion_chars)
+            return
+        # Update legacy estimate fields (tiktoken counts are the new
+        # estimate). prompt_tokens / completion_tokens carry forward to
+        # to_dict() as *_est columns; per_call_tokens carries them as the
+        # authoritative numbers for cost rollup.
+        self.tracker.llm_calls += 1
+        self.tracker.prompt_tokens += prompt_tokens
+        self.tracker.completion_tokens += completion_tokens
+        self.tracker.per_call_tokens.append(
+            {
+                "ts": time.time(),
+                "model": getattr(self.inner, "model_name", ""),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "cached_tokens": 0,  # tiktoken can't see cache hits
+                "source": "tiktoken",
+            }
+        )
 
     def invoke(self, messages: List[Message], **kwargs: Any) -> Message:
         result = self.inner.invoke(messages, **kwargs)

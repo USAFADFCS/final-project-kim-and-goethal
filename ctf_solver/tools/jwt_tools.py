@@ -10,6 +10,8 @@ import hmac
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class JwtTool:
     """
@@ -41,12 +43,58 @@ class JwtTool:
     name: str = "jwt_tool"
     description: str = (
         "Analyze and manipulate JWT tokens for CTF challenges. Input must be JSON with "
-        "'operation' (decode, forge_none, modify_claim, crack, forge_with_key, analyze) "
-        "and 'token' (the JWT string). For modify_claim, provide 'claims' dict to update. "
-        "For crack, optionally provide 'wordlist' array of secrets to try. "
-        "For forge_with_key, provide 'claims' and 'key'. "
+        "'operation' (decode, forge_none, modify_claim, crack, forge_with_key, analyze, "
+        "confusion_rs256_hs256, kid_inject) and 'token' (the JWT string). For modify_claim, "
+        "provide 'claims' dict to update. For crack, optionally provide 'wordlist' array of "
+        "secrets to try. For forge_with_key, provide 'claims' and 'key'. "
         "Use this tool to exploit JWT vulnerabilities like alg:none, weak secrets, etc."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "decode",
+                    "forge_none",
+                    "modify_claim",
+                    "crack",
+                    "forge_with_key",
+                    "analyze",
+                    "confusion_rs256_hs256",
+                    "kid_inject",
+                ],
+            },
+            "token": {"type": "string"},
+            "claims": {
+                "type": "object",
+                "description": "Required for forge_none/modify_claim/forge_with_key/kid_inject",
+            },
+            "key": {
+                "type": "string",
+                "description": "HMAC secret for forge_with_key; public key (PEM) for confusion_rs256_hs256",
+            },
+            "wordlist": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Secrets to try for crack",
+            },
+            "kid_payload": {
+                "type": "string",
+                "description": "Injection payload for kid_inject (e.g. SQLi/path-traversal)",
+            },
+        },
+        "required": ["operation", "token"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"operation": "decode", "token": "eyJhbGciOiJIUzI1NiJ9.e30.x"},
+        {
+            "operation": "forge_none",
+            "token": "eyJhbGciOiJIUzI1NiJ9.e30.x",
+            "claims": {"role": "admin"},
+        },
+    ]
 
     # Common weak secrets used in CTF challenges
     COMMON_SECRETS = [
@@ -114,13 +162,9 @@ class JwtTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[JwtTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "JwtTool")
+        if err:
+            return err
         operation = data.get("operation", "").lower().strip()
         if not operation:
             return "[JwtTool] Error: 'operation' is required."

@@ -680,9 +680,16 @@ class TestCreateAdapter:
             assert call_kwargs["response_format"] == {"type": "text"}
 
     def test_ctf_openai_adapter_detects_moderation_error_invoke(self):
-        """fairlib surfaces 400 invalid_prompt as a stringified error Message.
-        The CTF subclass must detect this and return a synthetic valid-JSON
-        pivot response so the agent's format-error counter is not bumped."""
+        """fairlib surfaces 400 content_policy_violation as a stringified
+        error Message. The CTF subclass must detect this and return a
+        synthetic valid-JSON pivot response so the agent's format-error
+        counter is not bumped.
+
+        Fixture matches the canonical OpenAI moderation error verified
+        2026-05: ``code: 'content_policy_violation'`` (NOT
+        ``invalid_prompt`` — that string never appears in OpenAI's
+        documented error responses).
+        """
         from ctf_solver.llm.adapters import CTFOpenAIAdapter
 
         with (
@@ -693,8 +700,11 @@ class TestCreateAdapter:
             mock_response = MagicMock()
             mock_response.choices[0].message.content = (
                 "Error: Error code: 400 - {'error': {'message': "
-                "'Invalid prompt: your prompt was flagged as potentially "
-                "violating our usage policy', 'code': 'invalid_prompt'}}"
+                "'Your request was rejected as a result of our safety system. "
+                "Your prompt may contain text that was flagged as potentially "
+                "violating our usage policy.', "
+                "'type': 'invalid_request_error', "
+                "'code': 'content_policy_violation'}}"
             )
             mock_response.choices[0].message.tool_calls = None
             mock_client.chat.completions.create.return_value = mock_response
@@ -723,7 +733,9 @@ class TestCreateAdapter:
                 mock_client = MagicMock()
                 mock_response = MagicMock()
                 mock_response.choices[0].message.content = (
-                    "Error: Error code: 400 - invalid_prompt usage policy"
+                    "Error: Error code: 400 - {'error': {'code': "
+                    "'content_policy_violation', 'message': 'flagged as "
+                    "potentially violating our usage policy'}}"
                 )
                 mock_response.choices[0].message.tool_calls = None
 

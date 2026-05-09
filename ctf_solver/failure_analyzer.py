@@ -1520,10 +1520,36 @@ def find_and_compress_prior_lesson(
     challenge_url: Optional[str],
     lessons_docs_dir: str = "out/lessons_knowledge",
     fallback_failure_docs_dir: str = "out/failure_knowledge",
+    challenge_description: Optional[str] = None,
 ) -> Optional[str]:
+    """Backward-compatible wrapper — returns only the compressed text.
+
+    For callers that need the list of source filenames the compression drew
+    from (Phase A1 injection tracing), use
+    ``find_and_compress_prior_lesson_with_sources``.
+    """
+    text, _ = find_and_compress_prior_lesson_with_sources(
+        challenge_name=challenge_name,
+        challenge_url=challenge_url,
+        lessons_docs_dir=lessons_docs_dir,
+        fallback_failure_docs_dir=fallback_failure_docs_dir,
+        challenge_description=challenge_description,
+    )
+    return text
+
+
+def find_and_compress_prior_lesson_with_sources(
+    challenge_name: Optional[str],
+    challenge_url: Optional[str],
+    lessons_docs_dir: str = "out/lessons_knowledge",
+    fallback_failure_docs_dir: str = "out/failure_knowledge",
+    challenge_description: Optional[str] = None,
+) -> Tuple[Optional[str], List[str]]:
     """
     Aggregate ALL prior lesson docs for this challenge into a structured
-    multi-run reflection for Reflexion-style injection.
+    multi-run reflection for Reflexion-style injection. Returns both the
+    compressed text and the list of source filenames it was distilled from
+    (so downstream tracing can show "lesson X drove this prompt").
 
     Improvements over the previous single-doc extraction:
     - Shows ALL prior outcomes (e.g. "2 success, 1 failure runs") so the agent
@@ -1537,26 +1563,24 @@ def find_and_compress_prior_lesson(
     Based on: Park et al. (2023) episodic memory aggregation; ExpeL (Zhao 2024)
     cross-episode insight merging; Shinn et al. (2023) Reflexion.
 
-    Args:
-        challenge_name: Human-readable challenge name (required — no name = no inject).
-        challenge_url: Challenge URL (unused here; kept for API compatibility).
-        lessons_docs_dir: Directory with lessons_*.md files.
-        fallback_failure_docs_dir: Fallback directory with failure_*.md files.
-
     Returns:
-        Structured reflection string, or None if no prior doc exists.
+        ``(text, sources)`` — ``text`` is the structured reflection string or
+        None if no prior doc exists; ``sources`` is the list of basename
+        filenames (e.g. ``lessons_019_open-application_r1_*.md``) that
+        contributed to the compression. Empty list when ``text`` is None.
     """
-    if not challenge_name:
-        return None
+    name_slug = _challenge_name_to_slug(challenge_name) if challenge_name else ""
 
-    name_slug = _challenge_name_to_slug(challenge_name)
-
-    def _collect_matching(directory: str, pattern: str) -> List[Tuple[float, str, str]]:
-        """Return list of (mtime, outcome, content) for all matching docs."""
+    def _collect_matching(
+        directory: str, pattern: str
+    ) -> List[Tuple[float, str, str, str]]:
+        """Return list of (mtime, outcome, content, filename) for matches."""
+        if not challenge_name:
+            return []
         d = Path(directory)
         if not d.exists():
             return []
-        results: List[Tuple[float, str, str]] = []
+        results: List[Tuple[float, str, str, str]] = []
         for doc_path in d.glob(pattern):
             try:
                 content = doc_path.read_text(encoding="utf-8")
@@ -1565,7 +1589,9 @@ def find_and_compress_prior_lesson(
             if name_slug in doc_path.name or challenge_name.lower() in content.lower():
                 outcome_match = re.search(r"\*\*Type:\*\*\s*experience_(\w+)", content)
                 outcome = outcome_match.group(1) if outcome_match else "unknown"
-                results.append((doc_path.stat().st_mtime, outcome, content))
+                results.append(
+                    (doc_path.stat().st_mtime, outcome, content, doc_path.name)
+                )
         return results
 
     # 1. Gather all matching lessons_*.md docs
@@ -1578,7 +1604,7 @@ def find_and_compress_prior_lesson(
 
         # Count outcomes for the run summary header
         outcome_counts: Dict[str, int] = {}
-        for _, outcome, _ in all_docs:
+        for _, outcome, _, _ in all_docs:
             outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
         count_str = ", ".join(
             f"{v} {k}"
@@ -1590,13 +1616,19 @@ def find_and_compress_prior_lesson(
         parts: List[str] = [
             f"Prior runs on '{challenge_name}' ({len(all_docs)} total: {count_str}):"
         ]
+        # Track only the docs whose content actually contributed to the
+        # compressed output (one success + one failure at most).
+        contributing: List[str] = []
 
         # Most recent success — primary action guide
-        success_docs = [(mtime, c) for mtime, o, c in all_docs if o == "success"]
+        success_docs = [
+            (mtime, c, fname) for mtime, o, c, fname in all_docs if o == "success"
+        ]
         if success_docs:
-            _, best_success = success_docs[
+            _, best_success, best_fname = success_docs[
                 0
             ]  # already sorted by recency DESC within outcome
+            contributing.append(best_fname)
             summary_m = re.search(
                 r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", best_success, re.DOTALL
             )
@@ -1615,10 +1647,13 @@ def find_and_compress_prior_lesson(
 
         # Most recent failure/partial — negative knowledge
         fail_docs = [
-            (mtime, c) for mtime, o, c in all_docs if o in ("failure", "partial")
+            (mtime, c, fname)
+            for mtime, o, c, fname in all_docs
+            if o in ("failure", "partial")
         ]
         if fail_docs:
-            _, best_fail = fail_docs[0]
+            _, best_fail, best_fail_fname = fail_docs[0]
+            contributing.append(best_fail_fname)
             summary_m = re.search(
                 r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", best_fail, re.DOTALL
             )
@@ -1627,15 +1662,33 @@ def find_and_compress_prior_lesson(
             )
             parts.append(f"✗ PRIOR FAILURE: {fail_summary}")
 
-        return "\n\n".join(parts)[:1500]
+        return "\n\n".join(parts)[:1500], contributing
 
-    # 2. Fallback: failure_*.md legacy docs (compress on-the-fly)
+    # 2. Category fallback (v3.8 P2): no per-challenge match, but the
+    # classifier may still infer a category from name / URL / description,
+    # in which case we surface successful runs from that category as
+    # negative-or-positive prior knowledge. This is what makes lessons
+    # *generalize* across CTF platforms instead of only firing on
+    # previously-seen challenges.
+    category_text, category_sources = _collect_lessons_by_category_with_sources(
+        challenge_name=challenge_name,
+        challenge_url=challenge_url,
+        challenge_description=challenge_description,
+        lessons_docs_dir=lessons_docs_dir,
+    )
+    if category_text is not None:
+        return category_text, category_sources
+
+    # 3. Fallback: failure_*.md legacy docs (compress on-the-fly).
+    # Per-challenge only — the legacy format predates category metadata.
+    if not challenge_name:
+        return None, []
     legacy_docs = _collect_matching(fallback_failure_docs_dir, "failure_*.md")
     if not legacy_docs:
-        return None
+        return None, []
 
     legacy_docs.sort(key=lambda x: -x[0])  # most recent first
-    _, _, raw = legacy_docs[0]
+    _, _, raw, legacy_fname = legacy_docs[0]
 
     lines: List[str] = [f"Prior attempt on '{challenge_name}' (legacy failure doc):"]
     cat_m = re.search(r"\*\*Category:\*\*\s*(.+)", raw)
@@ -1649,4 +1702,134 @@ def find_and_compress_prior_lesson(
     )
     if sugg_m:
         lines.append(f"Suggestions: {sugg_m.group(1).strip()[:400]}")
-    return " ".join(lines)[:1500]
+    return " ".join(lines)[:1500], [legacy_fname]
+
+
+def _collect_lessons_by_category(
+    *,
+    challenge_name: Optional[str],
+    challenge_url: Optional[str],
+    challenge_description: Optional[str],
+    lessons_docs_dir: str,
+) -> Optional[str]:
+    """Backward-compatible wrapper — returns only the compressed text."""
+    text, _ = _collect_lessons_by_category_with_sources(
+        challenge_name=challenge_name,
+        challenge_url=challenge_url,
+        challenge_description=challenge_description,
+        lessons_docs_dir=lessons_docs_dir,
+    )
+    return text
+
+
+def _collect_lessons_by_category_with_sources(
+    *,
+    challenge_name: Optional[str],
+    challenge_url: Optional[str],
+    challenge_description: Optional[str],
+    lessons_docs_dir: str,
+) -> Tuple[Optional[str], List[str]]:
+    """Category-fallback Reflexion injection (v3.8 P2).
+
+    When ``find_and_compress_prior_lesson`` finds no per-challenge match,
+    classify the challenge from name + URL + description and surface
+    successful runs from the same category as a Reflexion summary.
+
+    Returns ``(None, [])`` when:
+      - The classifier returns ``UNKNOWN`` or yields no signal at all.
+      - The lessons dir contains no docs in the inferred category.
+
+    Otherwise returns ``(text, source_filenames)`` with text capped at ~1500
+    chars and source_filenames listing the basenames that contributed.
+    """
+    # Lazy import: avoids a hard dependency on the classifier when this
+    # module is imported by code that doesn't need lesson injection.
+    try:
+        from ctf_solver.classifier.challenge_classifier import (
+            ChallengeCategory,
+            create_classifier,
+        )
+    except Exception:
+        return None, []
+
+    description = " ".join(
+        s for s in (challenge_name, challenge_description) if s and isinstance(s, str)
+    ).strip()
+    if not description and not challenge_url:
+        return None, []
+
+    classifier = create_classifier()
+    try:
+        result = classifier.classify(
+            description=description or None,
+            url=challenge_url,
+        )
+    except Exception:
+        return None, []
+    if result.primary_category == ChallengeCategory.UNKNOWN:
+        return None, []
+
+    category_key = result.primary_category.value
+    target_label = _CATEGORY_LABELS.get(category_key)
+    if not target_label:
+        return None, []
+
+    d = Path(lessons_docs_dir)
+    if not d.exists():
+        return None, []
+
+    matches: List[Tuple[float, str, str, str]] = []
+    label_line = f"**Category:** {target_label}"
+    for doc_path in d.glob("lessons_*.md"):
+        try:
+            content = doc_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if label_line not in content:
+            continue
+        outcome_match = re.search(r"\*\*Type:\*\*\s*experience_(\w+)", content)
+        outcome = outcome_match.group(1) if outcome_match else "unknown"
+        matches.append((doc_path.stat().st_mtime, outcome, content, doc_path.name))
+
+    if not matches:
+        return None, []
+
+    _OUTCOME_PRIORITY = {"success": 0, "partial": 1, "failure": 2, "unknown": 3}
+    matches.sort(key=lambda x: (_OUTCOME_PRIORITY.get(x[1], 3), -x[0]))
+
+    parts: List[str] = [
+        (
+            f"No prior runs match this challenge by name; falling back to "
+            f"category lessons. Inferred category: '{target_label}' "
+            f"(confidence={result.confidence:.2f}). "
+            f"{len(matches)} relevant prior run(s) in this category."
+        )
+    ]
+    contributing: List[str] = []
+    success_docs = [
+        (mtime, c, fname) for mtime, o, c, fname in matches if o == "success"
+    ]
+    if success_docs:
+        _, best_success, best_fname = success_docs[0]
+        contributing.append(best_fname)
+        summary_m = re.search(
+            r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", best_success, re.DOTALL
+        )
+        summary = summary_m.group(1).strip()[:400] if summary_m else best_success[:300]
+        parts.append(f"✓ A success in this category: {summary}")
+    fail_docs = [
+        (mtime, c, fname)
+        for mtime, o, c, fname in matches
+        if o in ("failure", "partial")
+    ]
+    if fail_docs:
+        _, best_fail, best_fail_fname = fail_docs[0]
+        contributing.append(best_fail_fname)
+        summary_m = re.search(
+            r"## What Happened\n\n(.+?)(?:\n\n##|\Z)", best_fail, re.DOTALL
+        )
+        fail_summary = (
+            summary_m.group(1).strip()[:300] if summary_m else best_fail[:200]
+        )
+        parts.append(f"✗ A failure in this category: {fail_summary}")
+    return "\n\n".join(parts)[:1500], contributing

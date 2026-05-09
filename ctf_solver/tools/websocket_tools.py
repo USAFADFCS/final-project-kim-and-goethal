@@ -7,9 +7,10 @@ Hijacking) detection capabilities.
 Appeared in: RWCTF 2023 ChatUWU, m0leCon 2023 goldinospizza2.
 """
 
-import json
 import re
 from typing import Any, Dict, List, Optional
+
+from ctf_solver.tools.core import parse_json_input
 
 # Optional websocket-client dependency
 try:
@@ -63,6 +64,35 @@ class WebSocketProbeTool:
         "For injection: tests common injection payloads via WebSocket. "
         "Optional 'timeout' (default 5). Requires websocket-client library."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "ws:// or wss:// URL"},
+            "operation": {
+                "type": "string",
+                "enum": ["connect", "cswsh", "enumerate", "injection", "session"],
+            },
+            "message": {"type": "string"},
+            "messages": {"type": "array"},
+            "headers": {"type": "object"},
+            "origin": {"type": "string"},
+            "timeout": {"type": "number", "default": 5},
+            "read_timeout": {"type": "number", "default": 2.0},
+            "final_read_timeout": {"type": "number", "default": 5.0},
+            "max_frames_per_read": {"type": "integer", "default": 5},
+        },
+        "required": ["url", "operation"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"url": "ws://example.com/ws", "operation": "connect", "message": "hello"},
+        {"url": "ws://example.com/ws", "operation": "cswsh", "origin": "http://evil"},
+        {
+            "url": "ws://example.com/ws",
+            "operation": "enumerate",
+            "messages": ["ping", "list"],
+        },
+    ]
 
     VALID_OPERATIONS = {"connect", "cswsh", "enumerate", "injection", "session"}
 
@@ -374,11 +404,9 @@ class WebSocketProbeTool:
         return "\n".join(lines)
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[WebSocketProbeTool] Error: Invalid JSON. {exc}"
-
+        data, err = parse_json_input(tool_input, "WebSocketProbeTool")
+        if err:
+            return err
         url = data.get("url")
         if not url or not isinstance(url, str):
             return "[WebSocketProbeTool] Error: 'url' (string) is required."

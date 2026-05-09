@@ -17,11 +17,12 @@ installed, they return a graceful not-installed message instead of
 crashing. Mirrors the ``HAS_WEBSOCKET`` gate on ``websocket_probe``.
 """
 
-import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 try:
     import wasmtime as _wasmtime  # type: ignore[import-untyped]
@@ -308,6 +309,61 @@ class WasmAnalyzerTool:
         "For 'oracle_script': 'script' (list of {call:NAME,args:[...]} / "
         "{read:[start,length]} / {reset:true} steps, max 500)."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "analyze",
+                    "strings",
+                    "xor_decode",
+                    "scan_flags",
+                    "probe_exports",
+                    "memory_diff",
+                    "oracle_brute_force",
+                    "oracle_script",
+                ],
+                "default": "analyze",
+            },
+            "key_hex": {"type": "string"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 15},
+            "function": {"type": "string"},
+            "args": {"type": "array"},
+            "scan_range": {"type": "array"},
+            "input_writer": {"type": "string", "default": "copy_char"},
+            "check_fn": {"type": "string", "default": "check_flag"},
+            "input_ptr_export": {"type": "string", "default": "input"},
+            "max_length": {"type": "integer", "default": 64},
+            "charset": {
+                "oneOf": [
+                    {
+                        "type": "string",
+                        "enum": ["printable", "ascii", "alphanumeric", "hex_digits"],
+                    },
+                    {"type": "array", "items": {"type": "string"}},
+                ],
+            },
+            "strategy": {
+                "type": "string",
+                "enum": ["auto", "strcmp_delta", "memory_delta"],
+                "default": "auto",
+            },
+            "script": {"type": "array"},
+        },
+        "required": ["url"],
+        "additionalProperties": True,
+    }
+    samples = [
+        {"url": "http://example.com/challenge.wasm", "operation": "analyze"},
+        {
+            "url": "http://example.com/challenge.wasm",
+            "operation": "oracle_brute_force",
+            "max_length": 32,
+        },
+    ]
 
     @staticmethod
     def _truncate_output(text: str, max_chars: int) -> str:
@@ -334,11 +390,9 @@ class WasmAnalyzerTool:
 
     def use(self, tool_input: str) -> str:
         """Analyze a WASM binary for CTF flags."""
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[WasmAnalyzerTool] Error: tool_input must be JSON. {exc}"
-
+        data, err = parse_json_input(tool_input, "WasmAnalyzerTool")
+        if err:
+            return err
         url = data.get("url")
         if not url or not isinstance(url, str):
             return "[WasmAnalyzerTool] Error: 'url' (string) is required."

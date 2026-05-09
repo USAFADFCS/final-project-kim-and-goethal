@@ -36,7 +36,7 @@ class TestOAuthProbeTool:
     def test_invalid_json_returns_error(self):
         result = self.tool.use("not json{{{")
         assert "Error" in result
-        assert "Invalid JSON" in result
+        assert "tool_input must be JSON" in result
 
     def test_missing_url_returns_error(self):
         result = self.tool.use(json.dumps({"client_id": "test"}))

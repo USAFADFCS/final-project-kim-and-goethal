@@ -6,11 +6,12 @@ bypass scenarios (including mXSS), and Content-Security-Policy analysis
 with advanced bypass techniques.
 """
 
-import json
 import re
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class XssProbeTool:
@@ -46,6 +47,24 @@ class XssProbeTool:
         "optional 'timeout' (default 10). Returns analysis of which payloads are reflected "
         "unencoded, the vulnerable contexts, and recommended next steps."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "param": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "GET"},
+            "data": {"type": "object"},
+            "context": {
+                "type": "string",
+                "enum": ["html", "attribute", "javascript", "url", "all"],
+                "default": "all",
+            },
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "param"],
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/search", "param": "q"}]
 
     # -- Payload sets organized by context --
 
@@ -185,11 +204,9 @@ class XssProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[XssProbeTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "XssProbeTool")
+        if err:
+            return err
         url = data.get("url")
         if not url or not isinstance(url, str):
             return "[XssProbeTool] Error: 'url' (string) is required."
@@ -757,11 +774,9 @@ class XssPayloadGenerator:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[XssPayloadGenerator] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "XssPayloadGenerator")
+        if err:
+            return err
         operation = (data.get("operation") or "").lower().strip()
         if not operation:
             return (
@@ -1424,11 +1439,9 @@ class CspAnalyzerTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[CspAnalyzerTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "CspAnalyzerTool")
+        if err:
+            return err
         url = data.get("url")
         csp_string = data.get("csp_string")
         timeout = data.get("timeout", 10)

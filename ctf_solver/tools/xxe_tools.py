@@ -11,6 +11,8 @@ from typing import List, Optional, Tuple
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input
+
 
 class XxeProbeTool:
     """
@@ -46,6 +48,26 @@ class XxeProbeTool:
         "(default /etc/passwd), and 'callback_host' (for OOB testing). The tool injects "
         "XXE payloads and detects successful exploitation or error-based information disclosure."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "default": "POST"},
+            "xml_param": {"type": "string"},
+            "content_type": {"type": "string"},
+            "headers": {"type": "object"},
+            "probe_type": {
+                "type": "string",
+                "enum": ["file_read", "ssrf", "oob", "all"],
+                "default": "all",
+            },
+            "target_file": {"type": "string", "default": "/etc/passwd"},
+            "callback_host": {"type": "string"},
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/api/xml", "probe_type": "file_read"}]
 
     # Common files to attempt reading via XXE
     COMMON_FILES = [
@@ -260,11 +282,9 @@ class XxeProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[XxeProbeTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "XxeProbeTool")
+        if err:
+            return err
         url = data.get("url", "").strip()
         method = data.get("method", "POST").upper()
         xml_param = data.get("xml_param", None)
@@ -662,11 +682,9 @@ class XxePayloadGenerator:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[XxePayloadGenerator] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "XxePayloadGenerator")
+        if err:
+            return err
         payload_type = data.get("payload_type", "").lower()
         target = data.get("target", "/etc/passwd")
         callback = data.get("callback", "attacker.com")
@@ -770,11 +788,9 @@ class XxeDocTypeBuilder:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[XxeDocTypeBuilder] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "XxeDocTypeBuilder")
+        if err:
+            return err
         entities = data.get("entities", [])
         root = data.get("root", "root")
         content = data.get("content", "&xxe;")

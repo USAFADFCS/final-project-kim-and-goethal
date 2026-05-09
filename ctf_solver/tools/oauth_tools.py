@@ -8,12 +8,13 @@ escalation, and state/PKCE verification testing.
 Appeared in: PortSwigger 2023, corCTF 2023, HTB Uni 2023 (PhantomFeed).
 """
 
-import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class OAuthProbeTool:
@@ -51,6 +52,31 @@ class OAuthProbeTool:
         "Detects redirect_uri manipulation, missing state parameter enforcement, "
         "scope escalation, and open redirect via OAuth flow."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "client_id": {"type": "string"},
+            "redirect_uri": {"type": "string"},
+            "tests": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["redirect_uri", "state", "scope", "open_redirect"],
+                },
+            },
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "client_id", "redirect_uri"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/oauth/authorize",
+            "client_id": "demo",
+            "redirect_uri": "http://example.com/callback",
+        }
+    ]
 
     # Redirect URI manipulation payloads
     REDIRECT_MANIPULATIONS: List[Tuple[str, str]] = [
@@ -262,11 +288,9 @@ class OAuthProbeTool:
         return findings
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[OAuthProbeTool] Error: Invalid JSON. {exc}"
-
+        data, err = parse_json_input(tool_input, "OAuthProbeTool")
+        if err:
+            return err
         url = data.get("url")
         if not url or not isinstance(url, str):
             return "[OAuthProbeTool] Error: 'url' (string) is required."
@@ -507,11 +531,9 @@ class OAuthPayloadGenerator:
         return "\n".join(lines)
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[OAuthPayloadGenerator] Error: Invalid JSON. {exc}"
-
+        data, err = parse_json_input(tool_input, "OAuthPayloadGenerator")
+        if err:
+            return err
         operation = (data.get("operation") or "").strip().lower()
         if not operation:
             return (

@@ -15,8 +15,9 @@ from urllib.parse import urlparse
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input, summarize_for_llm
 from ctf_solver.tools.html_tools import HtmlInspectorTool, JavaScriptSourceTool
-from ctf_solver.tools.http_tools import HttpFetchTool
+from ctf_solver.tools.http_tools import _FLAG_SCAN_RE, HttpFetchTool
 from ctf_solver.tools.web_tools import CookieInspectorTool, RobotsTxtTool
 
 # ── SecurityHeaderAnalyzerTool ──────────────────────────────────────────
@@ -103,15 +104,27 @@ class SecurityHeaderAnalyzerTool:
         "and cache control issues. Returns a categorized security assessment "
         "with CTF-relevant exploitation hints."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/"}]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[SecurityHeaderAnalyzerTool] Error: tool_input must be JSON: {exc}"
+        data, err = parse_json_input(
+            tool_input, "SecurityHeaderAnalyzerTool", url_field="url"
+        )
+        if err:
+            return err
 
         url = data.get("url", "")
         if not url:
@@ -442,6 +455,25 @@ class DeepReconTool:
         "each tool individually. Returns a combined recon report with a "
         "summary of actionable findings."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "base_url": {"type": "string"},
+            "skip": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Steps to skip: http_fetch, html_inspector, "
+                    "javascript_source, robots_txt, cookie_inspector, security_headers"
+                ),
+            },
+            "max_body": {"type": "integer", "default": 4000},
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/"}]
 
     # Steps in execution order
     STEPS = [
@@ -463,10 +495,9 @@ class DeepReconTool:
         self._header_tool = SecurityHeaderAnalyzerTool(session=self.session)
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[DeepReconTool] Error: tool_input must be JSON: {exc}"
+        data, err = parse_json_input(tool_input, "DeepReconTool", url_field="url")
+        if err:
+            return err
 
         url = data.get("url", "")
         if not url:
@@ -641,7 +672,23 @@ class DeepReconTool:
 
         result = "\n".join(sections)
 
-        # Truncate if output is too large
+        # Phase 2: second-pass summarization on the combined pack.
+        # The constituent sub-tool outputs (HttpFetchTool's body,
+        # HtmlInspectorTool, etc.) are already summarized at their own
+        # call sites, so this pass only deals with cross-section
+        # repetition and any boilerplate the children did not catch.
+        # The idempotency guarantee of summarize_for_llm means this is
+        # a no-op on the already-summarized sections. Cap tightened from
+        # 6000 to 4000 (v3.10 P3b): the live gemma4:26b run on Crystal
+        # Peak showed 6 KB recon obs filled the working window before
+        # exploitation, and the bottom-of-section content is already
+        # promoted to ``findings`` ([line 651]) when relevant.
+        result = summarize_for_llm(result, max_chars=4000, flag_regex=_FLAG_SCAN_RE)
+
+        # Truncate if output is STILL too large (defensive — after
+        # summarize_for_llm honors max_chars, this branch should almost
+        # never fire, but keep it so any future bug in the helper does
+        # not crash the call site).
         if len(result) > _MAX_COMBINED_OUTPUT:
             truncated = result[:_MAX_COMBINED_OUTPUT]
             truncated += (

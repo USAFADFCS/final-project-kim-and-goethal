@@ -5,12 +5,13 @@ Provides utilities for detecting and generating HTTP request smuggling payloads
 for CL.TE, TE.CL, TE.TE, and H2C smuggling attacks.
 """
 
-import json
 import socket
 import time
 from typing import List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class HttpSmugglingProbeTool:
@@ -44,6 +45,30 @@ class HttpSmugglingProbeTool:
         "(clte or tecl) and 'smuggled_request' (the HTTP request to smuggle). Returns "
         "detection results or ready-to-use smuggling payloads."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "operation": {
+                "type": "string",
+                "enum": ["clte_probe", "tecl_probe", "tete_probe", "detect", "payload"],
+            },
+            "url": {"type": "string"},
+            "type": {"type": "string", "enum": ["clte", "tecl"]},
+            "smuggled_request": {"type": "string"},
+            "timeout": {"type": "integer"},
+        },
+        "required": ["operation", "url"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {"operation": "detect", "url": "http://example.com/"},
+        {
+            "operation": "payload",
+            "url": "http://example.com/",
+            "type": "clte",
+            "smuggled_request": "GET /admin HTTP/1.1\r\n\r\n",
+        },
+    ]
 
     VALID_OPERATIONS = ("clte_probe", "tecl_probe", "tete_probe", "detect", "payload")
 
@@ -63,11 +88,9 @@ class HttpSmugglingProbeTool:
         self.session = session or requests.Session()
 
     def use(self, tool_input: str) -> str:
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[HttpSmugglingProbeTool] Error: Invalid JSON input. {exc}"
-
+        data, err = parse_json_input(tool_input, "HttpSmugglingProbeTool")
+        if err:
+            return err
         operation = (data.get("operation") or "").strip().lower()
         url = (data.get("url") or "").strip()
 

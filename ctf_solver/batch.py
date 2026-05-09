@@ -198,7 +198,14 @@ def ensure_batch_output_dir(base_out_dir: PathLike = "out") -> Path:
 
 
 def write_batch_summary(results: List[BatchResult], summary_path: PathLike) -> None:
-    """Write a per-challenge summary TSV at ``summary_path``."""
+    """Write a per-challenge summary TSV at ``summary_path``.
+
+    Phase B3: appends Phase B token columns (``prompt_tokens``,
+    ``completion_tokens``, ``cached_tokens``, ``est_cost_usd``) when the
+    per-item ``stats`` dict carries them — populated by Phase B2's
+    ``set_token_usage_from_adapter`` call. Items without those fields
+    (e.g. local Ollama runs) emit zeroes.
+    """
     p = Path(summary_path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("w", encoding="utf-8", newline="") as fh:
@@ -212,11 +219,16 @@ def write_batch_summary(results: List[BatchResult], summary_path: PathLike) -> N
                 "flag",
                 "steps",
                 "duration_seconds",
+                "prompt_tokens",
+                "completion_tokens",
+                "cached_tokens",
+                "est_cost_usd",
                 "error",
                 "log_path",
             ]
         )
         for r in results:
+            stats = r.stats or {}
             w.writerow(
                 [
                     r.item.slug,
@@ -226,6 +238,10 @@ def write_batch_summary(results: List[BatchResult], summary_path: PathLike) -> N
                     r.flag or "",
                     r.steps,
                     f"{r.duration_seconds:.1f}",
+                    int(stats.get("actual_prompt_tokens", 0) or 0),
+                    int(stats.get("actual_completion_tokens", 0) or 0),
+                    int(stats.get("cached_prompt_tokens", 0) or 0),
+                    f"{float(stats.get('est_cost_usd', 0.0) or 0.0):.6f}",
                     (r.error or "").replace("\t", " ").replace("\n", " "),
                     r.log_path or "",
                 ]

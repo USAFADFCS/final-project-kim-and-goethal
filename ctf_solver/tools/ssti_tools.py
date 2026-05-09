@@ -5,10 +5,11 @@ Provides utilities for detecting and exploiting template injection vulnerabiliti
 across 16+ template engines including Nunjucks, Pug, Tera, Go templates, and EJS.
 """
 
-import json
 from typing import Dict, List, Optional, Tuple
 
 import requests
+
+from ctf_solver.tools.core import parse_json_input
 
 
 class SstiProbeTool:
@@ -41,6 +42,26 @@ class SstiProbeTool:
         "'data' for extra form fields and 'headers'. The tool injects template syntax probes "
         "and detects which template engine is vulnerable (Jinja2, Twig, Freemarker, ERB, Smarty, etc.)."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"]},
+            "param": {"type": "string"},
+            "data": {"type": "object"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 10},
+        },
+        "required": ["url", "method", "param"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/greet",
+            "method": "GET",
+            "param": "name",
+        }
+    ]
 
     # Universal probes that work across multiple engines
     UNIVERSAL_PROBES = [
@@ -178,11 +199,9 @@ class SstiProbeTool:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[SstiProbeTool] Error: tool_input must be JSON. Decoding failed with: {exc}"
-
+        data, err = parse_json_input(tool_input, "SstiProbeTool")
+        if err:
+            return err
         url = data.get("url", "").strip()
         method = data.get("method", "GET").upper()
         param = data.get("param", "").strip()
@@ -619,11 +638,9 @@ class SstiExploitSuggester:
 
     def use(self, tool_input: str) -> str:
         # Parse JSON input
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return f"[SstiExploitSuggester] Error: tool_input must be JSON: {exc}"
-
+        data, err = parse_json_input(tool_input, "SstiExploitSuggester")
+        if err:
+            return err
         engine = data.get("engine", "").lower().strip()
         command = data.get("command", "id")
         file_path = data.get("file", "/etc/passwd")

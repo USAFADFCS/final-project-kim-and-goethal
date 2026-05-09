@@ -17,6 +17,8 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from ctf_solver.tools.core import summarize_for_llm
+
 # =============================================================================
 # CRITICAL: Set environment variables to prevent multiprocessing crashes
 # on Apple Silicon when using FAISS + sentence-transformers + Streamlit
@@ -447,6 +449,15 @@ class SafeKnowledgeQueryTool:
         # Seen-doc exclusion (reset via reset_session)
         self._seen_source_files: set = set()
 
+        # Phase A2: per-chunk retrieval records from the most recent ``use()``
+        # call, captured for injection tracing. Each entry has rank,
+        # source_file, section, tags, score (when reranking is on),
+        # match_details (per-component scoring breakdown), char_count, and
+        # is_lesson (True iff source_file is a lessons_*.md auto-generated
+        # doc). Reset at the start of each use() call.
+        self.last_retrieval_records: List[Dict[str, Any]] = []
+        self.last_query: Optional[str] = None
+
         self.name = "ctf_knowledge_query"
         self.description = (
             f"Consult an internal {platform_name} knowledge base for help on topics such as "
@@ -542,6 +553,11 @@ class SafeKnowledgeQueryTool:
             except AttributeError:
                 pass
 
+        # Phase A2: reset retrieval records for this call so callers always
+        # see the records corresponding to the *most recent* query.
+        self.last_retrieval_records = []
+        self.last_query = query
+
         try:
             expanded_query = query
 
@@ -602,6 +618,9 @@ class SafeKnowledgeQueryTool:
             filtered = deduped
 
             # Step 4: Rerank filtered results
+            # Phase A2: stash scores + match_details keyed by document id so
+            # the records built after the doc-type boost can recover them.
+            score_lookup: Dict[int, Dict[str, Any]] = {}
             if self._use_reranking and _cached_reranker is not None:
                 scored_results = _cached_reranker.rerank(
                     query,  # Use original query for reranking
@@ -609,6 +628,11 @@ class SafeKnowledgeQueryTool:
                     top_k=self._top_k,
                 )
                 results = [sr.document for sr in scored_results]
+                for sr in scored_results:
+                    score_lookup[id(sr.document)] = {
+                        "score": float(sr.score),
+                        "match_details": dict(sr.match_details or {}),
+                    }
             else:
                 results = filtered[: self._top_k]
 
@@ -635,6 +659,29 @@ class SafeKnowledgeQueryTool:
                 if sf:
                     self._seen_source_files.add(sf)
 
+            # Phase A2: build per-chunk retrieval records for tracing. Order
+            # matches the final rendered order (post boost-sort), which is
+            # what the agent actually saw.
+            self.last_retrieval_records = []
+            for i, doc in enumerate(results):
+                content = getattr(doc, "page_content", str(doc))
+                metadata = getattr(doc, "metadata", {}) or {}
+                sf = metadata.get("source_file") or ""
+                score_entry = score_lookup.get(id(doc), {})
+                self.last_retrieval_records.append(
+                    {
+                        "rank": i,
+                        "source_file": sf,
+                        "section": metadata.get("section"),
+                        "tags": list(metadata.get("tags") or [])[:5],
+                        "doc_type": metadata.get("doc_type"),
+                        "score": score_entry.get("score"),
+                        "match_details": score_entry.get("match_details"),
+                        "char_count": len(content),
+                        "is_lesson": "lessons_" in sf,
+                    }
+                )
+
             # Format results with metadata
             formatted = []
             for i, doc in enumerate(results, 1):
@@ -652,9 +699,14 @@ class SafeKnowledgeQueryTool:
 
                 header = " | ".join(header_parts)
 
-                # Truncate very long results
-                if len(content) > 1500:
-                    content = content[:1500] + "..."
+                # Tighter per-chunk cap (Phase 2). After dedup the LLM
+                # already gets up to top_k distinct chunks — 400 chars
+                # per chunk is enough for a section header + lead sentence
+                # + a bullet or two, while keeping the combined
+                # observation well under num_ctx. No flag_regex here:
+                # knowledge-base docs are flag-scrubbed and a per-chunk
+                # regex compile on every retrieval is wasted work.
+                content = summarize_for_llm(content, max_chars=400, flag_regex=None)
 
                 formatted.append(f"{header}\n{content}")
 

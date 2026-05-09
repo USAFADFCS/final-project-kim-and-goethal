@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Set
 
 import requests
 
+from ctf_solver.tools.core import parse_json_input
+
 # Built-in GraphQL types to filter out of custom type listings
 _BUILTIN_TYPES: Set[str] = {
     "__Schema",
@@ -117,6 +119,18 @@ class GraphqlIntrospectionTool:
         "__type queries, field suggestion probing). Returns a structured report "
         "of Query types, Mutation types, custom types, and interesting findings."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "POST"},
+            "headers": {"type": "object"},
+            "timeout": {"type": "integer", "default": 15},
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [{"url": "http://example.com/graphql"}]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
@@ -346,14 +360,9 @@ class GraphqlIntrospectionTool:
 
     def use(self, tool_input: str) -> str:  # noqa: C901 (complexity is inherent)
         # --- Parse input ---
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[GraphqlIntrospectionTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "GraphqlIntrospectionTool")
+        if err:
+            return err
         url = data.get("url")
         if not url or not isinstance(url, str):
             return (
@@ -638,6 +647,29 @@ class GraphqlQueryTool:
         "'batch_size' (int, aliases per request, default 500). "
         "Bypasses per-request rate limiting by sending many queries as aliases."
     )
+    parameters_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string"},
+            "query": {"type": "string"},
+            "variables": {"type": "object"},
+            "operation_name": {"type": "string"},
+            "headers": {"type": "object"},
+            "method": {"type": "string", "enum": ["GET", "POST"], "default": "POST"},
+            "batch": {"type": "boolean", "default": False},
+            "batch_count": {"type": "integer", "default": 1},
+            "timeout": {"type": "integer", "default": 15},
+            "alias_bruteforce": {"type": "object"},
+        },
+        "required": ["url"],
+        "additionalProperties": False,
+    }
+    samples = [
+        {
+            "url": "http://example.com/graphql",
+            "query": "{ user(id: 1) { name email } }",
+        },
+    ]
 
     def __init__(self, session: Optional[requests.Session] = None) -> None:
         self.session = session or requests.Session()
@@ -802,14 +834,9 @@ class GraphqlQueryTool:
 
     def use(self, tool_input: str) -> str:
         # --- Parse input ---
-        try:
-            data = json.loads(tool_input) if tool_input else {}
-        except json.JSONDecodeError as exc:
-            return (
-                f"[GraphqlQueryTool] Error: tool_input must be JSON. "
-                f"Decoding failed with: {exc}"
-            )
-
+        data, err = parse_json_input(tool_input, "GraphqlQueryTool")
+        if err:
+            return err
         url = data.get("url")
         if not url or not isinstance(url, str):
             return (

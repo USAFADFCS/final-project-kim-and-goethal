@@ -238,7 +238,17 @@ class TestSingleRunPage:
         page = SingleRunPage(sidebar)
         assert page.run_btn.text().startswith("🚀")
         assert page.cancel_btn.isEnabled() is False
-        assert page.results_tabs.count() == 4
+        # Five results tabs: Final Answer, Candidate Flags, Run Statistics,
+        # Execution Log, History.
+        assert page.results_tabs.count() == 5
+        labels = [page.results_tabs.tabText(i) for i in range(5)]
+        assert labels == [
+            "Final Answer",
+            "Candidate Flags",
+            "Run Statistics",
+            "Execution Log",
+            "History",
+        ]
 
     def test_run_button_disabled_without_api_key(self, qapp, monkeypatch):
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -406,3 +416,117 @@ class TestBatchPage:
         page._model.setData(page._model.index(0, 0), "Test challenge", Qt.EditRole)
         page._refresh_buttons()
         assert page.run_btn.isEnabled() is True
+
+
+class TestSourceFilesWidget:
+    def test_initial_state(self, qapp):
+        from ctf_solver.ui.qt.source_files_widget import SourceFilesWidget
+
+        w = SourceFilesWidget()
+        assert w.source_files() == {}
+
+    def test_add_paths_from_real_files(self, qapp, tmp_path):
+        from ctf_solver.ui.qt.source_files_widget import SourceFilesWidget
+
+        f1 = tmp_path / "app.py"
+        f1.write_text("x = 1")
+        f2 = tmp_path / "schema.sql"
+        f2.write_text("SELECT * FROM users")
+
+        w = SourceFilesWidget()
+        w._add_paths([str(f1), str(f2)])
+        files = w.source_files()
+        assert files == {"app.py": "x = 1", "schema.sql": "SELECT * FROM users"}
+
+    def test_add_paths_skips_missing(self, qapp, tmp_path):
+        from ctf_solver.ui.qt.source_files_widget import SourceFilesWidget
+
+        f = tmp_path / "real.py"
+        f.write_text("real")
+        w = SourceFilesWidget()
+        w._add_paths([str(f), str(tmp_path / "missing.py")])
+        assert "real.py" in w.source_files()
+        assert "missing.py" not in w.source_files()
+
+    def test_add_paths_extracts_zip(self, qapp, tmp_path):
+        import io
+        import zipfile
+
+        from ctf_solver.ui.qt.source_files_widget import SourceFilesWidget
+
+        zpath = tmp_path / "bundle.zip"
+        with zipfile.ZipFile(zpath, "w") as zf:
+            zf.writestr("inner.py", "print('hi')")
+
+        w = SourceFilesWidget()
+        w._add_paths([str(zpath)])
+        assert w.source_files() == {"inner.py": "print('hi')"}
+
+    def test_clear_resets_state(self, qapp, tmp_path):
+        from ctf_solver.ui.qt.source_files_widget import SourceFilesWidget
+
+        f = tmp_path / "x.py"
+        f.write_text("data")
+        w = SourceFilesWidget()
+        w._add_paths([str(f)])
+        assert w.source_files() != {}
+        w.clear()
+        assert w.source_files() == {}
+
+    def test_emits_files_changed_signal(self, qapp, tmp_path):
+        from ctf_solver.ui.qt.source_files_widget import SourceFilesWidget
+
+        f = tmp_path / "x.py"
+        f.write_text("data")
+        w = SourceFilesWidget()
+        emitted = []
+        w.files_changed.connect(lambda: emitted.append(True))
+        w._add_paths([str(f)])
+        assert emitted
+
+
+class TestRunHistoryModel:
+    def test_empty_when_no_log_dir(self, qapp, tmp_path):
+        from ctf_solver.ui.qt.run_history_model import RunHistoryModel
+
+        m = RunHistoryModel(tmp_path)
+        assert m.rowCount() == 0
+
+    def test_parses_filename(self, qapp, tmp_path):
+        from ctf_solver.ui.qt.run_history_model import RunHistoryModel
+
+        log_dir = tmp_path / "challenge_logs"
+        log_dir.mkdir()
+        (log_dir / "Web_Decode_success_20260401_120000.log").write_text("log body")
+        (log_dir / "Cookie_Forge_failure_20260402_130000.log").write_text("log body")
+
+        m = RunHistoryModel(tmp_path)
+        assert m.rowCount() == 2
+        # Newest first.
+        first = m.entry_at(0)
+        assert first is not None
+        assert first.slug == "Cookie_Forge"
+        assert first.outcome == "failure"
+
+    def test_skips_malformed_filenames(self, qapp, tmp_path):
+        from ctf_solver.ui.qt.run_history_model import RunHistoryModel
+
+        log_dir = tmp_path / "challenge_logs"
+        log_dir.mkdir()
+        (log_dir / "good_success_20260401_120000.log").write_text("ok")
+        (log_dir / "not-a-valid-format.log").write_text("ignored")
+
+        m = RunHistoryModel(tmp_path)
+        assert m.rowCount() == 1
+
+    def test_refresh_picks_up_new_file(self, qapp, tmp_path):
+        from ctf_solver.ui.qt.run_history_model import RunHistoryModel
+
+        log_dir = tmp_path / "challenge_logs"
+        log_dir.mkdir()
+        m = RunHistoryModel(tmp_path)
+        assert m.rowCount() == 0
+
+        (log_dir / "X_success_20260401_120000.log").write_text("ok")
+        m.refresh()
+        assert m.rowCount() == 1

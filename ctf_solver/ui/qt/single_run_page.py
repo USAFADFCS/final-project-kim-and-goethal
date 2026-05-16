@@ -8,6 +8,7 @@ useful slice so we can solve a real challenge end-to-end from the Qt UI.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import Qt, Slot
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,
     QListWidget,
     QPlainTextEdit,
     QPushButton,
@@ -27,8 +29,10 @@ from PySide6.QtWidgets import (
 
 from ctf_solver.config import SolverConfig
 from ctf_solver.ui.core import validate_url
+from ctf_solver.ui.qt.run_history_model import RunHistoryModel
 from ctf_solver.ui.qt.runner_bridge import AgentRunner
 from ctf_solver.ui.qt.sidebar import SidebarWidget
+from ctf_solver.ui.qt.source_files_widget import SourceFilesWidget
 from ctf_solver.ui.qt.trace_view import TraceView
 
 
@@ -75,6 +79,9 @@ class SingleRunPage(QWidget):
         self.hints_input.setFixedHeight(50)
         outer.addWidget(self.hints_input)
 
+        self.source_files_widget = SourceFilesWidget()
+        outer.addWidget(self.source_files_widget)
+
         # --- Run / Cancel row ---
         button_row = QHBoxLayout()
         self.run_btn = QPushButton("🚀 Run Agent")
@@ -115,6 +122,30 @@ class SingleRunPage(QWidget):
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
         self.results_tabs.addTab(self.log_view, "Execution Log")
+
+        # Tab 5: History — past challenge_logs entries.
+        self._history_model = RunHistoryModel(Path.cwd())
+        history_container = QWidget()
+        history_layout = QHBoxLayout(history_container)
+        history_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.history_view = QListView()
+        self.history_view.setModel(self._history_model)
+        self.history_view.setMinimumWidth(280)
+        history_layout.addWidget(self.history_view, 1)
+
+        self.history_detail = QTextBrowser()
+        self.history_detail.setOpenExternalLinks(True)
+        history_layout.addWidget(self.history_detail, 2)
+
+        refresh_btn = QPushButton("⟳")
+        refresh_btn.setFixedWidth(30)
+        refresh_btn.setToolTip("Refresh history")
+        refresh_btn.clicked.connect(self._history_model.refresh)
+        history_layout.addWidget(refresh_btn)
+
+        self.history_view.clicked.connect(self._on_history_selected)
+        self.results_tabs.addTab(history_container, "History")
 
         splitter.setSizes([500, 250])
 
@@ -162,6 +193,7 @@ class SingleRunPage(QWidget):
             challenge_url=self.url_input.text(),
             challenge_description=self.description_input.toPlainText(),
             challenge_hints=self.hints_input.toPlainText(),
+            source_files=self.source_files_widget.source_files() or None,
             challenge_name=self._sidebar.challenge_name.text(),
             platform_name=self._sidebar.current_platform_name(),
             flag_regex=self._sidebar.current_flag_regex(),
@@ -202,6 +234,21 @@ class SingleRunPage(QWidget):
         self.stats_view.setPlainText(_render_stats(stats))
         outcome = stats.get("outcome", "unknown")
         self.status_label.setText(f"Done · outcome: {outcome} · flags: {len(flags)}")
+        # Refresh history so the new run's log file appears at the top.
+        self._history_model.refresh()
+
+    def _on_history_selected(self, index) -> None:
+        entry = self._history_model.entry_at(index.row())
+        if entry is None:
+            return
+        try:
+            text = entry.path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            self.history_detail.setPlainText(f"Could not read log: {exc}")
+            return
+        # 200k chars is plenty even for verbose batch runs; trim to keep
+        # the QTextBrowser responsive.
+        self.history_detail.setPlainText(text[:200_000])
 
     @Slot(str)
     def _on_error(self, msg: str) -> None:

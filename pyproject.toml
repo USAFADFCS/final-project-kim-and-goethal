@@ -31,12 +31,19 @@ mlx = [
     "mlx-lm>=0.31",
     "outlines[mlxlm]>=1.2",
 ]
-# PySide6 native macOS UI (in development). Install with:
+# PySide6 native macOS UI. Install with:
 #   pip install -e ".[qt]"
 # Then launch via:  python -m ctf_solver.ui.qt
+# Or build the .app bundle:  python setup_py2app.py py2app
 qt = [
     "PySide6>=6.10",
     "qasync>=0.27",
+]
+# Additional deps for building the .app bundle. Only macOS users need this.
+qt-bundle = [
+    "PySide6>=6.10",
+    "qasync>=0.27",
+    "py2app>=0.28",
 ]
 
 [build-system]

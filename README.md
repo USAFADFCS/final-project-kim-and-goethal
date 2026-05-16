@@ -126,6 +126,45 @@ python -m ctf_solver
 
 Follow the prompts to describe your challenge.
 
+### Qt UI (native macOS app)
+
+A PySide6 GUI is available as an alternative to the Streamlit web UI:
+
+```bash
+# Install the Qt dependencies
+pip install -e ".[qt]"
+
+# Launch
+python -m ctf_solver.ui.qt
+```
+
+The Qt UI uses the v3.10 effectiveness audit's recommended defaults
+(proactive RAG trimmed to 1500 chars, append+directive reflexion, deduped
+flags) for better local-model performance, and supports mid-run
+cancellation (which the Streamlit UI cannot).
+
+### Building the macOS .app bundle
+
+After `pip install -e ".[qt-bundle]"` you can produce a clickable
+`CTF Solver.app`:
+
+```bash
+# Dev iteration (symlinks back to source — fast rebuild loop)
+python setup_py2app.py py2app -A
+
+# Release build (everything embedded; ~2-3 GB)
+python setup_py2app.py py2app
+
+# Ad-hoc codesign so Gatekeeper allows the bundle
+codesign --deep --force --sign - "dist/CTF Solver.app"
+
+open "dist/CTF Solver.app"
+```
+
+The bundle's `Info.plist` sets `DYLD_INSERT_LIBRARIES` to the bundled
+faiss libomp so the FAISS/torch/sklearn OpenMP race that affects dev
+launches (see `memory/faiss_libomp_crash.md`) doesn't apply.
+
 ### Programmatic Usage
 
 ```python

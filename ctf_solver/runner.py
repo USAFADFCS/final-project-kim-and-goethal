@@ -10,7 +10,6 @@ import logging
 import os
 import re
 import sys
-import time
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -25,22 +24,11 @@ warnings.filterwarnings("ignore", message=r"Accessing `__path__` from .*")
 from ctf_solver.agent import build_agent
 from ctf_solver.config import (
     COMMON_FLAG_PATTERNS,
-    RAG_ALL_READ_MODES,
-    RAG_EXPERIENCE_MODES,
-    RAG_WRITE_MODES,
+    RAG_ALL_READ_MODES,  # noqa: F401 — kept for test_v38 source-string smoke check
     SolverConfig,
-    extract_candidate_flags,
-)
-from ctf_solver.consolidate_knowledge import consolidate_lessons_knowledge
-from ctf_solver.failure_analyzer import (
-    _detect_partial_successes,
-    find_and_compress_prior_lesson_with_sources,
-    run_lessons_learned_pipeline,
 )
 from ctf_solver.prompts import get_initial_message
-from ctf_solver.rag import get_active_knowledge_tool
 from ctf_solver.run_tracker import RunTracker
-from ctf_solver.tools.core import summarize_for_llm
 
 logger = logging.getLogger(__name__)
 
@@ -308,99 +296,24 @@ Examples:
 def _load_source_files(paths: List[str]) -> Dict[str, str]:
     """Read source file paths into a filename → content mapping.
 
+    Thin wrapper around ``ctf_solver.ui.core.load_source_files_from_bytes``
+    that adds CLI-specific stderr warnings for missing or unreadable paths.
     Supports plain text files, ZIP archives, and TAR archives
     (.tar, .tar.gz, .tar.bz2, .tgz, .tbz2).
     """
-    import tarfile
-    import zipfile
+    from ctf_solver.ui.core import load_source_files_from_bytes
 
-    _TEXT_EXTENSIONS = {
-        ".py",
-        ".php",
-        ".js",
-        ".ts",
-        ".java",
-        ".go",
-        ".rb",
-        ".c",
-        ".h",
-        ".cpp",
-        ".cs",
-        ".sql",
-        ".yaml",
-        ".yml",
-        ".json",
-        ".html",
-        ".xml",
-        ".sh",
-        ".env",
-        ".conf",
-        ".cfg",
-        ".ini",
-        ".toml",
-        ".txt",
-        ".md",
-        ".htm",
-        ".jsx",
-        ".tsx",
-        ".rs",
-        ".swift",
-        ".kt",
-    }
-
-    def _add_text(filename: str, data: bytes) -> None:
-        ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
-        if ext not in _TEXT_EXTENSIONS:
-            return
-        try:
-            result[filename] = data.decode("utf-8")
-        except UnicodeDecodeError:
-            try:
-                result[filename] = data.decode("latin-1")
-            except UnicodeDecodeError:
-                pass
-
-    result: Dict[str, str] = {}
+    named_blobs: list[tuple[str, bytes]] = []
     for raw_path in paths:
         p = Path(raw_path)
         if not p.exists():
             print(f"[WARNING] Source file not found: {raw_path}", file=sys.stderr)
             continue
-        name_lower = p.name.lower()
         try:
-            if name_lower.endswith(".zip"):
-                with zipfile.ZipFile(p) as zf:
-                    for member in zf.namelist():
-                        if member.endswith("/"):
-                            continue
-                        member_name = member.split("/")[-1] if "/" in member else member
-                        _add_text(member_name, zf.read(member))
-            elif (
-                name_lower.endswith(".tar")
-                or name_lower.endswith(".tar.gz")
-                or name_lower.endswith(".tar.bz2")
-                or name_lower.endswith(".tgz")
-                or name_lower.endswith(".tbz2")
-            ):
-                with tarfile.open(str(p), mode="r:*") as tf:
-                    for member in tf.getmembers():
-                        if not member.isfile():
-                            continue
-                        f = tf.extractfile(member)
-                        if f is None:
-                            continue
-                        member_name = (
-                            member.name.split("/")[-1]
-                            if "/" in member.name
-                            else member.name
-                        )
-                        _add_text(member_name, f.read())
-            else:
-                raw = p.read_bytes()
-                _add_text(p.name, raw)
-        except Exception as exc:
+            named_blobs.append((p.name, p.read_bytes()))
+        except OSError as exc:
             print(f"[WARNING] Could not read {raw_path}: {exc}", file=sys.stderr)
-    return result
+    return load_source_files_from_bytes(named_blobs)
 
 
 def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
@@ -534,120 +447,23 @@ async def run_agent(config: SolverConfig) -> str:
         source_files=config.source_files or None,
     )
 
-    # Reflexion injection: if a prior lesson exists for this challenge (matched
-    # by challenge_name only — URL matching was removed as fragile), inject a
-    # compressed verbal reflection so the agent avoids repeating past mistakes.
-    # (Shinn et al. NeurIPS 2023; Wang et al. LONGMEM 2024)
-    if config.rag_mode in RAG_EXPERIENCE_MODES and (
-        config.challenge_name or config.challenge_url
-    ):
-        prior_reflection, reflexion_sources = (
-            find_and_compress_prior_lesson_with_sources(
-                challenge_name=config.challenge_name,
-                challenge_url=config.challenge_url,
-                lessons_docs_dir=config.lessons_docs_dir,
-                fallback_failure_docs_dir=config.failure_docs_dir,
-                challenge_description=config.challenge_description,
-            )
-        )
-        if prior_reflection:
-            print("[Reflexion] Prior lesson found — injecting compressed reflection.")
-            tracker.prior_reflection_injected = True
-            # Phase A4: structured payload for tracing (the bool flag above
-            # is preserved for back-compat with existing analysis code).
-            tracker.reflexion_payload = {
-                "text": prior_reflection,
-                "sources": list(reflexion_sources),
-                "char_count": len(prior_reflection),
-            }
-            # Phase C: structured event so events.jsonl shows the injection.
-            tracker.events_buffer.append(
-                {
-                    "event": "rag_reflexion",
-                    "step": 0,
-                    "sources": list(reflexion_sources),
-                    "text_len": len(prior_reflection),
-                    "ts": time.time(),
-                }
-            )
-            initial_message += (
-                "\n\n## Prior Attempt Analysis\n"
-                "> A previous run on this challenge was analyzed. "
-                "Use the lesson below to avoid repeating past mistakes.\n\n"
-                + prior_reflection
-            )
+    from ctf_solver.ui.core import (
+        determine_outcome,
+        extract_flags_from_run,
+        inject_proactive_rag,
+        inject_reflexion,
+        write_lessons_if_enabled,
+    )
 
-    # Proactive RAG injection: even when no challenge-specific prior lesson exists,
-    # query the knowledge base with the challenge description upfront so the agent
-    # always sees relevant prior knowledge before its first action — not just when
-    # it happens to call ctf_knowledge_query mid-run.  Gated by
-    # ``enable_proactive_rag`` (default on) so the agent can opt out when it
-    # prefers on-demand retrieval and tighter first-turn prompts.
-    # v3.8: fires in any RAG mode that has a KB loaded (ORIGINAL too) so
-    # curated-only setups also benefit; previously gated only on the
-    # experience modes which left ORIGINAL users out.
-    if config.rag_mode in RAG_ALL_READ_MODES and config.enable_proactive_rag:
-        active_tool = get_active_knowledge_tool()
-        if active_tool is not None:
-            query = (
-                config.challenge_description
-                or config.challenge_name
-                or "web CTF exploitation techniques"
-            )
-            print(
-                f"[RAG] Proactive knowledge injection attempted (query: {query!r:.80})."
-            )
-            proactive_results = active_tool.use(query)
-            # Phase A2/A4: capture the per-chunk retrieval records that the
-            # tool just stashed. Done unconditionally (even on "no relevant
-            # information") so the brief slide can show "queried, but pool
-            # was empty" cases too.
-            retrieval_records = list(getattr(active_tool, "last_retrieval_records", []))
-            if proactive_results and "No relevant information" not in proactive_results:
-                print(
-                    "[RAG] Proactive knowledge injection succeeded — results injected."
-                )
-                # Cap the injected block so it cannot crowd out tool
-                # observations on local-model 16k contexts (v3.10 P3a).
-                # Pre-cap can run ~2.6 KB; post-cap is ~1.5 KB.
-                trimmed = summarize_for_llm(
-                    proactive_results, max_chars=1500, flag_regex=None
-                )
-                tracker.proactive_rag_payload = {
-                    "query": query,
-                    "raw_text": proactive_results,
-                    "trimmed_text": trimmed,
-                    "raw_char_count": len(proactive_results),
-                    "trimmed_char_count": len(trimmed),
-                    "retrieval_records": retrieval_records,
-                    "injected": True,
-                }
-                tracker.events_buffer.append(
-                    {
-                        "event": "rag_proactive",
-                        "step": 0,
-                        "query": query,
-                        "n_records": len(retrieval_records),
-                        "trimmed_char_count": len(trimmed),
-                        "ts": time.time(),
-                    }
-                )
-                initial_message += (
-                    "\n\n## Relevant Background Knowledge\n"
-                    "> Retrieved from the knowledge base before the run. "
-                    "Apply these lessons to your approach.\n\n" + trimmed
-                )
-            else:
-                print("[RAG] Proactive knowledge injection: no relevant results found.")
-                tracker.proactive_rag_payload = {
-                    "query": query,
-                    "raw_text": proactive_results or "",
-                    "trimmed_text": "",
-                    "raw_char_count": len(proactive_results or ""),
-                    "trimmed_char_count": 0,
-                    "retrieval_records": retrieval_records,
-                    "injected": False,
-                }
+    # Reflexion + proactive RAG injection. CLI uses append+directive form for
+    # reflexion and trims proactive results to 1500 chars (v3.10 P3a fix to
+    # prevent crowding out tool observations on local-model 16k contexts).
+    initial_message = inject_reflexion(
+        initial_message, config, tracker, prepend=False, log_callback=print
+    )
+    initial_message = inject_proactive_rag(
+        initial_message, config, tracker, trim=True, log_callback=print
+    )
 
     print("\n=== Agent Input ===")
     print(initial_message)
@@ -664,29 +480,14 @@ async def run_agent(config: SolverConfig) -> str:
     finally:
         tracker.stop()
 
-    # Extract and log potential flags
-    candidate_flags: List[str] = []
-    if isinstance(response, str):
-        candidate_flags = extract_candidate_flags(response, config.flag_regex)
-        # Also scan all tool outputs
-        for entry in tracker.tool_call_log:
-            candidate_flags.extend(
-                extract_candidate_flags(entry.get("output", ""), config.flag_regex)
-            )
-        candidate_flags = list(dict.fromkeys(candidate_flags))  # deduplicate
-        for flag in candidate_flags:
-            print(f"\n[FLAG DETECTED] {flag}")
-
+    candidate_flags = extract_flags_from_run(
+        response, tracker.tool_call_log, config.flag_regex, dedup=True
+    )
+    for flag in candidate_flags:
+        print(f"\n[FLAG DETECTED] {flag}")
     tracker.candidate_flags_found = candidate_flags
     tracker.run_succeeded = bool(candidate_flags)
-
-    # Set 3-way outcome metric
-    if candidate_flags:
-        tracker.outcome = "success"
-    elif _detect_partial_successes(tracker.tool_call_log):
-        tracker.outcome = "partial"
-    else:
-        tracker.outcome = "failure"
+    tracker.outcome = determine_outcome(candidate_flags, tracker.tool_call_log)
 
     # Phase B2-B3: roll up token usage from per-call records (populated by
     # TokenTrackingAdapter) into the tracker's authoritative fields and
@@ -703,46 +504,9 @@ async def run_agent(config: SolverConfig) -> str:
     print(response)
     print("=" * 40 + "\n")
 
-    # Write experience-database docs after every run in WRITE modes.
-    # All write modes now route through the unified lessons-learned pipeline;
-    # the old AUGMENTED/monolithic pipeline was removed in favor of atomic
-    # rule docs (ExpeL-style).
-    if config.rag_mode in RAG_WRITE_MODES:
-        experience_data = {
-            "challenge_url": config.challenge_url or "",
-            "challenge_description": config.challenge_description or "",
-            "challenge_name": config.challenge_name or "",
-        }
-
-        written_paths = run_lessons_learned_pipeline(
-            config_data=experience_data,
-            tracker_data=tracker.to_dict(),
-            tool_call_log=tracker.tool_call_log,
-            agent_response=response,
-            candidate_flags=candidate_flags,
-            lessons_docs_dir=config.lessons_docs_dir,
-            max_steps=config.max_steps,
-            actual_steps=tracker.steps,
-            flag_regex=config.flag_regex,
-            site_fingerprint=tracker.site_fingerprint,
-            use_llm=config.use_llm_for_lessons,
-            openai_api_key=config.openai_api_key or "",
-            lessons_llm_model=config.lessons_llm_model,
-        )
-        if written_paths:
-            print(f"[Lessons DB] {len(written_paths)} rule doc(s) saved.")
-            # Consolidate lessons by category (fires when ≥2 docs per category)
-            consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
-            if consolidated:
-                print(
-                    f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated."
-                )
-            # Rebuild index so new docs are queryable in the same session
-            active_tool = get_active_knowledge_tool()
-            if active_tool is not None:
-                active_tool.refresh_index()
-        else:
-            print("[Lessons DB] No new rule docs (duplicate run or confidence bumped).")
+    write_lessons_if_enabled(
+        config, tracker, response, candidate_flags, log_callback=print
+    )
 
     return response
 

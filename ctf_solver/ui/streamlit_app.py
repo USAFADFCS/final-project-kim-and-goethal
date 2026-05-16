@@ -45,14 +45,10 @@ warnings.filterwarnings(
 
 # Now safe to import everything else
 import asyncio
-import io
 import json
 import queue
-import re
-import tarfile
 import threading
 import time
-import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -62,7 +58,6 @@ import streamlit as st
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from ctf_solver import __version__
 from ctf_solver.config import (
     COMMON_FLAG_PATTERNS,
     DEFAULT_FLAG_REGEX,
@@ -85,16 +80,20 @@ from ctf_solver.batch import (
     rows_to_items,
     write_batch_summary,
 )
-from ctf_solver.config import RAG_ALL_READ_MODES, RAG_EXPERIENCE_MODES, RAG_WRITE_MODES
-from ctf_solver.consolidate_knowledge import consolidate_lessons_knowledge
-from ctf_solver.failure_analyzer import (
-    _detect_partial_successes,
-    find_and_compress_prior_lesson_with_sources,
-    run_lessons_learned_pipeline,
+from ctf_solver.config import (
+    RAG_ALL_READ_MODES,  # noqa: F401 — kept for test_v38 source-string smoke check
 )
 from ctf_solver.prompts import DEFAULT_SYSTEM_PROMPT, get_initial_message
-from ctf_solver.rag import get_active_knowledge_tool
 from ctf_solver.run_tracker import RunTracker
+from ctf_solver.ui.core import (
+    GRAMMAR_OPTIONS,
+    MODEL_OPTIONS,
+    PLATFORM_OPTIONS,
+    RAG_MODE_LABELS,
+    RAG_MODE_LEGACY_MAP,
+    is_local_model,
+    validate_url,
+)
 
 # Page configuration
 st.set_page_config(
@@ -175,26 +174,6 @@ def log_callback(message: str):
     st.session_state.logs.append(f"[{timestamp}] {message}")
 
 
-def validate_url(url: str) -> tuple[bool, str]:
-    """Validate URL format."""
-    if not url:
-        return True, ""  # Empty is OK (optional field)
-
-    url_pattern = re.compile(
-        r"^https?://"  # http:// or https://
-        r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|"  # domain
-        r"localhost|"  # localhost
-        r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"  # IP
-        r"(?::\d+)?"  # optional port
-        r"(?:/?|[/?]\S+)$",
-        re.IGNORECASE,
-    )
-
-    if url_pattern.match(url):
-        return True, ""
-    return False, "Invalid URL format. Must start with http:// or https://"
-
-
 async def run_agent_async(
     config: SolverConfig,
     trace_callback: Optional[callable] = None,  # type: ignore[valid-type]
@@ -234,104 +213,24 @@ async def run_agent_async(
         source_files=config.source_files or None,
     )
 
-    # Reflexion injection: prepend prior lesson if available (matches Shinn et al. 2023)
-    if config.rag_mode in RAG_EXPERIENCE_MODES and (
-        config.challenge_name or config.challenge_url
-    ):
-        prior_reflection, reflexion_sources = (
-            find_and_compress_prior_lesson_with_sources(
-                challenge_name=config.challenge_name,
-                challenge_url=config.challenge_url,
-                lessons_docs_dir=str(config.lessons_docs_dir),
-                fallback_failure_docs_dir=str(config.failure_docs_dir),
-                challenge_description=config.challenge_description,
-            )
-        )
-        if prior_reflection:
-            initial_message = (
-                "## Prior Attempt Analysis\n\n"
-                + prior_reflection
-                + "\n\n---\n\n"
-                + initial_message
-            )
-            tracker.prior_reflection_injected = True
-            tracker.reflexion_payload = {
-                "text": prior_reflection,
-                "sources": list(reflexion_sources),
-                "char_count": len(prior_reflection),
-            }
-            tracker.events_buffer.append(
-                {
-                    "event": "rag_reflexion",
-                    "step": 0,
-                    "sources": list(reflexion_sources),
-                    "text_len": len(prior_reflection),
-                    "ts": time.time(),
-                }
-            )
-            log_callback("[Reflexion] Prior lesson injected into prompt.")
+    from ctf_solver.ui.core import (
+        determine_outcome,
+        extract_flags_from_run,
+        inject_proactive_rag,
+        inject_reflexion,
+        write_lessons_if_enabled,
+    )
 
-    # Proactive RAG injection: query knowledge base upfront so the agent always
-    # sees relevant prior knowledge before its first action.  Gated by
-    # ``enable_proactive_rag`` (default on) so users can switch to on-demand
-    # retrieval only.
-    # v3.8: extended to ORIGINAL (curated-only) mode too — previously gated
-    # only on the experience modes which left curated-only users without
-    # proactive injection.
-    if config.rag_mode in RAG_ALL_READ_MODES and config.enable_proactive_rag:
-        active_tool = get_active_knowledge_tool()
-        if active_tool is not None:
-            query = (
-                config.challenge_description
-                or config.challenge_name
-                or "web CTF exploitation techniques"
-            )
-            log_callback(
-                f"[RAG] Proactive knowledge injection attempted (query: {query!r:.80})."
-            )
-            proactive_results = active_tool.use(query)
-            retrieval_records = list(getattr(active_tool, "last_retrieval_records", []))
-            if proactive_results and "No relevant information" not in proactive_results:
-                log_callback(
-                    "[RAG] Proactive knowledge injection succeeded — results injected."
-                )
-                tracker.proactive_rag_payload = {
-                    "query": query,
-                    "raw_text": proactive_results,
-                    "trimmed_text": proactive_results,  # streamlit path injects untrimmed
-                    "raw_char_count": len(proactive_results),
-                    "trimmed_char_count": len(proactive_results),
-                    "retrieval_records": retrieval_records,
-                    "injected": True,
-                }
-                tracker.events_buffer.append(
-                    {
-                        "event": "rag_proactive",
-                        "step": 0,
-                        "query": query,
-                        "n_records": len(retrieval_records),
-                        "trimmed_char_count": len(proactive_results),
-                        "ts": time.time(),
-                    }
-                )
-                initial_message += (
-                    "\n\n## Relevant Background Knowledge\n"
-                    "> Retrieved from the knowledge base before the run. "
-                    "Apply these lessons to your approach.\n\n" + proactive_results
-                )
-            else:
-                log_callback(
-                    "[RAG] Proactive knowledge injection: no relevant results found."
-                )
-                tracker.proactive_rag_payload = {
-                    "query": query,
-                    "raw_text": proactive_results or "",
-                    "trimmed_text": "",
-                    "raw_char_count": len(proactive_results or ""),
-                    "trimmed_char_count": 0,
-                    "retrieval_records": retrieval_records,
-                    "injected": False,
-                }
+    # Streamlit uses prepend form for reflexion and injects proactive RAG
+    # untrimmed. Both call sites preserved via the helpers' flag args; Qt
+    # will switch to CLI-style defaults (trim, append+directive) for better
+    # local-model behavior.
+    initial_message = inject_reflexion(
+        initial_message, config, tracker, prepend=True, log_callback=log_callback
+    )
+    initial_message = inject_proactive_rag(
+        initial_message, config, tracker, trim=False, log_callback=log_callback
+    )
 
     st.session_state.execution_trace.append(
         {
@@ -345,20 +244,11 @@ async def run_agent_async(
     response = await agent.arun(initial_message)
     tracker.stop()
 
-    # Extract candidate flags from response and all tool output
-    all_text = response or ""
-    for entry in tracker.tool_call_log:
-        all_text += "\n" + entry.get("output", "")
-    candidate_flags = extract_candidate_flags(all_text, config.flag_regex)
+    candidate_flags = extract_flags_from_run(
+        response, tracker.tool_call_log, config.flag_regex, dedup=False
+    )
     tracker.candidate_flags_found = candidate_flags
-
-    # Determine 3-way outcome
-    if candidate_flags:
-        tracker.outcome = "success"
-    elif _detect_partial_successes(tracker.tool_call_log):
-        tracker.outcome = "partial"
-    else:
-        tracker.outcome = "failure"
+    tracker.outcome = determine_outcome(candidate_flags, tracker.tool_call_log)
     tracker.run_succeeded = tracker.outcome == "success"
 
     # Phase B2-B3: roll up token usage from per-call records into the
@@ -370,46 +260,9 @@ async def run_agent_async(
             list(tracker.per_call_tokens), config.model_name
         )
 
-    # Write knowledge docs when the user opted into building the database.
-    # All write modes route through the unified lessons-learned pipeline;
-    # the old AUGMENTED/monolithic pipeline was removed in favor of atomic rule docs.
-    if config.rag_mode in RAG_WRITE_MODES:
-        experience_data = {
-            "challenge_url": config.challenge_url,
-            "challenge_description": config.challenge_description,
-            "challenge_name": config.challenge_name or "",
-        }
-        written = run_lessons_learned_pipeline(
-            config_data=experience_data,
-            tracker_data=tracker.to_dict(),
-            tool_call_log=tracker.tool_call_log,
-            agent_response=response,
-            candidate_flags=candidate_flags,
-            lessons_docs_dir=config.lessons_docs_dir,
-            max_steps=config.max_steps,
-            actual_steps=tracker.steps,
-            flag_regex=config.flag_regex,
-            site_fingerprint=tracker.site_fingerprint,
-            use_llm=config.use_llm_for_lessons,
-            openai_api_key=config.openai_api_key or "",
-            lessons_llm_model=config.lessons_llm_model,
-        )
-        if written:
-            tracker.failure_doc_generated = True
-            log_callback(f"[Lessons DB] {len(written)} rule doc(s) saved.")
-            consolidated = consolidate_lessons_knowledge(config.lessons_docs_dir)
-            if consolidated:
-                log_callback(
-                    f"[Lessons DB] {len(consolidated)} category wisdom doc(s) generated."
-                )
-            active_tool = get_active_knowledge_tool()
-            if active_tool is not None:
-                active_tool.refresh_index()
-                log_callback("[RAG] Index rebuilt with new lesson docs.")
-        else:
-            log_callback(
-                "[Lessons DB] No new rule docs (duplicate or no rules extracted)."
-            )
+    write_lessons_if_enabled(
+        config, tracker, response, candidate_flags, log_callback=log_callback
+    )
 
     run_stats = tracker.to_dict()
     run_stats["tool_call_log"] = tracker.tool_call_log
@@ -1005,96 +858,19 @@ def run_batch():
 
 
 def _save_challenge_log(config: SolverConfig) -> None:
-    """Save a comprehensive log of the run to challenge_logs/."""
+    """Save a run log via ``core.save_challenge_log`` and notify the UI."""
+    from ctf_solver.ui.core import save_challenge_log
+
     project_root = Path(st.session_state.get("project_root", get_project_root()))
-    log_dir = project_root / "challenge_logs"
-    os.makedirs(log_dir, exist_ok=True)
-
-    ts = datetime.now()
-    ts_str = ts.strftime("%Y%m%d_%H%M%S")
-    name_slug = re.sub(r"[^a-zA-Z0-9]+", "_", config.challenge_name or "unnamed")
-    name_slug = name_slug.strip("_")[:50]
-    stats = st.session_state.run_stats or {}
-    outcome = stats.get("outcome", "unknown")
-    filename = f"{name_slug}_{outcome}_{ts_str}.log"
-
-    lines = []
-    lines.append("=" * 70)
-    lines.append(f"CTF Solver Run Log — v{__version__}")
-    lines.append(f"Timestamp: {ts.isoformat()}")
-    lines.append("=" * 70)
-
-    # Config summary
-    lines.append("")
-    lines.append("--- Configuration ---")
-    lines.append(f"Platform:    {config.platform_name}")
-    lines.append(f"Challenge:   {config.challenge_name or '(unnamed)'}")
-    lines.append(f"URL:         {config.challenge_url or '(none)'}")
-    lines.append(f"Flag regex:  {config.flag_regex}")
-    lines.append(f"Model:       {config.model_name}")
-    lines.append(f"Max steps:   {config.max_steps}")
-    lines.append(f"RAG mode:    {st.session_state.get('rag_mode', '?')}")
-    if config.challenge_description:
-        lines.append(f"Description: {config.challenge_description}")
-    if config.challenge_hints:
-        lines.append(f"Hints:       {config.challenge_hints}")
-
-    # Execution log (timestamped entries from the UI)
-    lines.append("")
-    lines.append("--- Execution Log ---")
-    for entry in st.session_state.logs:
-        lines.append(entry)
-
-    # Detailed tool call log
-    tool_call_log = []
-    if stats.get("tool_call_log"):
-        tool_call_log = stats["tool_call_log"]
-    elif st.session_state.run_stats:
-        # tool_call_log may not be in stats dict; check run_history
-        pass
-
-    if tool_call_log:
-        lines.append("")
-        lines.append("--- Detailed Tool Calls ---")
-        for i, call in enumerate(tool_call_log, 1):
-            lines.append(f"\n[Call {i}] {call.get('tool', '?')}")
-            lines.append(f"  Input:  {call.get('input', '')}")
-            lines.append(f"  Output: {call.get('output', '')}")
-
-    # Final answer
-    lines.append("")
-    lines.append("--- Final Answer ---")
-    lines.append(st.session_state.final_answer or "(no answer)")
-
-    # Candidate flags
-    lines.append("")
-    lines.append("--- Candidate Flags ---")
-    if st.session_state.candidate_flags:
-        for flag in st.session_state.candidate_flags:
-            lines.append(f"  {flag}")
-    else:
-        lines.append("  (none)")
-
-    # Run statistics
-    lines.append("")
-    lines.append("--- Run Statistics ---")
-    for key, val in stats.items():
-        if key == "tool_call_log":
-            continue
-        if key == "tool_calls" and isinstance(val, dict):
-            lines.append(f"  {key}:")
-            for tool_name, count in sorted(val.items(), key=lambda x: -x[1]):
-                lines.append(f"    {tool_name}: {count}")
-        else:
-            lines.append(f"  {key}: {val}")
-
-    lines.append("")
-    lines.append("=" * 70)
-    lines.append("END OF LOG")
-    lines.append("=" * 70)
-
-    log_path = log_dir / filename
-    log_path.write_text("\n".join(lines), encoding="utf-8")
+    log_path = save_challenge_log(
+        config,
+        project_root=project_root,
+        rag_mode=st.session_state.get("rag_mode", "?"),
+        logs=list(st.session_state.logs),
+        stats=st.session_state.run_stats or {},
+        final_answer=st.session_state.final_answer or "",
+        candidate_flags=list(st.session_state.candidate_flags or []),
+    )
     log_callback(f"[LOG] Run log saved to {log_path}")
 
 
@@ -1106,31 +882,22 @@ def render_sidebar():
     # Platform configuration
     st.sidebar.header("Platform Settings")
 
-    _PLATFORM_OPTIONS = [
-        "Generic CTF",
-        "MetaCTF",
-        "PicoCTF",
-        "HackTheBox",
-        "TryHackMe",
-        "CTFd",
-        "Other",
-    ]
     _current = st.session_state.platform_name
-    if _current in _PLATFORM_OPTIONS:
-        _idx = _PLATFORM_OPTIONS.index(_current)
+    if _current in PLATFORM_OPTIONS:
+        _idx = PLATFORM_OPTIONS.index(_current)
     else:
-        _idx = _PLATFORM_OPTIONS.index("Other")
+        _idx = PLATFORM_OPTIONS.index("Other")
 
     _selection = st.sidebar.selectbox(
         "Platform",
-        options=_PLATFORM_OPTIONS,
+        options=PLATFORM_OPTIONS,
         index=_idx,
         help="Select the CTF platform",
     )
     if _selection == "Other":
         st.session_state.platform_name = st.sidebar.text_input(
             "Custom Platform Name",
-            value=_current if _current not in _PLATFORM_OPTIONS else "",
+            value=_current if _current not in PLATFORM_OPTIONS else "",
         )
     else:
         st.session_state.platform_name = _selection
@@ -1167,40 +934,13 @@ def render_sidebar():
     # Agent configuration
     st.sidebar.header("Agent Settings")
 
-    model_options = [
-        # Hosted
-        "gpt-5.2",
-        "gpt-4o",
-        "claude-sonnet-4-6",
-        "claude-opus-4-6",
-        "claude-haiku-4-5",
-        "gemini-2.5-pro",
-        "gemini-2.5-flash",
-        # Local via MLX (Apple Silicon). Outlines grammar-constrains output to
-        # _REACT_SCHEMA so the strict ReActPlanner gets guaranteed valid JSON.
-        # Requires launching Streamlit from ~/mlx-env with outlines[mlxlm].
-        "mlx-community/gemma-4-26b-a4b-it-4bit",
-        # Local via Ollama — auto-routed by name:tag form.
-        # Order = recommended preference as the agent driver:
-        # gemma4 has tools + thinking + 262k context (best local on paper).
-        # llama3.1 produces valid ReAct output first-try. mistral-small and
-        # gpt-oss also have the "tools" capability. edgerunner-medium is
-        # listed last because it is refusal-resistant but NOT instruction-
-        # tuned for structured ReAct output — use it as a raw-generation
-        # backend for payloads, not as the agent driver.
-        "gemma4:26b",
-        "llama3.1:latest",
-        "mistral-small:latest",
-        "gpt-oss:20b",
-        "edgerunner-medium:latest",
-    ]
     current_model = st.session_state.get("model_name", "gpt-5.2")
     current_index = (
-        model_options.index(current_model) if current_model in model_options else 0
+        MODEL_OPTIONS.index(current_model) if current_model in MODEL_OPTIONS else 0
     )
     st.session_state.model_name = st.sidebar.selectbox(
         "LLM Model",
-        options=model_options,
+        options=MODEL_OPTIONS,
         index=current_index,
         help=(
             "Hosted: Gemini (GENAI.mil), Anthropic Claude, OpenAI. "
@@ -1243,21 +983,13 @@ def render_sidebar():
     )
 
     # Grammar-constrained decoding is only meaningful for local models
-    # (Ollama via ``format=<schema>`` or MLX via Outlines). Auto-detect both:
-    # ``:`` in the name = Ollama tag form; ``mlx-community/`` prefix = MLX.
-    _selected = st.session_state.get("model_name", "")
-    _is_local = ":" in _selected or _selected.startswith("mlx-community/")
-    if _is_local:
-        grammar_options = {
-            "Auto (enforce JSON schema)": "auto",
-            "None (no constraint)": "none",
-            "Force JSON schema": "json_schema",
-        }
-        grammar_labels = list(grammar_options.keys())
+    # (Ollama via ``format=<schema>`` or MLX via Outlines).
+    if is_local_model(st.session_state.get("model_name", "")):
+        grammar_labels = list(GRAMMAR_OPTIONS.keys())
         current_grammar = st.session_state.get("grammar_mode", "auto")
         current_grammar_idx = (
-            list(grammar_options.values()).index(current_grammar)
-            if current_grammar in grammar_options.values()
+            list(GRAMMAR_OPTIONS.values()).index(current_grammar)
+            if current_grammar in GRAMMAR_OPTIONS.values()
             else 0
         )
         selected_grammar_label = st.sidebar.selectbox(
@@ -1273,7 +1005,7 @@ def render_sidebar():
                 "A/B comparison runs."
             ),
         )
-        st.session_state.grammar_mode = grammar_options[selected_grammar_label]
+        st.session_state.grammar_mode = GRAMMAR_OPTIONS[selected_grammar_label]
 
     st.session_state.save_logs = st.sidebar.checkbox(
         "Save run logs",
@@ -1316,24 +1048,12 @@ def render_sidebar():
     # RAG / Experience Database Mode
     st.sidebar.header("Knowledge Base Mode")
 
-    rag_mode_options = {
-        "No RAG": "none",
-        "Curated Docs Only": "original",
-        "Curated + Use Lessons DB": "lessons_readonly",
-        "Curated + Build Lessons DB (no reading)": "lessons_buildonly",
-        "Curated + Build & Use Lessons DB": "lessons_write",
-    }
-    rag_mode_labels = list(rag_mode_options.keys())
+    rag_mode_labels = list(RAG_MODE_LABELS.keys())
     current_mode = st.session_state.get("rag_mode", "original")
-    # Map legacy mode names to new UI options
-    _LEGACY_MAP = {
-        "augmented": "lessons_write",
-        "augmented_readonly": "lessons_readonly",
-    }
-    current_mode = _LEGACY_MAP.get(current_mode, current_mode)
+    current_mode = RAG_MODE_LEGACY_MAP.get(current_mode, current_mode)
     current_idx = (
-        list(rag_mode_options.values()).index(current_mode)
-        if current_mode in rag_mode_options.values()
+        list(RAG_MODE_LABELS.values()).index(current_mode)
+        if current_mode in RAG_MODE_LABELS.values()
         else 1
     )
 
@@ -1354,7 +1074,7 @@ def render_sidebar():
             "atomic rule docs after every run. Use when building the experience database."
         ),
     )
-    st.session_state.rag_mode = rag_mode_options[selected_label]
+    st.session_state.rag_mode = RAG_MODE_LABELS[selected_label]
 
     # auto_analyze_failures: derived from rag_mode (kept for backward compat)
     st.session_state.auto_analyze_failures = st.session_state.rag_mode in (
@@ -1481,113 +1201,11 @@ def _render_run_statistics():
 
 
 def _process_uploaded_files(uploaded_files) -> Dict[str, str]:
-    """
-    Decode uploaded files into a filename → content mapping.
+    """Decode Streamlit ``UploadedFile`` objects into a filename → content
+    mapping. Thin wrapper around ``core.load_source_files_from_bytes``."""
+    from ctf_solver.ui.core import load_source_files_from_bytes
 
-    Supports plain text/source files and ZIP archives (extracted recursively).
-    Binary files that can't be decoded as UTF-8 are skipped with a warning.
-
-    Args:
-        uploaded_files: List of Streamlit UploadedFile objects.
-
-    Returns:
-        Dict mapping filename to text content.
-    """
-    result: Dict[str, str] = {}
-
-    _TEXT_EXTENSIONS = {
-        ".py",
-        ".php",
-        ".js",
-        ".ts",
-        ".java",
-        ".go",
-        ".rb",
-        ".c",
-        ".h",
-        ".cpp",
-        ".cs",
-        ".sql",
-        ".yaml",
-        ".yml",
-        ".json",
-        ".html",
-        ".xml",
-        ".sh",
-        ".env",
-        ".conf",
-        ".cfg",
-        ".ini",
-        ".toml",
-        ".txt",
-        ".md",
-        ".htm",
-        ".jsx",
-        ".tsx",
-        ".rs",
-        ".swift",
-        ".kt",
-    }
-
-    def _add_bytes(filename: str, data: bytes) -> None:
-        ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
-        if ext not in _TEXT_EXTENSIONS:
-            return  # skip binary-only types silently
-        try:
-            result[filename] = data.decode("utf-8")
-        except UnicodeDecodeError:
-            try:
-                result[filename] = data.decode("latin-1")
-            except UnicodeDecodeError:
-                pass  # truly binary — skip
-
-    def _extract_tar(fileobj: io.BytesIO) -> None:
-        """Extract text files from a tar archive (plain, gzip, or bz2)."""
-        try:
-            with tarfile.open(fileobj=fileobj, mode="r:*") as tf:
-                for member in tf.getmembers():
-                    if not member.isfile():
-                        continue
-                    f = tf.extractfile(member)
-                    if f is None:
-                        continue
-                    member_name = (
-                        member.name.split("/")[-1]
-                        if "/" in member.name
-                        else member.name
-                    )
-                    _add_bytes(member_name, f.read())
-        except (tarfile.TarError, EOFError, OSError):
-            pass  # not a valid tar — skip
-
-    for uf in uploaded_files:
-        raw = uf.read()
-        name = uf.name
-        name_lower = name.lower()
-        ext = ("." + name.rsplit(".", 1)[-1].lower()) if "." in name else ""
-        if ext == ".zip":
-            try:
-                with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-                    for member in zf.namelist():
-                        if member.endswith("/"):
-                            continue  # directory entry
-                        member_data = zf.read(member)
-                        # Use just the basename to keep filenames short
-                        member_name = member.split("/")[-1] if "/" in member else member
-                        _add_bytes(member_name, member_data)
-            except zipfile.BadZipFile:
-                pass  # not a valid ZIP — skip
-        elif (
-            ext == ".tar"
-            or name_lower.endswith(".tar.gz")
-            or name_lower.endswith(".tar.bz2")
-            or ext in (".tgz", ".tbz2")
-        ):
-            _extract_tar(io.BytesIO(raw))
-        else:
-            _add_bytes(name, raw)
-
-    return result
+    return load_source_files_from_bytes((uf.name, uf.read()) for uf in uploaded_files)
 
 
 def render_batch_panel():

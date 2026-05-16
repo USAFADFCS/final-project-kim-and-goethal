@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from ctf_solver.ui.qt.sidebar import SidebarWidget
+from ctf_solver.ui.qt.single_run_page import SingleRunPage
 
 _WINDOW_TITLE = "CTF Solver"
 _DEFAULT_WIDTH = 1280
@@ -56,13 +57,11 @@ class MainWindow(QMainWindow):
 
     def _build_central(self) -> None:
         self._tabs = QTabWidget(self)
-        # Placeholders — Day 4+ swaps these for the real pages.
-        single = QLabel("Single challenge (Day 4)")
-        single.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        batch = QLabel("Batch run (Day 5)")
-        batch.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._tabs.addTab(single, "Single")
-        self._tabs.addTab(batch, "Batch")
+        self.single_page = SingleRunPage(self.sidebar, self)
+        self._tabs.addTab(self.single_page, "Single")
+        batch_placeholder = QLabel("Batch run (Day 5)")
+        batch_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._tabs.addTab(batch_placeholder, "Batch")
         self.setCentralWidget(self._tabs)
 
     def _build_statusbar(self) -> None:

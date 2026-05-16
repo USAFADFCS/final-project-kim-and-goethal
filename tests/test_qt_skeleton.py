@@ -22,11 +22,23 @@ pytest.importorskip("PySide6")
 
 @pytest.fixture
 def qapp():
-    """Headless QApplication shared across tests in this module."""
+    """Headless QApplication shared across tests in this module.
+
+    Uses a unique org name per test invocation so QSettings doesn't leak
+    state across tests (e.g. an invalid regex saved by one test breaking
+    a later test's Run-button check).
+    """
+    import uuid
+
+    from PySide6.QtCore import QSettings
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
+    app.setOrganizationName(f"test-{uuid.uuid4().hex[:8]}")
+    app.setApplicationName("CTF Solver Test")
     yield app
+    # Wipe whatever this test stored so the org name is reusable.
+    QSettings().clear()
 
 
 class TestQtSkeleton:
@@ -159,3 +171,127 @@ class TestSidebarConditionalUI:
         w.agent_prompt.setPlainText("custom prompt")
         w.reset_prompt_btn.click()
         assert w.agent_prompt.toPlainText() == DEFAULT_SYSTEM_PROMPT
+
+
+class TestTraceView:
+    def test_appends_event_after_flush(self, qapp):
+        from PySide6.QtCore import QTimer
+
+        from ctf_solver.ui.qt.trace_view import TraceView
+
+        view = TraceView()
+        # Empty initially.
+        assert view.toPlainText() == ""
+
+        view.append_event(
+            {
+                "type": "thought_action",
+                "step": 1,
+                "thought": "look at robots.txt",
+                "tool": "http_get",
+                "tool_input": '{"url":"/robots.txt"}',
+            }
+        )
+        # Batched — content not yet appended.
+        assert view.toPlainText() == ""
+
+        # Spin the event loop briefly so the QTimer.singleShot fires
+        # (flush interval is 16 ms).
+        timer_done = [False]
+
+        def _done():
+            timer_done[0] = True
+
+        QTimer.singleShot(60, _done)
+        while not timer_done[0]:
+            qapp.processEvents()
+
+        text = view.toPlainText()
+        assert "Step 1" in text
+        assert "thought_action" in text
+        assert "look at robots.txt" in text
+
+    def test_clear_resets_pane(self, qapp):
+        from PySide6.QtCore import QTimer
+
+        from ctf_solver.ui.qt.trace_view import TraceView
+
+        view = TraceView()
+        view.append_event({"type": "final_answer", "step": 5, "text": "flag{abc}"})
+
+        done = [False]
+        QTimer.singleShot(60, lambda: done.__setitem__(0, True))
+        while not done[0]:
+            qapp.processEvents()
+        assert "flag{abc}" in view.toPlainText()
+
+        view.clear()
+        assert view.toPlainText() == ""
+
+
+class TestSingleRunPage:
+    def test_instantiates(self, qapp):
+        from ctf_solver.ui.qt.sidebar import SidebarWidget
+        from ctf_solver.ui.qt.single_run_page import SingleRunPage
+
+        sidebar = SidebarWidget()
+        page = SingleRunPage(sidebar)
+        assert page.run_btn.text().startswith("🚀")
+        assert page.cancel_btn.isEnabled() is False
+        assert page.results_tabs.count() == 4
+
+    def test_run_button_disabled_without_api_key(self, qapp, monkeypatch):
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("GENAI_API_KEY", raising=False)
+
+        from ctf_solver.ui.qt.sidebar import SidebarWidget
+        from ctf_solver.ui.qt.single_run_page import SingleRunPage
+
+        sidebar = SidebarWidget()
+        page = SingleRunPage(sidebar)
+        page.url_input.setText("https://example.com")
+        page._refresh_run_enabled()
+        assert page.run_btn.isEnabled() is False
+
+    def test_run_button_enabled_with_api_key_and_valid_url(self, qapp, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+        from ctf_solver.ui.qt.sidebar import SidebarWidget
+        from ctf_solver.ui.qt.single_run_page import SingleRunPage
+
+        sidebar = SidebarWidget()
+        page = SingleRunPage(sidebar)
+        # isEnabled is independent of show-state, unlike isVisible.
+        page.url_input.setText("https://example.com")
+        page._refresh_run_enabled()
+        assert page.run_btn.isEnabled() is True
+
+    def test_run_button_disabled_with_invalid_url(self, qapp, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+        from ctf_solver.ui.qt.sidebar import SidebarWidget
+        from ctf_solver.ui.qt.single_run_page import SingleRunPage
+
+        sidebar = SidebarWidget()
+        page = SingleRunPage(sidebar)
+        page.url_input.setText("not a url")
+        assert page.run_btn.isEnabled() is False
+        # Use isHidden (False if setVisible(True) was called) rather than
+        # isVisible (False until shown).
+        assert page.url_error.isHidden() is False
+
+
+class TestAgentRunner:
+    def test_initial_state(self, qapp):
+        from ctf_solver.ui.qt.runner_bridge import AgentRunner
+
+        runner = AgentRunner()
+        assert runner.is_running() is False
+
+    def test_cancel_no_task_is_safe(self, qapp):
+        from ctf_solver.ui.qt.runner_bridge import AgentRunner
+
+        runner = AgentRunner()
+        # No task yet — cancel must not raise.
+        runner.cancel()
+        assert runner.is_running() is False

@@ -295,3 +295,114 @@ class TestAgentRunner:
         # No task yet — cancel must not raise.
         runner.cancel()
         assert runner.is_running() is False
+
+
+class TestBatchTableModel:
+    def test_empty_model(self, qapp):
+        from ctf_solver.ui.qt.batch_table_model import BatchTableModel
+
+        m = BatchTableModel()
+        assert m.rowCount() == 0
+        assert m.columnCount() == 4
+
+    def test_initial_items(self, qapp):
+        from ctf_solver.batch import BatchItem
+        from ctf_solver.ui.qt.batch_table_model import BatchTableModel
+
+        items = [BatchItem(name="A"), BatchItem(name="B", url="https://x")]
+        m = BatchTableModel(items)
+        assert m.rowCount() == 2
+
+    def test_add_and_remove_row(self, qapp):
+        from ctf_solver.ui.qt.batch_table_model import BatchTableModel
+
+        m = BatchTableModel()
+        m.add_row()
+        m.add_row()
+        assert m.rowCount() == 2
+        m.remove_row(0)
+        assert m.rowCount() == 1
+
+    def test_set_data_updates_item(self, qapp):
+        from PySide6.QtCore import Qt
+
+        from ctf_solver.batch import BatchItem
+        from ctf_solver.ui.qt.batch_table_model import BatchTableModel
+
+        m = BatchTableModel([BatchItem(name="old", url="")])
+        idx = m.index(0, 1)  # URL column
+        m.setData(idx, "https://new.example.com", Qt.EditRole)
+        assert m.items()[0].url == "https://new.example.com"
+
+    def test_set_data_strips_status_prefix_on_name(self, qapp):
+        from PySide6.QtCore import Qt
+
+        from ctf_solver.batch import BatchItem
+        from ctf_solver.ui.qt.batch_table_model import BatchTableModel
+
+        m = BatchTableModel([BatchItem(name="X")])
+        m.set_status(0, "running")
+        # If the user edits the displayed value (which includes the status
+        # icon prefix), we must strip the prefix back off.
+        idx = m.index(0, 0)
+        m.setData(idx, "▶ Renamed", Qt.EditRole)
+        assert m.items()[0].name == "Renamed"
+
+    def test_status_changes_emit_dataChanged(self, qapp):
+        from ctf_solver.batch import BatchItem
+        from ctf_solver.ui.qt.batch_table_model import BatchTableModel
+
+        m = BatchTableModel([BatchItem(name="A")])
+        emitted = []
+        m.dataChanged.connect(lambda *args: emitted.append(args))
+        m.set_status(0, "success")
+        assert emitted
+
+    def test_replace_items_resets_statuses(self, qapp):
+        from ctf_solver.batch import BatchItem
+        from ctf_solver.ui.qt.batch_table_model import BatchTableModel
+
+        m = BatchTableModel([BatchItem(name="A"), BatchItem(name="B")])
+        m.set_status(0, "success")
+        m.set_status(1, "failure")
+        m.replace_items([BatchItem(name="C")])
+        assert m.rowCount() == 1
+        assert m.get_status(0) == "pending"
+
+
+class TestBatchPage:
+    def test_instantiates(self, qapp):
+        from ctf_solver.ui.qt.batch_page import BatchPage
+        from ctf_solver.ui.qt.sidebar import SidebarWidget
+
+        sidebar = SidebarWidget()
+        page = BatchPage(sidebar)
+        # Default state: one empty row, no name → run button disabled.
+        assert page.run_btn.isEnabled() is False
+        assert page.cancel_btn.isEnabled() is False
+
+    def test_run_button_disabled_with_only_empty_rows(self, qapp, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+        from ctf_solver.ui.qt.batch_page import BatchPage
+        from ctf_solver.ui.qt.sidebar import SidebarWidget
+
+        sidebar = SidebarWidget()
+        page = BatchPage(sidebar)
+        page._refresh_buttons()
+        # All rows have empty name → still disabled even with API key set.
+        assert page.run_btn.isEnabled() is False
+
+    def test_run_button_enabled_with_named_row_and_api_key(self, qapp, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+        from PySide6.QtCore import Qt
+
+        from ctf_solver.ui.qt.batch_page import BatchPage
+        from ctf_solver.ui.qt.sidebar import SidebarWidget
+
+        sidebar = SidebarWidget()
+        page = BatchPage(sidebar)
+        page._model.setData(page._model.index(0, 0), "Test challenge", Qt.EditRole)
+        page._refresh_buttons()
+        assert page.run_btn.isEnabled() is True

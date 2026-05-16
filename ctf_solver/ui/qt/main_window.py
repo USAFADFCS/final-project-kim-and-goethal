@@ -12,13 +12,13 @@ from __future__ import annotations
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
     QDockWidget,
-    QLabel,
     QMainWindow,
     QStatusBar,
     QTabWidget,
     QWidget,
 )
 
+from ctf_solver.ui.qt.batch_page import BatchPage
 from ctf_solver.ui.qt.sidebar import SidebarWidget
 from ctf_solver.ui.qt.single_run_page import SingleRunPage
 
@@ -58,10 +58,9 @@ class MainWindow(QMainWindow):
     def _build_central(self) -> None:
         self._tabs = QTabWidget(self)
         self.single_page = SingleRunPage(self.sidebar, self)
+        self.batch_page = BatchPage(self.sidebar, self)
         self._tabs.addTab(self.single_page, "Single")
-        batch_placeholder = QLabel("Batch run (Day 5)")
-        batch_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._tabs.addTab(batch_placeholder, "Batch")
+        self._tabs.addTab(self.batch_page, "Batch")
         self.setCentralWidget(self._tabs)
 
     def _build_statusbar(self) -> None:

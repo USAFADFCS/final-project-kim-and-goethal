@@ -19,11 +19,104 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from PySide6.QtCore import QObject, Signal
 
 from ctf_solver.config import SolverConfig
+
+
+async def execute_qt_run(
+    config: SolverConfig,
+    *,
+    event_emitter: Optional[Callable[[dict], None]] = None,
+    log_emitter: Optional[Callable[[str], None]] = None,
+) -> tuple[str, list[str], Dict[str, Any]]:
+    """Run one challenge from the Qt UI.
+
+    Shape mirrors ``runner.run_agent`` (CLI) but:
+    - callbacks always wired so the UI can stream events and logs;
+    - CLI-style "good defaults" applied uniformly (trim proactive RAG to
+      1500 chars, append+directive reflexion, dedup flags) per the v3.10
+      effectiveness audit;
+    - returns ``(response, candidate_flags, stats_dict)`` instead of bare
+      response — caller never has to dig into the tracker.
+    """
+    from ctf_solver.agent import build_agent
+    from ctf_solver.prompts import get_initial_message
+    from ctf_solver.run_tracker import RunTracker
+    from ctf_solver.ui.core import (
+        determine_outcome,
+        extract_flags_from_run,
+        inject_proactive_rag,
+        inject_reflexion,
+        write_lessons_if_enabled,
+    )
+
+    def _emit_event(evt: dict) -> None:
+        if event_emitter is not None:
+            event_emitter(evt)
+
+    def _emit_log(msg: str) -> None:
+        if log_emitter is not None:
+            log_emitter(msg)
+
+    tracker = RunTracker()
+    tracker.challenge_url = config.challenge_url or ""
+    tracker.challenge_description = config.challenge_description or ""
+
+    def _event_writer(evt: Dict[str, Any]) -> None:
+        tracker.events_buffer.append(evt)
+
+    agent = build_agent(
+        config,
+        log_callback=_emit_log,
+        tracker=tracker,
+        trace_callback=_emit_event,
+        event_writer=_event_writer,
+    )
+
+    initial_message = get_initial_message(
+        platform_name=config.platform_name,
+        flag_regex=config.flag_regex,
+        challenge_url=config.challenge_url,
+        challenge_description=config.challenge_description,
+        challenge_hints=config.challenge_hints,
+        source_files=config.source_files or None,
+    )
+
+    initial_message = inject_reflexion(
+        initial_message, config, tracker, prepend=False, log_callback=_emit_log
+    )
+    initial_message = inject_proactive_rag(
+        initial_message, config, tracker, trim=True, log_callback=_emit_log
+    )
+
+    tracker.start()
+    try:
+        response = await agent.arun(initial_message)
+    finally:
+        tracker.stop()
+
+    candidate_flags = extract_flags_from_run(
+        response, tracker.tool_call_log, config.flag_regex, dedup=True
+    )
+    tracker.candidate_flags_found = candidate_flags
+    tracker.run_succeeded = bool(candidate_flags)
+    tracker.outcome = determine_outcome(candidate_flags, tracker.tool_call_log)
+
+    if tracker.per_call_tokens:
+        tracker.set_token_usage_from_adapter(
+            list(tracker.per_call_tokens), config.model_name
+        )
+
+    write_lessons_if_enabled(
+        config, tracker, response, candidate_flags, log_callback=_emit_log
+    )
+
+    stats = tracker.to_dict()
+    stats["tool_call_log"] = list(tracker.tool_call_log)
+    return response, candidate_flags, stats
 
 
 class AgentRunner(QObject):
@@ -83,81 +176,8 @@ class AgentRunner(QObject):
     async def _execute(
         self, config: SolverConfig
     ) -> tuple[str, list[str], Dict[str, Any]]:
-        """Inline single-run orchestration. Equivalent in shape to
-        ``runner.run_agent`` but with callbacks wired and CLI defaults."""
-        from ctf_solver.agent import build_agent
-        from ctf_solver.prompts import get_initial_message
-        from ctf_solver.run_tracker import RunTracker
-        from ctf_solver.ui.core import (
-            determine_outcome,
-            extract_flags_from_run,
-            inject_proactive_rag,
-            inject_reflexion,
-            write_lessons_if_enabled,
-        )
-
-        tracker = RunTracker()
-        tracker.challenge_url = config.challenge_url or ""
-        tracker.challenge_description = config.challenge_description or ""
-
-        def _event_writer(evt: Dict[str, Any]) -> None:
-            tracker.events_buffer.append(evt)
-
-        agent = build_agent(
+        return await execute_qt_run(
             config,
-            log_callback=self.log.emit,
-            tracker=tracker,
-            trace_callback=self.event.emit,
-            event_writer=_event_writer,
+            event_emitter=self.event.emit,
+            log_emitter=self.log.emit,
         )
-
-        initial_message = get_initial_message(
-            platform_name=config.platform_name,
-            flag_regex=config.flag_regex,
-            challenge_url=config.challenge_url,
-            challenge_description=config.challenge_description,
-            challenge_hints=config.challenge_hints,
-            source_files=config.source_files or None,
-        )
-
-        # CLI-style defaults (the v3.10 effectiveness audit recommendation).
-        initial_message = inject_reflexion(
-            initial_message,
-            config,
-            tracker,
-            prepend=False,
-            log_callback=self.log.emit,
-        )
-        initial_message = inject_proactive_rag(
-            initial_message,
-            config,
-            tracker,
-            trim=True,
-            log_callback=self.log.emit,
-        )
-
-        tracker.start()
-        try:
-            response = await agent.arun(initial_message)
-        finally:
-            tracker.stop()
-
-        candidate_flags = extract_flags_from_run(
-            response, tracker.tool_call_log, config.flag_regex, dedup=True
-        )
-        tracker.candidate_flags_found = candidate_flags
-        tracker.run_succeeded = bool(candidate_flags)
-        tracker.outcome = determine_outcome(candidate_flags, tracker.tool_call_log)
-
-        if tracker.per_call_tokens:
-            tracker.set_token_usage_from_adapter(
-                list(tracker.per_call_tokens), config.model_name
-            )
-
-        write_lessons_if_enabled(
-            config, tracker, response, candidate_flags, log_callback=self.log.emit
-        )
-
-        stats = tracker.to_dict()
-        stats["tool_call_log"] = list(tracker.tool_call_log)
-        return response, candidate_flags, stats

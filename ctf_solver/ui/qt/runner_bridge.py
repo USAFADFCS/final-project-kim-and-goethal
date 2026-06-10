@@ -107,7 +107,7 @@ async def execute_qt_run(
 
     if tracker.per_call_tokens:
         tracker.set_token_usage_from_adapter(
-            list(tracker.per_call_tokens), config.model_name
+            list(tracker.per_call_tokens), config.model_name, config.llm_provider
         )
 
     write_lessons_if_enabled(

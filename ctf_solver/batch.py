@@ -204,7 +204,8 @@ def write_batch_summary(results: List[BatchResult], summary_path: PathLike) -> N
     ``completion_tokens``, ``cached_tokens``, ``est_cost_usd``) when the
     per-item ``stats`` dict carries them — populated by Phase B2's
     ``set_token_usage_from_adapter`` call. Items without those fields
-    (e.g. local Ollama runs) emit zeroes.
+    (e.g. local Ollama runs) emit zeroes. ``est_cost_usd_v2`` (parity-sprint
+    item #2) is the local-corrected cost — $0 for Ollama/MLX runs.
     """
     p = Path(summary_path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -223,6 +224,7 @@ def write_batch_summary(results: List[BatchResult], summary_path: PathLike) -> N
                 "completion_tokens",
                 "cached_tokens",
                 "est_cost_usd",
+                "est_cost_usd_v2",
                 "error",
                 "log_path",
             ]
@@ -242,6 +244,7 @@ def write_batch_summary(results: List[BatchResult], summary_path: PathLike) -> N
                     int(stats.get("actual_completion_tokens", 0) or 0),
                     int(stats.get("cached_prompt_tokens", 0) or 0),
                     f"{float(stats.get('est_cost_usd', 0.0) or 0.0):.6f}",
+                    f"{float(stats.get('est_cost_usd_v2', 0.0) or 0.0):.6f}",
                     (r.error or "").replace("\t", " ").replace("\n", " "),
                     r.log_path or "",
                 ]

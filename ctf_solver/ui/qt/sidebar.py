@@ -393,9 +393,12 @@ class SidebarWidget(QWidget):
     def is_valid(self) -> bool:
         """Used by Day 3+ to gate the Run button."""
         ok_regex, _ = validate_flag_regex(self.current_flag_regex())
-        return ok_regex and bool(
-            os.getenv("OPENAI_API_KEY") or os.getenv("GENAI_API_KEY")
-        )
+        if not ok_regex:
+            return False
+        # Local models (Ollama / MLX) run on localhost — no API key needed.
+        if is_local_model(self.model_combo.currentText()):
+            return True
+        return bool(os.getenv("OPENAI_API_KEY") or os.getenv("GENAI_API_KEY"))
 
     # ------------------------------------------------------ event handlers
 

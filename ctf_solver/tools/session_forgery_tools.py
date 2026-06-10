@@ -654,21 +654,30 @@ class FlaskSessionForgeryTool:
         return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
     def _decode_payload(self, cookie: str) -> Optional[dict]:
-        """Decode the payload portion of a Flask session cookie."""
+        """Decode the payload portion of a Flask session cookie.
+
+        Flask convention: a leading "." on the cookie indicates the payload
+        portion is zlib-compressed.  Strip it BEFORE splitting on ".", or
+        ``parts[0]`` ends up empty and the decode silently fails.
+
+        Reproduced as bug G1 in
+        ``memory/window_mode_failure_analysis.md`` using the cookie from
+        the MetaCTF Super Quick Logic Invitational run (2026-05-17).
+        """
         try:
+            compressed = cookie.startswith(".")
+            if compressed:
+                cookie = cookie[1:]
             parts = cookie.split(".")
             if len(parts) < 2:
                 return None
             payload_b64 = parts[0]
             raw = self._b64_decode(payload_b64)
-            # Flask may compress the payload
-            if raw[0:1] == b".":
-                raw = self._b64_decode(payload_b64[1:])
+            if compressed:
                 raw = zlib.decompress(raw)
-            elif raw[0:1] == b"{":
-                pass  # already JSON
-            else:
-                # try decompress
+            elif raw[0:1] != b"{":
+                # Not marked compressed and not visibly raw JSON — try zlib
+                # opportunistically for non-standard producers.
                 try:
                     raw = zlib.decompress(raw)
                 except zlib.error:

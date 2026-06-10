@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListView,
     QListWidget,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSplitter,
@@ -189,31 +190,34 @@ class SingleRunPage(QWidget):
         self._runner.start(config)
 
     def _build_config(self) -> SolverConfig:
-        return SolverConfig.from_env(
-            challenge_url=self.url_input.text(),
-            challenge_description=self.description_input.toPlainText(),
-            challenge_hints=self.hints_input.toPlainText(),
-            source_files=self.source_files_widget.source_files() or None,
-            challenge_name=self._sidebar.challenge_name.text(),
-            platform_name=self._sidebar.current_platform_name(),
-            flag_regex=self._sidebar.current_flag_regex(),
-            model_name=self._sidebar.model_combo.currentText(),
-            max_steps=self._sidebar.max_steps.value(),
-            rag_mode=self._sidebar.current_rag_mode(),
-            use_llm_for_lessons=self._sidebar.lessons_enrich.isChecked(),
-            docs_dirs=[
+        overrides: dict = {
+            "challenge_url": self.url_input.text(),
+            "challenge_description": self.description_input.toPlainText(),
+            "challenge_hints": self.hints_input.toPlainText(),
+            "challenge_name": self._sidebar.challenge_name.text(),
+            "platform_name": self._sidebar.current_platform_name(),
+            "flag_regex": self._sidebar.current_flag_regex(),
+            "model_name": self._sidebar.model_combo.currentText(),
+            "max_steps": self._sidebar.max_steps.value(),
+            "rag_mode": self._sidebar.current_rag_mode(),
+            "use_llm_for_lessons": self._sidebar.lessons_enrich.isChecked(),
+            "docs_dirs": [
                 d.strip()
                 for d in self._sidebar.docs_dirs.toPlainText().splitlines()
                 if d.strip()
             ],
-            kb_files=[
+            "kb_files": [
                 f.strip()
                 for f in self._sidebar.kb_files.toPlainText().splitlines()
                 if f.strip()
             ],
-            grammar_mode=self._sidebar.current_grammar_mode(),
-            agent_prompt=self._sidebar.agent_prompt.toPlainText(),
-        )
+            "grammar_mode": self._sidebar.current_grammar_mode(),
+            "agent_system_prompt": self._sidebar.agent_prompt.toPlainText(),
+        }
+        source_files = self.source_files_widget.source_files()
+        if source_files:
+            overrides["source_files"] = source_files
+        return SolverConfig.from_env().merge_with_args(**overrides)
 
     def _reset_results(self) -> None:
         self.trace_view.clear()
@@ -252,8 +256,15 @@ class SingleRunPage(QWidget):
 
     @Slot(str)
     def _on_error(self, msg: str) -> None:
-        self.status_label.setText(msg)
+        # Status label shows a one-line summary; the full text lives in the
+        # log panel. Show a modal too so a silent background failure (e.g.
+        # an Ollama timeout) doesn't look like "nothing happened" — the
+        # user shouldn't have to dig in the log panel to find out a run
+        # blew up.
+        short = msg.splitlines()[0][:200] if msg else "Run failed."
+        self.status_label.setText(short)
         self.log_view.appendPlainText(f"[ERROR] {msg}")
+        QMessageBox.warning(self, "Run failed", msg)
 
     @Slot(bool)
     def _on_state_changed(self, is_running: bool) -> None:

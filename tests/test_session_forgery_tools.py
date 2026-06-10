@@ -132,6 +132,43 @@ class TestFlaskSessionForgeryTool:
         )
         assert "Failed to decode" in result or "not be a Flask" in result
 
+    def test_decode_zlib_compressed_real_cookie(self):
+        """Regression for memory/window_mode_failure_analysis.md gap G1.
+
+        Flask compressed-session cookies start with a literal ``.`` to
+        signal zlib compression.  Previously ``cookie.split('.')`` yielded
+        ``parts[0] == ''`` and the decode silently returned None.  Cookie
+        captured from the MetaCTF Super Quick Logic Invitational run
+        (2026-05-17).
+        """
+        cookie = (
+            ".eJxljs1KxDAURl8lZD0j-Wman40vIbgQKcntzUywndTkdiHiu1vdjOD2HL7D"
+            "98mhtzxRfcMbDxw0WrQx2QTai0GOg41jBi9RCA9OpNmkYdZRK6uzAzVqsBmM"
+            "BWGSsUryE4e9NbzRNJecC-wLffAw3PHWalpw5cHLf3CKRLhu1HkQd_m-Y6dS"
+            "f-49XyOx0hldkS2xXQ7BtlZWZDkC1cZqZkp6-3j8uMQV_wRfXk-8Q2342-4U"
+            "G010LI-qEmo8C3OW7kmYIFSQ6sE7Kd3Av74BxE5cSw"
+            ".agqdVA.pUAd3K83TIXb8gxNA5MvoWbtBL0"
+        )
+        payload = self.tool._decode_payload(cookie)
+        assert payload is not None, "compressed cookie should decode"
+        # Sanity check on the actual fields that were inside this session
+        assert payload["current_problem"] == 91
+        assert payload["csrf_token"].startswith("c3e7e7ab")
+
+    def test_decode_zlib_via_use_operation(self):
+        """Same fix via the public ``use(...)`` entry point."""
+        cookie = (
+            ".eJxljs1KxDAURl8lZD0j-Wman40vIbgQKcntzUywndTkdiHiu1vdjOD2HL7D"
+            "98mhtzxRfcMbDxw0WrQx2QTai0GOg41jBi9RCA9OpNmkYdZRK6uzAzVqsBmM"
+            "BWGSsUryE4e9NbzRNJecC-wLffAw3PHWalpw5cHLf3CKRLhu1HkQd_m-Y6dS"
+            "f-49XyOx0hldkS2xXQ7BtlZWZDkC1cZqZkp6-3j8uMQV_wRfXk-8Q2342-4U"
+            "G010LI-qEmo8C3OW7kmYIFSQ6sE7Kd3Av74BxE5cSw"
+            ".agqdVA.pUAd3K83TIXb8gxNA5MvoWbtBL0"
+        )
+        result = self.tool.use(json.dumps({"operation": "decode", "cookie": cookie}))
+        assert "Failed to decode" not in result
+        assert "current_problem" in result
+
     # -- forge operation -----------------------------------------------------
 
     def test_forge_missing_data(self):

@@ -20,14 +20,16 @@ from ctf_solver.config import (
 
 
 class TestHistoryWindowDefault:
-    def test_solver_config_default_is_16(self):
+    # 2026-05-17: defaults flipped from (16, "messages") to (7, "observations")
+    # after the window-mode A/B experiment (memory/window_mode_experiment.md).
+    def test_solver_config_default_is_7(self):
         cfg = SolverConfig()
-        assert cfg.history_window_size == 16
+        assert cfg.history_window_size == 7
 
-    def test_from_env_default_is_16(self, monkeypatch):
+    def test_from_env_default_is_7(self, monkeypatch):
         monkeypatch.delenv("CTF_HISTORY_WINDOW", raising=False)
         cfg = SolverConfig.from_env()
-        assert cfg.history_window_size == 16
+        assert cfg.history_window_size == 7
 
     def test_from_env_explicit_value(self, monkeypatch):
         monkeypatch.setenv("CTF_HISTORY_WINDOW", "8")
@@ -98,6 +100,148 @@ class TestWindowedHistory:
         # Last 14 messages preserved
         assert windowed[-1] is history[-1]
         assert windowed[-14] is history[-14]
+
+
+# ── History window mode (messages vs. observations) ──────────────────
+
+
+def _make_windowed_agent_obs(window, mode="observations"):
+    """Build a CTFAgent in observations-counting mode."""
+    mock_memory = MagicMock()
+    agent = CTFAgent(
+        llm=MagicMock(),
+        planner=MagicMock(_parse_json_response=MagicMock()),
+        tool_executor=MagicMock(),
+        memory=mock_memory,
+        max_steps=20,
+        log_callback=lambda msg: None,
+        history_window_size=window,
+        history_window_mode=mode,
+    )
+    return agent, mock_memory
+
+
+def _make_interleaved_history(num_turns: int):
+    """Build a realistic conversation: 2 anchors + num_turns × (assistant + observation)."""
+    history = [
+        Message(role="system", content="system anchor — challenge framing"),
+        Message(role="user", content="user anchor — the original task"),
+    ]
+    for i in range(num_turns):
+        history.append(Message(role="assistant", content=f"Thought {i}; calling tool"))
+        history.append(Message(role="system", content=f"Observation: result {i}"))
+    return history
+
+
+class TestHistoryWindowModeConfig:
+    # 2026-05-17: default mode flipped from "messages" to "observations".
+    def test_default_mode_is_observations(self):
+        cfg = SolverConfig()
+        assert cfg.history_window_mode == "observations"
+
+    def test_from_env_default_is_observations(self, monkeypatch):
+        monkeypatch.delenv("CTF_HISTORY_WINDOW_MODE", raising=False)
+        cfg = SolverConfig.from_env()
+        assert cfg.history_window_mode == "observations"
+
+    def test_from_env_messages_legacy(self, monkeypatch):
+        # The legacy mode is still accessible via opt-in.
+        monkeypatch.setenv("CTF_HISTORY_WINDOW_MODE", "messages")
+        cfg = SolverConfig.from_env()
+        assert cfg.history_window_mode == "messages"
+
+    def test_from_env_invalid_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("CTF_HISTORY_WINDOW_MODE", "garbage")
+        cfg = SolverConfig.from_env()
+        assert cfg.history_window_mode == "observations"
+
+    def test_merge_with_args_carries_mode(self):
+        cfg = SolverConfig().merge_with_args(history_window_mode="messages")
+        assert cfg.history_window_mode == "messages"
+
+
+class TestWindowedHistoryObservationsMode:
+    def test_unknown_mode_falls_back_to_messages(self):
+        # Constructor accepts any string but stores only the two valid values.
+        agent, _ = _make_windowed_agent_obs(window=16, mode="bogus")
+        assert agent._history_window_mode == "messages"
+
+    def test_observations_mode_short_history_unchanged(self):
+        # 2 anchors + 3 turns = 8 messages; window 16 leaves it untouched.
+        agent, mem = _make_windowed_agent_obs(window=16)
+        history = _make_interleaved_history(num_turns=3)
+        mem.get_history.return_value = history
+        windowed = agent._windowed_history()
+        assert windowed == history
+
+    def test_observations_mode_keeps_anchors_plus_last_N_observations(self):
+        # 2 anchors + 10 turns = 22 messages, 10 observations total.
+        # window=7 → 2 anchors + 5 observations.  The 5 kept observations
+        # are the last 5 (indices for observation #6..#10).
+        agent, mem = _make_windowed_agent_obs(window=7)
+        history = _make_interleaved_history(num_turns=10)
+        mem.get_history.return_value = history
+        windowed = agent._windowed_history()
+        # Anchors preserved.
+        assert windowed[0] is history[0]
+        assert windowed[1] is history[1]
+        # Count observation messages in the windowed view.
+        obs_in_view = [
+            m
+            for m in windowed
+            if getattr(m, "role", None) == "system"
+            and isinstance(m.content, str)
+            and m.content.startswith("Observation:")
+        ]
+        assert len(obs_in_view) == 5
+        # The kept observations are the *last* 5 (results 5..9).
+        kept_results = [m.content for m in obs_in_view]
+        assert kept_results == [
+            "Observation: result 5",
+            "Observation: result 6",
+            "Observation: result 7",
+            "Observation: result 8",
+            "Observation: result 9",
+        ]
+
+    def test_observations_mode_includes_preceding_assistant(self):
+        # The cutoff observation should be paired with its preceding assistant
+        # message so the kept observation has the call that produced it.
+        agent, mem = _make_windowed_agent_obs(window=4)  # 2 anchors + 2 obs
+        history = _make_interleaved_history(num_turns=5)  # 5 obs available
+        mem.get_history.return_value = history
+        windowed = agent._windowed_history()
+        # The third message of the window (right after the 2 anchors) must be
+        # the assistant message that produced the first kept observation.
+        assert windowed[0] is history[0]
+        assert windowed[1] is history[1]
+        assert getattr(windowed[2], "role", None) == "assistant"
+        # The first kept observation comes right after that assistant message.
+        assert getattr(windowed[3], "role", None) == "system"
+        assert windowed[3].content.startswith("Observation:")
+
+    def test_observations_mode_budget_zero_returns_just_anchors(self):
+        # window=2 = anchor_count, obs_budget = 0 → only anchors.
+        # But: short_history_unchanged short-circuits when len <= window.
+        # So we need a history strictly longer than 2 to hit obs_budget==0.
+        agent, mem = _make_windowed_agent_obs(window=2)
+        history = _make_interleaved_history(num_turns=3)  # 8 messages
+        mem.get_history.return_value = history
+        windowed = agent._windowed_history()
+        assert len(windowed) == 2
+        assert windowed[0] is history[0]
+        assert windowed[1] is history[1]
+
+    def test_messages_mode_still_works_after_changes(self):
+        # Regression: existing "messages" behavior unchanged.
+        agent, mem = _make_windowed_agent_obs(window=16, mode="messages")
+        history = _make_history(40)
+        mem.get_history.return_value = history
+        windowed = agent._windowed_history()
+        assert len(windowed) == 16
+        assert windowed[0] is history[0]
+        assert windowed[1] is history[1]
+        assert windowed[-1] is history[-1]
 
 
 # ── Proactive RAG mode gate ──────────────────────────────────────────

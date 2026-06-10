@@ -519,6 +519,13 @@ class LoggingToolWrapper:
         """
         self.inner = inner
         self.flag_regex = flag_regex
+        # Perf-audit fix #4: compile once. re.findall(pattern_string, ...)
+        # internally compiles on every call; precompiling here saves 2-5ms
+        # per tool call × 30+ tool calls per run = 60-150ms.
+        try:
+            self._flag_pattern: Optional[re.Pattern] = re.compile(flag_regex)
+        except re.error:
+            self._flag_pattern = None
         self.log_callback = log_callback or print
         self.tracker = tracker
         self.event_writer = event_writer
@@ -587,21 +594,18 @@ class LoggingToolWrapper:
 
         # Log potential flags in tool output and record in tracker
         flag_seen = False
-        if isinstance(result, str):
-            try:
-                matches = re.findall(self.flag_regex, result)
-                for m in matches:
-                    self._log(f"[LOG] Potential flag seen in {self.name} output: {m}")
-                    flag_seen = True
-                    # Record in tracker so agent._has_flag() can detect it
-                    if (
-                        self.tracker is not None
-                        and hasattr(self.tracker, "candidate_flags_found")
-                        and m not in self.tracker.candidate_flags_found
-                    ):
-                        self.tracker.candidate_flags_found.append(m)
-            except re.error:
-                pass  # Invalid regex, skip flag detection
+        if isinstance(result, str) and self._flag_pattern is not None:
+            matches = self._flag_pattern.findall(result)
+            for m in matches:
+                self._log(f"[LOG] Potential flag seen in {self.name} output: {m}")
+                flag_seen = True
+                # Record in tracker so agent._has_flag() can detect it
+                if (
+                    self.tracker is not None
+                    and hasattr(self.tracker, "candidate_flags_found")
+                    and m not in self.tracker.candidate_flags_found
+                ):
+                    self.tracker.candidate_flags_found.append(m)
 
         # v3.8 P1: prepend a structured header so the model can grep one
         # line for outcome.  Existing prose follows verbatim.  Only adds
@@ -619,6 +623,20 @@ class LoggingToolWrapper:
         # Idempotent — apply_hash_hints short-circuits on existing hints.
         if isinstance(result, str):
             result = apply_hash_hints(result)
+
+        # TODO: optional LM-summarizer tier (borrowed from EnIGMA v0.7
+        # sweagent/agent/summarizer.py::LMSummarizer).  Gate behind
+        # SolverConfig.use_lm_summarizer (default False); fire when
+        # `len(result.splitlines()) > lm_summarizer_threshold` (default 150).
+        # Use SolverConfig.lm_summarizer_model (default "gpt-4o-mini").
+        # Always preserve the raw output: store keyed by step-id in
+        # RunTracker.raw_outputs so an LM call to a new show_raw_output(step_id)
+        # tool can retrieve it.  Skip-list mirrors EnIGMA's block_list_input —
+        # never summarize outputs from already-structured probes (e.g.
+        # http_fetch results, JSON tool outputs).  Track cost separately in
+        # tracker metrics for A/B testing.
+        # See memory/comparative_long_output_handling.md for the full plan
+        # and trigger ladder (200K-char fallback, xxd/hexdump bypass, etc.).
 
         # Phase C: emit a structured per-call event for events.jsonl. Done
         # last so output_len reflects the post-hint, final string the agent
@@ -658,3 +676,9 @@ class LoggingToolWrapper:
     def set_flag_regex(self, pattern: str) -> None:
         """Update the flag detection regex pattern."""
         self.flag_regex = pattern
+        # Recompile the cached pattern so subsequent .use() calls pick up
+        # the new regex without paying the per-call compile cost.
+        try:
+            self._flag_pattern = re.compile(pattern)
+        except re.error:
+            self._flag_pattern = None

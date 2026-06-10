@@ -314,6 +314,50 @@ class TestArunNativeLoop:
         # Two LLM calls: the batch turn and the final-answer turn.
         assert llm.sync_client.messages.create.call_count == 2
 
+    def test_native_early_terminates_on_confirmed_flag(self):
+        # Follow-on #4 native path: a batched tool output carrying a confirmed
+        # flag ends the run after turn 1 — the second turn is never reached.
+        turn_1 = _response(
+            [
+                _block("text", text="batch recon"),
+                _block(
+                    "tool_use", id="t1", name="http_fetch", input={"tool_input": "{}"}
+                ),
+            ],
+        )
+        turn_2 = _response(
+            [_block("text", text="unreached FLAG{later}")], stop_reason="end_turn"
+        )
+        llm = _FakeAnthropicAdapter([turn_1, turn_2])
+        agent, _, _ = _make_native_agent(
+            llm, observations={"http_fetch": "page body FLAG{native_win}"}
+        )
+        final = asyncio.run(agent.arun("solve"))
+        assert final == "Flag captured: FLAG{native_win}"
+        # Terminated after the first batched turn — only ONE LLM call.
+        assert llm.sync_client.messages.create.call_count == 1
+
+    def test_native_no_terminate_on_broad_noise(self):
+        # A JS literal in a tool output (broad match, no CTF prefix) must NOT
+        # terminate the native loop; it proceeds to the real flag on turn 2.
+        turn_1 = _response(
+            [
+                _block(
+                    "tool_use", id="t1", name="http_fetch", input={"tool_input": "{}"}
+                ),
+            ],
+        )
+        turn_2 = _response(
+            [_block("text", text="solved FLAG{after_noise}")], stop_reason="end_turn"
+        )
+        llm = _FakeAnthropicAdapter([turn_1, turn_2])
+        agent, _, _ = _make_native_agent(
+            llm, observations={"http_fetch": "code: try{return null}"}
+        )
+        final = asyncio.run(agent.arun("solve"))
+        assert "FLAG{after_noise}" in final  # reached turn 2 — no false terminate
+        assert llm.sync_client.messages.create.call_count == 2
+
     def test_premature_final_answer_triggers_guard(self):
         # Turn 1: final answer with NO flag → should be blocked.
         turn_1 = _response(

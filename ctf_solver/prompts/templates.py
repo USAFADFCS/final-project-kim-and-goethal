@@ -13,6 +13,15 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from fairlib import Example
 
+# TODO: replace hand-curated tool description blocks in this file with a
+# {command_docs} placeholder filled at build time from per-tool `# @yaml`
+# comment blocks embedded in each ctf_solver/tools/*.py module.  Pattern
+# borrowed from SWE-agent/EnIGMA v0.7 (config/commands/ + ParseCommandDetailed).
+# Schema per tool: `# @yaml` followed by `signature:`, `docstring:`,
+# `arguments:` (each with type/description/required).  Pilot on 3 tools —
+# http_tools, sqli_tools, ssti_tools — before rolling out across all 55.
+# See memory/comparative_tool_interfaces.md for the verdict + slice plan.
+
 # Default system prompt template with placeholders
 DEFAULT_SYSTEM_PROMPT = """You are a {platform_name} web exploitation agent running in a FAIR ReAct loop.
 Your job is to solve web Capture-The-Flag challenges by exploring the target web application,
@@ -35,6 +44,12 @@ You have tools for:
   * 'html_inspector' extracts: links, scripts, stylesheets, comments, forms with inputs, meta tags, hidden inputs
 - Working with cookies and robots.txt ('cookie_inspector', 'cookie_set', 'robots_txt')
   * 'cookie_set' supports: set, update, and delete ('delete': true) operations
+  * SESSION JAR IS PERSISTENT across all tool calls. When a response sends \
+Set-Cookie, every subsequent tool call automatically uses the updated cookie. \
+You do NOT need to manually copy cookies between calls or re-fetch to "get \
+the new cookie." If the same URL returns different results across calls, the \
+session jar is already tracking the rotation — debug your request shape \
+(headers, Referer, method) instead of suspecting cookie loss.
 - Searching and analyzing responses ('regex_search', 'response_search', 'sql_pattern_hint')
 - SQL injection ('sqli_probe', 'blind_sqli_boolean', 'blind_sqli_time', 'sqli_data_dumper')
 - XPath injection ('xpath_probe', 'xpath_blind_boolean')
@@ -501,6 +516,7 @@ def get_system_prompt(
             Tuple[str, str, Optional[Dict[str, Any]], Optional[List[Dict[str, Any]]]]
         ]
     ] = None,
+    classification: Optional[Any] = None,
 ) -> str:
     """
     Generate a system prompt with placeholders filled in.
@@ -525,8 +541,17 @@ def get_system_prompt(
         flag_regex=flag_regex,
     )
 
+    overlay = ""
+    if classification is not None:
+        # Local import — the overlay module pulls in the classifier
+        # module, which we don't want to load when callers pass no
+        # classification result.
+        from ctf_solver.prompts.category_overlays import build_category_overlay
+
+        overlay = build_category_overlay(classification)
+
     if not tool_descriptors:
-        return base
+        return base + ("\n\n" + overlay if overlay else "")
 
     # Local import so importing the templates module does not pull in the
     # whole tools package (the ctf_solver.tools.schema module is light, but
@@ -535,18 +560,21 @@ def get_system_prompt(
 
     catalog = render_tools_section(tool_descriptors)
     if not catalog:
-        return base
+        return base + ("\n\n" + overlay if overlay else "")
     return (
         base
         + "\n\n## Tool catalog (auto-generated from schemas)\n"
         + "Use this catalog as the authoritative argument reference. The prose "
         "tool listing above is for context; this catalog is the source of "
-        "truth for required keys, types, and sample inputs.\n\n" + catalog
+        "truth for required keys, types, and sample inputs.\n\n"
+        + catalog
+        + ("\n\n" + overlay if overlay else "")
     )
 
 
 def get_role_definition(
     platform_name: str = "Generic CTF",
+    flag_regex: str = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}",
     custom_role: Optional[str] = None,
 ) -> str:
     """
@@ -554,13 +582,37 @@ def get_role_definition(
 
     Args:
         platform_name: Name of the CTF platform
+        flag_regex: Regex pattern for flag detection (substituted into
+            ``{flag_regex}`` placeholders if the template uses them; the
+            built-in ``DEFAULT_ROLE_DEFINITION`` does not, but user-
+            supplied ``custom_role`` overrides often inherit from the
+            full system prompt and DO include this placeholder).
         custom_role: Custom role template (uses default if None)
 
     Returns:
         Formatted role definition string
     """
     template = custom_role or DEFAULT_ROLE_DEFINITION
-    return template.format(platform_name=platform_name)
+    # format_map with a default-empty fallback so a custom_role template
+    # containing unrelated ``{...}`` placeholders (e.g. a stray ``{0,200}``
+    # inside a regex example, or a ``{tools_list}`` token from another
+    # template) doesn't raise KeyError. Known placeholders still get
+    # substituted; unknown ones render empty.
+    return template.format_map(_SafeFormatMap({
+        "platform_name": platform_name,
+        "flag_regex": flag_regex,
+    }))
+
+
+class _SafeFormatMap(dict):
+    """Dict subclass that renders unknown ``{key}`` placeholders as empty.
+
+    Used by ``get_role_definition`` to avoid KeyError when a user-supplied
+    custom prompt has placeholders the caller didn't anticipate.
+    """
+
+    def __missing__(self, key: str) -> str:
+        return ""
 
 
 _SOURCE_LANG_MAP: Dict[str, str] = {

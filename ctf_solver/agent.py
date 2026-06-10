@@ -35,6 +35,7 @@ from ctf_solver.classifier import (
     create_classifier,
 )
 from ctf_solver.config import (
+    DEFAULT_STRICT_FLAG_REGEX,
     RAG_EXPERIENCE_MODES,
     LLMProviderType,
     RAGMode,
@@ -231,6 +232,7 @@ _OLLAMA_MODEL_PREFIXES: Tuple[str, ...] = (
     "mistral",
     "gpt-oss",  # OpenAI's open-weight release, only served via Ollama locally
     "edgerunner",  # EdgeRunner AI refusal-resistant fine-tunes
+    "nemotron",  # NVIDIA Nemotron family (including local abliterated forks)
     "starcoder",
     "phi",
     "qwen",
@@ -265,6 +267,14 @@ def _looks_like_ollama_model(model_name: str) -> bool:
     return False
 
 
+# Generic strict prefixes (flag/FLAG/CTF) are weaker confirmed-flag signals
+# than a specific platform prefix (HTB/MetaCTF/picoCTF/...). When both appear in
+# one observation, confirmed-flag early-termination prefers the platform flag so
+# a homepage decoy ``flag{...}`` doesn't pre-empt the real ``HTB{...}``. Matched
+# case-sensitively against the same generic prefixes the strict regex allows.
+_GENERIC_FLAG_PREFIX_RE = re.compile(r"(?:FLAG|flag|CTF)\{")
+
+
 class CTFAgent(SimpleAgent):
     """
     CTF-specific agent that extends SimpleAgent with two guards:
@@ -288,14 +298,18 @@ class CTFAgent(SimpleAgent):
         *args,
         tracker=None,
         flag_regex: str = r"(?:[A-Za-z0-9_]+)?\{[^\n\r{}]{1,200}\}",
+        strict_flag_regex: str = DEFAULT_STRICT_FLAG_REGEX,
+        auto_submit_confirmed_flag: bool = True,
         log_callback: Optional[Callable[[str], None]] = None,
         history_window_size: Optional[int] = None,
+        history_window_mode: str = "messages",
         opener_pack: Optional[List[Any]] = None,
         enable_parallel_tools: bool = False,
         native_system_prompt: Optional[str] = None,
         trace_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
         thinking_step_ref: Optional[Dict[str, int]] = None,
         enable_phase_gate: bool = False,
+        observation_max_chars: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -340,13 +354,38 @@ class CTFAgent(SimpleAgent):
         super().__init__(*args, **kwargs)
         self._tracker = tracker
         self._flag_regex = flag_regex
+        # Follow-on #4: strict (CTF-prefix) flag pattern for confirmed-flag
+        # early-termination — the SAME definition the runner uses for
+        # [FLAG DETECTED]. Compiled once; None if the regex is invalid (then
+        # the feature is inert). ``auto_submit_confirmed_flag`` gates it.
+        self._auto_submit_confirmed_flag = auto_submit_confirmed_flag
+        try:
+            self._strict_flag_pattern: Optional[re.Pattern] = re.compile(
+                strict_flag_regex
+            )
+        except re.error:
+            self._strict_flag_pattern = None
         self._log_fn = log_callback or print
         self._premature_fa_count = 0
         self._history_window_size = history_window_size
+        # Counting mode: "messages" (count every Message — legacy) or
+        # "observations" (count only tool-output observation messages).
+        # Anything else silently falls back to "messages".
+        self._history_window_mode = (
+            "observations" if history_window_mode == "observations" else "messages"
+        )
         self._opener_pack: List[Any] = list(opener_pack or [])
         self._parallel_tools_enabled = enable_parallel_tools
         self._native_system_prompt = native_system_prompt
         self._trace_callback = trace_callback
+        # Perf-audit fix #5: per-turn observation truncation cap. When set
+        # (non-None, > 0), oversized tool outputs are shortened BEFORE
+        # being appended to the next turn's prompt — phase-machine signal
+        # detection still gets the full text. ``None`` preserves legacy
+        # behavior so existing tests pass unchanged.
+        self._observation_max_chars: Optional[int] = (
+            observation_max_chars if (observation_max_chars or 0) > 0 else None
+        )
         # Mutable one-key dict (``{"step": int}``) shared with the LLM
         # adapter's thinking-callback so thinking events emitted during
         # ``planner.aplan()`` can be tagged with the step the agent is
@@ -371,6 +410,17 @@ class CTFAgent(SimpleAgent):
         # compatibility; build_agent flips it on when configured.
         self._phase_machine = PhaseStateMachine(enabled=enable_phase_gate)
         self._patch_planner_parsing()
+
+    def _truncate_observation(self, text: str) -> str:
+        """Cap an observation string at ``self._observation_max_chars`` for
+        the prompt copy. Phase-machine signal detection is fed the full
+        string upstream; only the message appended to ``turn_messages``
+        passes through here. ``None`` cap is a no-op (legacy behavior).
+        """
+        limit = self._observation_max_chars
+        if not limit or len(text) <= limit:
+            return text
+        return text[:limit] + f"\n...[truncated {len(text) - limit} chars]"
 
     # ── Stall detection ────────────────────────────────────────────
     # Goal: when the agent has made 5+ tool calls without surfacing any
@@ -581,16 +631,69 @@ class CTFAgent(SimpleAgent):
         """Return the history view passed to the planner.
 
         If ``_history_window_size`` is None or 0 (the "disabled" sentinel),
-        returns the full memory; otherwise keeps the first 2 "anchor" messages
-        + the last (window - 2) messages.
+        returns the full memory.  Otherwise keeps the first 2 "anchor"
+        messages plus a tail whose size depends on ``_history_window_mode``:
+
+        - ``"messages"`` (default, legacy): the last ``window - 2`` Messages
+          regardless of role.
+        - ``"observations"``: walk backwards until ``window - 2`` tool-output
+          observation messages have been collected (matches the
+          EnIGMA / D-CIPHER ``len_observations`` semantics), then return
+          everything from that point to the end.  This includes any
+          assistant / system messages bracketing the observations.
         """
         history = self.memory.get_history()
         window = self._history_window_size
         if not window or len(history) <= window:
             return history
         anchor_count = min(2, len(history))
+        if self._history_window_mode == "observations":
+            return self._windowed_history_by_observations(history, window, anchor_count)
         tail_count = max(0, window - anchor_count)
         return list(history[:anchor_count]) + list(history[-tail_count:])
+
+    @staticmethod
+    def _is_observation_message(msg: "Message") -> bool:
+        """True if ``msg`` is a tool-output observation message.
+
+        In this codebase observations are stored with ``role="system"`` and a
+        ``"Observation: "`` content prefix (see arun loop in agent.py).  This
+        is distinct from initial system anchors (challenge framing) and from
+        guard / phase-gate system messages whose content does not start with
+        ``"Observation: "``.
+        """
+        role = getattr(msg, "role", None)
+        content = getattr(msg, "content", None)
+        return (
+            role == "system"
+            and isinstance(content, str)
+            and content.startswith("Observation:")
+        )
+
+    def _windowed_history_by_observations(
+        self, history: List["Message"], window: int, anchor_count: int
+    ) -> List["Message"]:
+        """Observation-counted window trim (see ``_windowed_history``)."""
+        obs_budget = window - anchor_count
+        if obs_budget <= 0:
+            return list(history[:anchor_count])
+        obs_indices = [
+            i
+            for i in range(anchor_count, len(history))
+            if self._is_observation_message(history[i])
+        ]
+        if len(obs_indices) <= obs_budget:
+            # Not enough observations to trim — return everything.
+            return list(history)
+        cutoff = obs_indices[-obs_budget]
+        # Include the immediately preceding assistant message if present so
+        # the kept observation has the call that produced it as context.
+        if (
+            cutoff > anchor_count
+            and getattr(history[cutoff - 1], "role", None) == "assistant"
+        ):
+            cutoff -= 1
+        return list(history[:anchor_count]) + list(history[cutoff:])
 
     def _run_opener_pack(self) -> None:
         """Pre-execute deterministic recon before the LLM loop.
@@ -874,6 +977,22 @@ class CTFAgent(SimpleAgent):
 
             anthropic_messages.append({"role": "user", "content": tool_results})
 
+            # Follow-on #4: confirmed-flag early-terminate (native batched path).
+            # Scan each tool_result independently (not a joined blob) so a decoy
+            # in one output can't pre-empt the real flag in another, and the
+            # per-output platform-preference in _find_confirmed_flag applies.
+            if self._auto_submit_confirmed_flag:
+                for tr in tool_results:
+                    if not isinstance(tr, dict):
+                        continue
+                    confirmed = self._find_confirmed_flag(str(tr.get("content", "")))
+                    if confirmed is not None:
+                        self._log_fn(
+                            "[AUTO-SUBMIT] Confirmed flag in batched tool output; "
+                            f"terminating early: {confirmed}"
+                        )
+                        return f"Flag captured: {confirmed}"
+
             # A batched turn consumes one step regardless of how many tools ran.
             step += 1
 
@@ -1082,6 +1201,14 @@ class CTFAgent(SimpleAgent):
                         "content": str(output),
                     }
                 )
+                # Follow-on #4: confirmed-flag early-terminate (native path).
+                confirmed = self._find_confirmed_flag(str(output))
+                if confirmed is not None:
+                    self._log_fn(
+                        f"[AUTO-SUBMIT] Confirmed flag in '{tool_name}' output; "
+                        f"terminating early: {confirmed}"
+                    )
+                    return f"Flag captured: {confirmed}"
 
             step += 1
 
@@ -1453,6 +1580,38 @@ class CTFAgent(SimpleAgent):
             str(entry.get("output", "")) for entry in self._tracker.tool_call_log
         )
         return any(c in all_outputs for c in candidates)
+
+    def _find_confirmed_flag(self, text: str) -> Optional[str]:
+        """Return a strict-regex-confirmed flag in ``text``, else None.
+
+        Uses the SAME definition as the runner's post-run grader
+        (runner.py): broad extraction with ``extract_candidate_flags``
+        (which applies the placeholder/noise filter) THEN a strict
+        CTF-prefix match. High precision — it will NOT fire on broad-regex
+        noise like ``try{...}`` or ``slate:{...}`` because those lack a
+        known CTF prefix. Returns None when the feature is disabled or the
+        strict pattern failed to compile. This is the signal that ends the
+        run early (follow-on #4).
+
+        When several confirmed flags appear in one observation, a
+        PLATFORM-prefixed flag (HTB/MetaCTF/picoCTF/...) is preferred over a
+        generic ``flag{}``/``FLAG{}``/``CTF{}`` match, since the generic forms
+        are more likely a homepage decoy or example literal alongside the real
+        platform flag (review finding: decoy-before-real).
+        """
+        if not self._auto_submit_confirmed_flag or self._strict_flag_pattern is None:
+            return None
+        if not text:
+            return None
+        matches = [
+            cand
+            for cand in extract_candidate_flags(text, self._flag_regex)
+            if self._strict_flag_pattern.search(cand)
+        ]
+        if not matches:
+            return None
+        non_generic = [c for c in matches if not _GENERIC_FLAG_PREFIX_RE.match(c)]
+        return non_generic[0] if non_generic else matches[0]
 
     # ── Exploitable-finding detection ──────────────────────────────
     def _has_unexploited_findings(self, text: str) -> bool:
@@ -1830,10 +1989,11 @@ class CTFAgent(SimpleAgent):
                         f"(category={category})."
                     )
 
+            obs_text = self._truncate_observation(str(observation_output))
             turn_messages.append(
                 Message(
                     role="system",
-                    content=f"Observation: {str(observation_output)}",
+                    content=f"Observation: {obs_text}",
                 )
             )
             self._emit_trace(
@@ -1845,6 +2005,36 @@ class CTFAgent(SimpleAgent):
                     "timestamp": time.time(),
                 }
             )
+
+            # Follow-on #4: confirmed-flag early-terminate. If this tool output
+            # contains a strict-regex-confirmed flag (the same signal the
+            # post-run grader trusts for [FLAG DETECTED]), the challenge is
+            # solved — return now instead of looping on the winning call until
+            # max_steps. The observation is already in turn_messages, so the
+            # flush below records the full trace. Gated by
+            # auto_submit_confirmed_flag (default ON).
+            confirmed = self._find_confirmed_flag(str(observation_output))
+            if confirmed is not None:
+                self._log_fn(
+                    f"[AUTO-SUBMIT] Confirmed flag in '{action.tool_name}' "
+                    f"output; terminating early: {confirmed}"
+                )
+                final_answer_text = f"Flag captured: {confirmed}"
+                self._emit_trace(
+                    {
+                        "type": "final_answer",
+                        "step": step + 1,
+                        "text": final_answer_text[:600],
+                        "auto_submit": True,
+                        "timestamp": time.time(),
+                    }
+                )
+                turn_messages.append(
+                    Message(role="assistant", content=final_answer_text)
+                )
+                for msg in turn_messages:
+                    self.memory.add_message(msg)
+                return final_answer_text
 
             # Hard-stop signal from LoggingToolWrapper.StuckDetector: the
             # same (tool, input) pair has been hit `hard_stop_threshold`
@@ -2014,6 +2204,22 @@ def _build_rag_config(config: SolverConfig, mode: RAGMode) -> SolverConfig:
     )
 
 
+# TODO: pilot a Planner/Executor mode in a new module `ctf_solver/multiagent.py`
+# (≤200 LOC) that wraps build_agent() below.  Architecture borrowed from
+# D-CIPHER (nyuctf_agents/nyuctf_multiagent/agent.py:409 — PlannerExecutorSystem).
+# Shape:
+#   - Add SolverConfig.multiagent_mode: bool = False (gated).
+#   - Planner = a CTFAgent with toolset stripped of specialised attack tools,
+#     PLUS a new DelegateTool and SubmitFlagTool.  Persistent conversation
+#     across the whole challenge.  ~15 rounds.
+#   - Executor = a fresh CTFAgent per delegation (clean conversation), full
+#     attack toolset, exits via FinishTaskTool(summary: str).  ~30 rounds.
+#   - Cross-agent protocol = the executor's summary string only.
+#   - Cost: ~2× solo per attempt; gate on Cybench HTB cyber-apocalypse-2024
+#     web subset (9 challenges).  Ship only if multi-agent wins on >=2 more
+#     challenges and cost-per-success is <=2.5x solo.
+# See memory/comparative_agent_loops.md "Pilot design (Phase 3)" for the full
+# spec + decision gate.  Do NOT refactor build_agent — wrap it.
 def build_agent(
     config: SolverConfig,
     log_callback: Optional[Callable[[str], None]] = None,
@@ -2151,9 +2357,17 @@ def build_agent(
             )
             log_fn(f"[Agent] Using OpenAI adapter with model: {config.model_name}")
 
-    # Wrap the LLM adapter for token tracking when a tracker is provided
+    # Wrap the LLM adapter for token tracking when a tracker is provided.
+    # Perf-audit fix #3: for local providers (Ollama/MLX) skip the
+    # tiktoken pass (200-400ms per LLM call) — there's no per-token
+    # billing to track, so chars/4 fallback is fine. resolved_provider
+    # is normalized above for the auto-routing logic.
     if tracker is not None:
-        llm = TokenTrackingAdapter(llm, tracker)
+        _skip_tokens = provider in (
+            LLMProviderType.OLLAMA,
+            LLMProviderType.MLX,
+        )
+        llm = TokenTrackingAdapter(llm, tracker, skip_token_estimation=_skip_tokens)
 
     # Single shared HTTP session for ALL HTTP-related tools.
     # When ``enable_response_cache`` is on, wrap with ``CachedSession`` so
@@ -2197,8 +2411,10 @@ def build_agent(
     cookie_set_tool = CookieSetTool(session=shared_session)
     form_submit_tool = FormSubmitTool(session=shared_session)
     from ctf_solver.tools.auto_form_submit import AutoFormSubmitTool
+    from ctf_solver.tools.submit_until_done import SubmitUntilDoneTool
 
     auto_form_submit_tool = AutoFormSubmitTool(session=shared_session)
+    submit_until_done_tool = SubmitUntilDoneTool(session=shared_session)
     js_source_tool = JavaScriptSourceTool(session=shared_session)
     response_search_tool = ResponseSearchTool()
     sql_pattern_hint_tool = SqlPatternHintTool()
@@ -2385,6 +2601,7 @@ def build_agent(
         cookie_set_tool,
         form_submit_tool,
         auto_form_submit_tool,
+        submit_until_done_tool,
         js_source_tool,
         response_search_tool,
         sql_pattern_hint_tool,
@@ -2608,6 +2825,7 @@ def build_agent(
         # and would confuse a key-value parser.
         role_text = get_role_definition(
             platform_name=config.platform_name,
+            flag_regex=config.flag_regex,
             custom_role=config.agent_system_prompt,
         )
         pb.role_definition = RoleDefinition(role_text)
@@ -2629,11 +2847,24 @@ def build_agent(
         from ctf_solver.tools.schema import collect_tool_descriptors
 
         tool_descriptors = collect_tool_descriptors(tool_registry.get_all_tools())
+
+        # Run the keyword classifier so the prompt picks up per-category
+        # overlay guidance. The classifier is best-effort — on weak
+        # signal it returns UNKNOWN and the overlay function emits
+        # nothing, so a misclassification can't lead the agent astray.
+        classification = None
+        if config.enable_category_overlay:
+            try:
+                classification = classify_challenge(config, log_callback=log_fn)
+            except Exception as exc:
+                log_fn(f"[Classifier] skipped due to error: {exc!r}")
+
         role_text = get_system_prompt(
             platform_name=config.platform_name,
             flag_regex=config.flag_regex,
             custom_prompt=config.agent_system_prompt,
             tool_descriptors=tool_descriptors,
+            classification=classification,
         )
         pb.role_definition = RoleDefinition(role_text)
 
@@ -2686,8 +2917,11 @@ def build_agent(
         max_steps=config.max_steps,
         tracker=tracker,
         flag_regex=config.flag_regex,
+        strict_flag_regex=config.strict_flag_regex,
+        auto_submit_confirmed_flag=config.auto_submit_confirmed_flag,
         log_callback=log_fn,
         history_window_size=config.history_window_size,
+        history_window_mode=config.history_window_mode,
         opener_pack=opener_pack,
         enable_parallel_tools=config.enable_parallel_tools,
         enable_phase_gate=config.enable_phase_gate,
@@ -2697,6 +2931,7 @@ def build_agent(
         native_system_prompt=role_text,
         trace_callback=trace_callback,
         thinking_step_ref=_thinking_ctx,
+        observation_max_chars=getattr(config, "observation_max_chars", None),
     )
 
     # Short, high-level role description

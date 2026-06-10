@@ -202,6 +202,7 @@ class TestOllamaThinkingStream:
         adapter = OllamaAdapter(
             model_name="gemma4:26b",
             thinking_callback=captured.append,
+            enable_thinking=True,
         )
 
         # Pretend the Ollama client supports think=True and returns thinking.
@@ -231,6 +232,7 @@ class TestOllamaThinkingStream:
         adapter = OllamaAdapter(
             model_name="llama3.1:latest",
             thinking_callback=captured.append,
+            enable_thinking=True,
         )
         adapter.client.chat = lambda **kw: self._make_mock_response(  # type: ignore
             content="just content, no thinking"
@@ -251,6 +253,7 @@ class TestOllamaThinkingStream:
         adapter = OllamaAdapter(
             model_name="gpt-oss:20b",
             thinking_callback=lambda _t: None,
+            enable_thinking=True,
         )
 
         # First call: raises TypeError on think, then a retry without it
@@ -281,7 +284,9 @@ class TestOllamaThinkingStream:
         def boom(_text: str) -> None:
             raise RuntimeError("UI callback error")
 
-        adapter = OllamaAdapter(model_name="gemma4:26b", thinking_callback=boom)
+        adapter = OllamaAdapter(
+            model_name="gemma4:26b", thinking_callback=boom, enable_thinking=True
+        )
         adapter.client.chat = lambda **kw: self._make_mock_response(  # type: ignore
             content="x", thinking="reasoning"
         )

@@ -437,10 +437,15 @@ def _make_ollama_adapter() -> OllamaAdapter:
     adapter.num_ctx = 16384
     adapter.thinking_callback = None
     adapter.grammar_schema = _REACT_SCHEMA
+    # Perf-audit fix #1: opt-in (was hardcoded True). These tests
+    # exercise the think probe explicitly, so enable it.
+    adapter.enable_thinking = True
     adapter._think_supported = None
     adapter._format_supported = None
     adapter._oneof_supported = None
     adapter._tool_descriptors = None
+    # Perf-audit fix #2: schema cache.
+    adapter._format_schema_cache = None
     adapter._consecutive_empty = 0
     return adapter
 

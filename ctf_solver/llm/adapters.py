@@ -1057,6 +1057,7 @@ class OllamaAdapter(AbstractChatModel):
         num_ctx: int = 16384,
         thinking_callback: Optional[Callable[[str], None]] = None,
         grammar_schema: Optional[Dict[str, Any]] = None,
+        enable_thinking: bool = False,
     ):
         """
         Initialize the Ollama adapter.
@@ -1105,6 +1106,10 @@ class OllamaAdapter(AbstractChatModel):
         self.num_ctx = num_ctx
         self.thinking_callback = thinking_callback
         self.grammar_schema = grammar_schema
+        # Off by default — CTF tool selection rarely benefits from CoT and
+        # thinking tokens add 5-30s per turn on reasoning models. Opt in via
+        # SolverConfig.enable_thinking when you actually want reasoning.
+        self.enable_thinking = enable_thinking
         # Whether the installed ollama client supports the ``think=True``
         # kwarg on .chat(). Probed lazily on first invoke — older Ollama
         # server/client combos (<0.5.x) raise TypeError when given it, and
@@ -1140,6 +1145,11 @@ class OllamaAdapter(AbstractChatModel):
         self._tool_descriptors: Optional[
             List[Tuple[str, str, Optional[Dict[str, Any]], Optional[List[Any]]]]
         ] = None
+        # Cache for the per-tool oneOf format schema. Built lazily on first
+        # use and invalidated when set_tool_descriptors() rewires the catalog.
+        # Reading the schema is hot — it runs in _build_chat_kwargs on every
+        # invoke() — and build_react_schema() over 77 tools is non-trivial.
+        self._format_schema_cache: Optional[Dict[str, Any]] = None
         # Count of consecutive empty responses. Drives the escalation ladder
         # in ``invoke`` so context-overflow doesn't cascade into a
         # tool-repetition loop.
@@ -1159,6 +1169,9 @@ class OllamaAdapter(AbstractChatModel):
         self._tool_descriptors = list(descriptors) if descriptors else None
         # Reset the support flag so the next call re-probes.
         self._oneof_supported = None
+        # Invalidate the cached schema so the next call rebuilds it from
+        # the new descriptors.
+        self._format_schema_cache = None
 
     def _prepare_messages(self, messages: List[Message]) -> List[Dict[str, str]]:
         """Convert fairlib Messages to Ollama format."""
@@ -1188,7 +1201,7 @@ class OllamaAdapter(AbstractChatModel):
             "messages": ollama_messages,
             "options": options,
         }
-        if self._think_supported is not False:
+        if self.enable_thinking and self._think_supported is not False:
             chat_kwargs["think"] = True
         # v3.9 N.1: prefer the per-tool ``oneOf`` schema when descriptors
         # have been wired and ``oneOf`` hasn't been ruled out by a prior
@@ -1202,9 +1215,16 @@ class OllamaAdapter(AbstractChatModel):
     def _select_format_schema(self) -> Optional[Dict[str, Any]]:
         """Pick the right schema for ``format=``. Per-tool ``oneOf`` when
         descriptors are wired and ``oneOf`` is supported; legacy
-        ``grammar_schema`` otherwise."""
+        ``grammar_schema`` otherwise.
+
+        The per-tool schema is cached in ``_format_schema_cache`` because
+        ``build_react_schema`` over 77 tools costs 50-200ms; this method
+        runs in ``_build_chat_kwargs`` on every ``invoke()``.
+        """
         if self._tool_descriptors and self._oneof_supported is not False:
-            return build_react_schema(self._tool_descriptors)
+            if self._format_schema_cache is None:
+                self._format_schema_cache = build_react_schema(self._tool_descriptors)
+            return self._format_schema_cache
         return self.grammar_schema
 
     def _chat_with_think(self, ollama_messages, options):
@@ -2162,6 +2182,7 @@ def create_adapter(
             num_ctx=kwargs.get("num_ctx", 16384),
             thinking_callback=kwargs.get("thinking_callback"),
             grammar_schema=grammar_schema,
+            enable_thinking=kwargs.get("enable_thinking", False),
         )
 
     elif provider == LLMProvider.MLX:
@@ -2240,19 +2261,35 @@ def create_adapter_from_config(
     else:
         api_key = None
 
+    # Local providers (Ollama / MLX) on the first inference call against a
+    # newly-loaded model can legitimately take 2-5 minutes — Metal kernels
+    # get JIT-compiled per architecture, and reasoning models with
+    # think=True + a large tool catalog + grammar-constrained decoding
+    # easily exceed the 120s default that's fine for hosted endpoints.
+    # Only widen when the user has not set an explicit timeout.
+    user_timeout = getattr(config, "llm_timeout", None)
+    if user_timeout is None or user_timeout == 120.0:
+        if provider in (LLMProvider.OLLAMA, LLMProvider.MLX):
+            timeout = 600.0
+        else:
+            timeout = 120.0
+    else:
+        timeout = float(user_timeout)
+
     return create_adapter(
         provider=provider,
         model_name=model_name,
         api_key=api_key,
         base_url=getattr(config, "llm_base_url", None),
         max_tokens=getattr(config, "max_tokens", 2048),
-        timeout=getattr(config, "llm_timeout", 120.0),
+        timeout=timeout,
         num_ctx=getattr(config, "ollama_num_ctx", 16384),
         thinking_callback=thinking_callback,
         grammar_mode=getattr(config, "grammar_mode", "auto"),
         mlx_kv_bits=getattr(config, "mlx_kv_bits", None),
         mlx_seed=getattr(config, "mlx_seed", None),
         mlx_prewarm=getattr(config, "mlx_prewarm", True),
+        enable_thinking=getattr(config, "enable_thinking", False),
     )
 
 

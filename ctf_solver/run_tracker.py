@@ -31,6 +31,27 @@ _PRICE_PER_M_TOKENS: Dict[str, Dict[str, float]] = {
     "claude-sonnet-4-6": {"input": 3.0, "cached": 0.30, "output": 15.0},
 }
 
+# Providers that run locally and therefore have no per-token billing.
+_LOCAL_PROVIDERS = frozenset({"ollama", "mlx"})
+
+
+def _is_cost_free_local(provider: Optional[Any], model: str) -> bool:
+    """True when this run used a local backend (no per-token cost).
+
+    Mirrors ``ctf_solver.ui.core.is_local_model`` (``:`` in an Ollama tag
+    name, or an ``mlx-community/`` prefix) and additionally honors an explicit
+    provider (the ``LLMProviderType`` str-enum or a plain string). Used by the
+    cost rollup so local inference reports ``$0`` in ``est_cost_usd_v2``
+    instead of silently inheriting the gpt-5.2 fallback price.
+    """
+    if provider is not None:
+        prov = str(getattr(provider, "value", provider)).lower()
+        if prov in _LOCAL_PROVIDERS:
+            return True
+    name = model or ""
+    return ":" in name or name.startswith("mlx-community/")
+
+
 # Regex patterns for fingerprint extraction (compiled once)
 _TITLE_RE = re.compile(r"<title[^>]*>([^<]{1,80})</title>", re.IGNORECASE)
 _H1_RE = re.compile(r"<h1[^>]*>([^<]{1,80})</h1>", re.IGNORECASE)
@@ -78,6 +99,13 @@ class RunTracker:
     challenge_description: str = ""
     run_succeeded: bool = False
     candidate_flags_found: List[str] = field(default_factory=list)
+    # 2026-05-17: subset of candidate_flags_found that matches the
+    # strict_flag_regex (known CTF platform prefix).  Audit-only candidates
+    # that *don't* match strict are kept in candidate_flags_found but
+    # excluded from this list — used by the grader to distinguish a
+    # confirmed flag from a false-positive `\w+{...}` match like
+    # JavaScript or CSS object literals.
+    confirmed_flags_found: List[str] = field(default_factory=list)
     failure_doc_generated: bool = False
 
     # Learning-quality metrics
@@ -85,6 +113,20 @@ class RunTracker:
     rag_queries_made: int = 0
     outcome: str = "pending"  # "success" | "partial" | "failure"
     site_fingerprint: str = ""  # Content-based page identity for contamination filter
+
+    # Parity-sprint item #3: classifier diagnostic (LOG-ONLY — changes no
+    # agent behavior). build_time_* is the classification that actually drove
+    # the run (description + hints, fired at build_agent time). post_http_* is
+    # a re-classification with the first recon HTTP body in hand. If the two
+    # agree at UNKNOWN, the never-fired category-overlay theory is dead;
+    # if confidence jumps post-HTTP, post-opener activation is worth wiring.
+    # The active overlay is NOT swapped — these fields are observation only.
+    build_time_category: str = ""
+    build_time_confidence: float = 0.0
+    post_http_category: str = ""
+    post_http_confidence: float = 0.0
+    would_have_applied_overlay: bool = False
+    post_http_overlay_text: str = ""
 
     # Count of turns where the LLM provider's content filter rejected the
     # prompt (OpenAI 400 "invalid_prompt"). Distinct from format errors —
@@ -129,6 +171,11 @@ class RunTracker:
     actual_completion_tokens: int = 0
     cached_prompt_tokens: int = 0
     est_cost_usd: float = 0.0
+    # Parity-sprint item #2: corrected cost. Identical to est_cost_usd except
+    # local providers (Ollama/MLX) report $0 instead of inheriting the gpt-5.2
+    # fallback price. est_cost_usd keeps its legacy formula unchanged so
+    # pre-fix and post-fix runs stay comparable on that column.
+    est_cost_usd_v2: float = 0.0
     per_call_tokens: List[Dict[str, Any]] = field(default_factory=list)
 
     # Phase C: in-memory buffer of structured per-step events (one dict per
@@ -209,8 +256,15 @@ class RunTracker:
             "prior_reflection_injected": self.prior_reflection_injected,
             "rag_queries_made": self.rag_queries_made,
             "candidate_flags_found": self.candidate_flags_found,
+            "confirmed_flags_found": self.confirmed_flags_found,
             "failure_doc_generated": self.failure_doc_generated,
             "site_fingerprint": self.site_fingerprint,
+            # Parity-sprint item #3: classifier diagnostic (log-only).
+            "build_time_category": self.build_time_category,
+            "build_time_confidence": round(self.build_time_confidence, 4),
+            "post_http_category": self.post_http_category,
+            "post_http_confidence": round(self.post_http_confidence, 4),
+            "would_have_applied_overlay": self.would_have_applied_overlay,
             "moderation_hits": self.moderation_hits,
             "stall_nudges_fired": list(self.stall_nudges_fired),
             "first_rag_query_step": self.first_rag_query_step,
@@ -224,6 +278,7 @@ class RunTracker:
             "actual_completion_tokens": self.actual_completion_tokens,
             "cached_prompt_tokens": self.cached_prompt_tokens,
             "est_cost_usd": round(self.est_cost_usd, 6),
+            "est_cost_usd_v2": round(self.est_cost_usd_v2, 6),
             # Phase C: per-step events buffer (flushed to events.jsonl by the
             # batch log writer). Kept as a list of dicts for direct
             # JSONL serialization.
@@ -231,16 +286,25 @@ class RunTracker:
         }
 
     def set_token_usage_from_adapter(
-        self, call_stats: List[Dict[str, Any]], model: str
+        self,
+        call_stats: List[Dict[str, Any]],
+        model: str,
+        provider: Optional[Any] = None,
     ) -> None:
         """Drain per-call token records from the LLM adapter and roll them
         up into ``actual_prompt_tokens`` / ``actual_completion_tokens`` /
-        ``cached_prompt_tokens`` / ``est_cost_usd``.
+        ``cached_prompt_tokens`` / ``est_cost_usd`` / ``est_cost_usd_v2``.
 
         Each entry in ``call_stats`` is a dict with keys ``prompt_tokens``,
         ``completion_tokens``, ``cached_tokens`` (all int). Anything missing
         is treated as 0. ``per_call_tokens`` is replaced verbatim so the
         sidecar JSON can show per-step token usage if needed.
+
+        ``provider`` (the ``LLMProviderType`` str-enum or a plain string) is
+        optional; when it identifies a local backend — or the ``model`` name
+        looks local — ``est_cost_usd_v2`` is forced to ``0.0`` (parity-sprint
+        item #2). ``est_cost_usd`` keeps its legacy formula regardless, for
+        cross-run comparability.
         """
         self.per_call_tokens = list(call_stats)
         prompt = sum(int(s.get("prompt_tokens", 0) or 0) for s in call_stats)
@@ -249,6 +313,8 @@ class RunTracker:
         self.actual_prompt_tokens = prompt
         self.actual_completion_tokens = completion
         self.cached_prompt_tokens = cached
+        # Legacy cost: unknown models (incl. local tags) fall back to gpt-5.2
+        # pricing. Left unchanged so pre/post-fix runs compare on this column.
         prices = _PRICE_PER_M_TOKENS.get(model, _PRICE_PER_M_TOKENS["gpt-5.2"])
         billed_prompt = max(prompt - cached, 0)
         self.est_cost_usd = (
@@ -256,6 +322,13 @@ class RunTracker:
             + cached * prices["cached"]
             + completion * prices["output"]
         ) / 1_000_000
+        # Corrected cost: local inference bills nothing. Everything else keeps
+        # the legacy figure (known models priced correctly; unknown remote
+        # models still fall back to gpt-5.2 as an order-of-magnitude estimate).
+        if _is_cost_free_local(provider, model):
+            self.est_cost_usd_v2 = 0.0
+        else:
+            self.est_cost_usd_v2 = self.est_cost_usd
 
 
 class TokenTrackingAdapter(AbstractChatModel):
@@ -270,9 +343,19 @@ class TokenTrackingAdapter(AbstractChatModel):
     so post-run cost rollup works without touching fairlib internals.
     """
 
-    def __init__(self, inner: AbstractChatModel, tracker: RunTracker) -> None:
+    def __init__(
+        self,
+        inner: AbstractChatModel,
+        tracker: RunTracker,
+        skip_token_estimation: bool = False,
+    ) -> None:
         self.inner = inner
         self.tracker = tracker
+        # Perf-audit fix #3: when True, skip tiktoken (200-400ms per call)
+        # and fall back to the cheap chars/4 estimate. Set by build_agent
+        # for local providers (Ollama/MLX) where token-level accuracy
+        # isn't worth the overhead (no per-token billing).
+        self.skip_token_estimation = skip_token_estimation
         # Lazy-init tiktoken encoder (one per process). None when tiktoken
         # is unavailable or the model name doesn't map to an encoding —
         # in which case we fall back to chars/4.
@@ -313,6 +396,14 @@ class TokenTrackingAdapter(AbstractChatModel):
             return None
 
     def _estimate(self, messages: List[Message], result: Message) -> None:
+        # Cheap path for local providers: skip tiktoken (200-400ms per
+        # call) and record chars/4 fallback. Called by invoke/ainvoke
+        # when skip_token_estimation=True.
+        if self.skip_token_estimation:
+            prompt_chars = sum(len(m.content or "") for m in messages)
+            completion_chars = len(result.content or "")
+            self.tracker.record_llm_call(prompt_chars, completion_chars)
+            return
         prompt_text = "".join(m.content or "" for m in messages)
         completion_text = result.content or ""
         prompt_tokens = self._count_tokens(prompt_text)

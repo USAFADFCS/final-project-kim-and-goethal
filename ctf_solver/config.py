@@ -95,6 +95,21 @@ def _find_and_load_dotenv() -> None:
 # - Content limited to 200 chars, no nested braces or newlines
 DEFAULT_FLAG_REGEX = r"[A-Za-z0-9_]+\{[^\n\r{}]{1,200}\}"
 
+# Strict flag regex (2026-05-17): only matches known CTF platform prefixes.
+# Used to distinguish "[FLAG DETECTED]" (confirmed) from "[FLAG CANDIDATE]"
+# (broad-match audit-only) in the post-run summary.  The broad
+# DEFAULT_FLAG_REGEX above stays the working regex for runtime flag scanning
+# inside tools — it has to be permissive enough to surface flag-shaped strings
+# from page content.  This stricter pattern is only used to grade the agent's
+# final outputs, so it must cite a known CTF prefix.
+#
+# Adding a new CTF platform: include its prefix in the alternation below AND
+# in COMMON_FLAG_PATTERNS so --flag-preset stays in sync.
+DEFAULT_STRICT_FLAG_REGEX = (
+    r"(?:picoCTF|MetaCTF|HTB|THM|CSAW|UTCTF|TJCTF|FLAG|flag|CTF)"
+    r"\{[^\n\r{}]{1,200}\}"
+)
+
 # Common CTF flag patterns for reference.
 # Keys are used as CLI --flag-preset choices and as Streamlit preset options;
 # adding an entry here auto-propagates to both surfaces.
@@ -138,6 +153,16 @@ _PLACEHOLDER_FLAG_CONTENTS = frozenset(
         "...",
         "..",
         "…",  # HORIZONTAL ELLIPSIS (U+2026)
+        # Example/placeholder literals seen in challenge HTML/JS source that
+        # carry a real CTF prefix (e.g. flag{your_flag_goes_here}) and would
+        # otherwise pass the strict grader and trip confirmed-flag
+        # early-termination. Kept EXACT-match (not substring) so real flags
+        # like MetaCTF{sampling_attack} are never wrongly filtered.
+        "your_flag_goes_here",
+        "flag_goes_here",
+        "your_flag",
+        "redacted",
+        "flag_value",
     }
 )
 
@@ -233,7 +258,20 @@ class SolverConfig:
     # full memory routinely overflows past step ~10.  Set to None to send
     # full memory (legacy behaviour, useful for short integration tests).
     # Override per-run with --history-window-size or env CTF_HISTORY_WINDOW.
-    history_window_size: Optional[int] = 16
+    # 2026-05-17: default changed from 16 to 7 after the window-mode A/B
+    # experiment showed obs7 matched baseline on solves while using 27% fewer
+    # steps on successful runs and avoiding one false-positive submission.
+    # See memory/window_mode_experiment.md for the full numbers + rationale.
+    history_window_size: Optional[int] = 7
+    # Counting mode for the window.  "messages" counts every Message in the
+    # trim (legacy default).  "observations" counts only tool-result
+    # observation messages (role="system" + content starting with
+    # "Observation:"), matching EnIGMA's Last5Observations and D-CIPHER's
+    # len_observations=5 semantics so window=N means "keep last N tool outputs"
+    # rather than "keep last N raw messages".  2026-05-17: default flipped
+    # from "messages" to "observations" — see same experiment note above.
+    # Override per-run with --history-window-mode or env CTF_HISTORY_WINDOW_MODE.
+    history_window_mode: str = "observations"
     # Default-on: run a small deterministic recon batch (robots.txt + common
     # path enumeration) before the LLM loop starts, injecting results as
     # observations. Saves 2-3 LLM turns on every challenge with a challenge_url.
@@ -253,6 +291,36 @@ class SolverConfig:
     # collapse, with one schema per family covering all operations.  Off
     # by default while we incrementally migrate one family at a time.
     enable_collapsed_families: bool = False
+    # Tier 2.5: run the keyword classifier at build_agent time and inject
+    # a per-category overlay (priority tools + approach steps + do/don't)
+    # into the system prompt when classifier confidence clears the
+    # overlay threshold. On by default — the overlay is empty when
+    # confidence is low, so a misclassification cannot lead the agent
+    # astray.
+    enable_category_overlay: bool = True
+    # Perf-audit fix #1: opt-in chain-of-thought for Ollama-served reasoning
+    # models (gpt-oss, gemma4, nemotron-3 thinking). CTF tool selection
+    # rarely benefits from CoT and thinking tokens add 5-30s per turn on
+    # local models, so default OFF. Set to True (or CTF_ENABLE_THINKING=1
+    # / --enable-thinking) when you specifically want reasoning output.
+    # No effect on hosted providers (think= is an Ollama-only kwarg).
+    enable_thinking: bool = False
+    # Follow-on #4: when a tool output contains a strict-regex-confirmed flag
+    # (same definition as the runner's [FLAG DETECTED] marker — a known CTF
+    # prefix), end the run immediately with that flag instead of letting the
+    # agent burn its remaining step budget re-submitting the winning call.
+    # Grading-neutral (acts on the signal the post-run grader already trusts);
+    # only affects efficiency. Default ON. Disable via CTF_AUTO_SUBMIT_FLAG=0
+    # to A/B the behaviour or to keep exploring past the first confirmed flag.
+    auto_submit_confirmed_flag: bool = True
+    # Perf-audit fix #5: cap each tool observation's character count
+    # BEFORE it's appended to the next turn's prompt. Default None
+    # preserves the prior behaviour (full observation). Recommended
+    # value for local providers is 4000 — long enough to capture the
+    # signal in most tool outputs, short enough to bound prompt growth
+    # across a 30-step run. Truncation only applies to the prompt copy;
+    # phase-machine signal detection still sees the full observation.
+    observation_max_chars: Optional[int] = None
     # v3.8 P2: replace the static ``opener_pack`` (two zero-reasoning calls)
     # with the richer ``recon_dag`` — five static recon calls plus
     # observation-driven follow-ups (role-cookie promotion, interesting-path
@@ -286,6 +354,12 @@ class SolverConfig:
 
     # Flag configuration
     flag_regex: str = DEFAULT_FLAG_REGEX
+    # 2026-05-17: strict regex used by the post-run grader to distinguish
+    # confirmed flags (known CTF prefix) from broad-match candidates that
+    # may be JavaScript / CSS / unrelated `\w+{...}` noise.  See gap G7 in
+    # memory/window_mode_failure_analysis.md.  Set via --strict-flag-regex
+    # or env CTF_STRICT_FLAG_REGEX; leave as default for the common cases.
+    strict_flag_regex: str = DEFAULT_STRICT_FLAG_REGEX
 
     # Challenge configuration
     challenge_url: Optional[str] = None
@@ -415,6 +489,9 @@ class SolverConfig:
         return cls(
             platform_name=os.getenv("CTF_PLATFORM_NAME", "Generic CTF"),
             flag_regex=os.getenv("CTF_FLAG_REGEX", DEFAULT_FLAG_REGEX),
+            strict_flag_regex=os.getenv(
+                "CTF_STRICT_FLAG_REGEX", DEFAULT_STRICT_FLAG_REGEX
+            ),
             challenge_url=os.getenv("CTF_CHALLENGE_URL"),
             challenge_description=os.getenv("CTF_CHALLENGE_DESCRIPTION"),
             challenge_hints=os.getenv("CTF_CHALLENGE_HINTS"),
@@ -424,7 +501,13 @@ class SolverConfig:
             history_window_size=(
                 None
                 if os.getenv("CTF_HISTORY_WINDOW", "").lower() in ("none", "0", "off")
-                else int(os.getenv("CTF_HISTORY_WINDOW", "16"))
+                else int(os.getenv("CTF_HISTORY_WINDOW", "7"))
+            ),
+            history_window_mode=(
+                os.getenv("CTF_HISTORY_WINDOW_MODE", "observations").lower()
+                if os.getenv("CTF_HISTORY_WINDOW_MODE", "observations").lower()
+                in ("messages", "observations")
+                else "observations"
             ),
             model_name=os.getenv("CTF_MODEL_NAME", "gpt-4o"),
             llm_provider=os.getenv("CTF_LLM_PROVIDER", "openai"),
@@ -468,6 +551,16 @@ class SolverConfig:
             ),
             mlx_prewarm=os.getenv("CTF_MLX_PREWARM", "true").lower()
             in ("true", "1", "yes"),
+            enable_thinking=os.getenv("CTF_ENABLE_THINKING", "").lower()
+            in ("true", "1", "yes"),
+            # Default ON: only "0"/"false"/"no" disables it.
+            auto_submit_confirmed_flag=os.getenv("CTF_AUTO_SUBMIT_FLAG", "true").lower()
+            not in ("0", "false", "no"),
+            observation_max_chars=(
+                int(os.environ["CTF_OBSERVATION_MAX_CHARS"])
+                if os.getenv("CTF_OBSERVATION_MAX_CHARS")
+                else None
+            ),
         )
 
     def merge_with_args(self, **kwargs) -> "SolverConfig":
@@ -480,6 +573,7 @@ class SolverConfig:
             "platform_name": self.platform_name,
             "agent_system_prompt": self.agent_system_prompt,
             "flag_regex": self.flag_regex,
+            "strict_flag_regex": self.strict_flag_regex,
             "challenge_url": self.challenge_url,
             "challenge_description": self.challenge_description,
             "challenge_hints": self.challenge_hints,
@@ -489,6 +583,7 @@ class SolverConfig:
             "kb_files": self.kb_files.copy(),
             "max_steps": self.max_steps,
             "history_window_size": self.history_window_size,
+            "history_window_mode": self.history_window_mode,
             "model_name": self.model_name,
             "llm_provider": self.llm_provider,
             "openai_api_key": self.openai_api_key,
@@ -512,6 +607,10 @@ class SolverConfig:
             "mlx_kv_bits": self.mlx_kv_bits,
             "mlx_seed": self.mlx_seed,
             "mlx_prewarm": self.mlx_prewarm,
+            # Perf-audit fixes #1 and #5
+            "enable_thinking": self.enable_thinking,
+            "auto_submit_confirmed_flag": self.auto_submit_confirmed_flag,
+            "observation_max_chars": self.observation_max_chars,
             # Caching configuration
             "cache_enabled": self.cache_enabled,
             "cache_ttl": self.cache_ttl,

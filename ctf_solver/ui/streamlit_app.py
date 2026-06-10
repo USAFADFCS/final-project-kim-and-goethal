@@ -257,7 +257,7 @@ async def run_agent_async(
     # cost columns in their results.tsv.
     if tracker.per_call_tokens:
         tracker.set_token_usage_from_adapter(
-            list(tracker.per_call_tokens), config.model_name
+            list(tracker.per_call_tokens), config.model_name, config.llm_provider
         )
 
     write_lessons_if_enabled(
@@ -947,12 +947,15 @@ def render_sidebar():
             "Local via MLX (Apple Silicon): mlx-community/gemma-4-26b-a4b-it-4bit — "
             "fastest local option on M-series (~90-113 tok/s), Outlines guarantees "
             "valid ReAct JSON via grammar-constrained decoding. "
-            "Local via Ollama, ranked by ReAct format compliance: "
+            "Local via Ollama, ranked for CTF use: nemotron3-prism:30b-q6 > "
             "gemma4:26b > llama3.1 > mistral-small > gpt-oss > "
-            "edgerunner-medium. gemma4:26b is the most capable local "
-            "option (tools + thinking + 262k ctx). edgerunner-medium is "
-            "refusal-resistant but doesn't follow ReAct format — prefer "
-            "it for raw payload generation, not as the agent driver."
+            "edgerunner-medium. nemotron3-prism is PRISM-abliterated Nemotron 3 "
+            "Nano 30B-A3B MoE (3.5B active, 1M ctx, refusal-stripped, BFCL 53.8%) — "
+            "the new top local pick for CTF payload generation. gemma4:26b is "
+            "the most capable refusal-clean local option (tools + thinking + "
+            "262k ctx). edgerunner-medium is refusal-resistant but doesn't "
+            "follow ReAct format — prefer it for raw payload generation, not "
+            "as the agent driver."
         ),
     )
 

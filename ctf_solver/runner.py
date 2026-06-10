@@ -91,6 +91,17 @@ Examples:
         choices=list(COMMON_FLAG_PATTERNS.keys()),
         help="Use a preset flag pattern (picoctf, metactf, htb, thm, flag, ctf, generic)",
     )
+    parser.add_argument(
+        "--strict-flag-regex",
+        required=False,
+        help=(
+            "Regex for the post-run grader's [FLAG DETECTED] line.  Only "
+            "broad-match flags that ALSO match this pattern are counted "
+            "as confirmed; others are logged as [FLAG CANDIDATE] for audit "
+            "only.  Default matches known CTF platform prefixes "
+            "(picoCTF|MetaCTF|HTB|THM|...).  Env: CTF_STRICT_FLAG_REGEX."
+        ),
+    )
 
     # Agent configuration
     parser.add_argument(
@@ -122,6 +133,32 @@ Examples:
         ),
     )
     parser.add_argument(
+        "--enable-thinking",
+        action="store_true",
+        default=None,
+        help=(
+            "Opt in to chain-of-thought for reasoning-capable Ollama models "
+            "(gpt-oss, gemma4, nemotron-3 thinking). Off by default — CTF "
+            "tool selection rarely benefits from CoT and thinking tokens "
+            "add 5-30s per turn on a local model. Env: CTF_ENABLE_THINKING. "
+            "Ignored for hosted providers (think= is Ollama-only)."
+        ),
+    )
+    parser.add_argument(
+        "--observation-max-chars",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Truncate each tool observation to N chars before appending "
+            "it to the next turn's prompt. Bounds prompt growth across "
+            "long runs. Default: no truncation (full observation). "
+            "Recommended value for local providers: 4000. The full "
+            "observation is still seen by the phase-machine for signal "
+            "detection. Env var: CTF_OBSERVATION_MAX_CHARS."
+        ),
+    )
+    parser.add_argument(
         "--agent-prompt",
         required=False,
         help="Custom system prompt for the agent",
@@ -139,9 +176,23 @@ Examples:
         metavar="N",
         help=(
             "Sliding-window cap on planner history sent to the LLM each turn. "
-            "Default: 16 (= 2 anchors + 14 most-recent messages, ~7 turns; tuned "
-            "for Ollama 16k contexts).  Pass 0 to disable windowing and send full "
-            "memory.  Env var: CTF_HISTORY_WINDOW (also accepts 'none'/'off')."
+            "Default: 7 (= 2 anchors + last 5 tool observations under the "
+            "default observations-counting mode).  Pass 0 to disable windowing "
+            "and send full memory.  Env var: CTF_HISTORY_WINDOW (also accepts "
+            "'none'/'off')."
+        ),
+    )
+    parser.add_argument(
+        "--history-window-mode",
+        type=str,
+        default=None,
+        choices=("messages", "observations"),
+        help=(
+            "How --history-window-size counts.  'observations' (default since "
+            "2026-05-17 A/B experiment) counts only tool-output observation "
+            "messages, matching EnIGMA's Last5Observations and D-CIPHER's "
+            "len_observations=5 semantics.  'messages' counts every Message "
+            "(legacy behavior).  Env var: CTF_HISTORY_WINDOW_MODE."
         ),
     )
 
@@ -170,6 +221,36 @@ Examples:
             "Human-readable name for the challenge (e.g. 'Great Paywall'). "
             "Used for naming lessons-learned docs and filtering same-challenge "
             "docs from RAG retrieval to prevent contamination."
+        ),
+    )
+
+    # Eval-harness adapters (ctf_solver/eval/). When either is set, the runner
+    # delegates to the benchmark adapter instead of the normal URL/description
+    # path. Both need their backing dependency (nyuctf / Docker) at run time.
+    parser.add_argument(
+        "--nyu-challenge",
+        required=False,
+        metavar="CANONICAL",
+        help=(
+            "Run a NYU CTF Bench web challenge by canonical name "
+            "(e.g. '2021q-web-no_pass_needed') via ctf_solver.eval.nyu_adapter. "
+            "Requires the 'nyuctf' package and Docker."
+        ),
+    )
+    parser.add_argument(
+        "--nyu-split",
+        default="test",
+        choices=["development", "test"],
+        help="NYU dataset split for --nyu-challenge (default: test).",
+    )
+    parser.add_argument(
+        "--cybench-task-dir",
+        required=False,
+        metavar="PATH",
+        help=(
+            "Run a Cybench web task by directory (containing metadata/"
+            "metadata.json) via ctf_solver.eval.cybench_adapter, emitting a "
+            "TaskRunCompletion JSON under <task-dir>/logs. Requires Docker."
         ),
     )
 
@@ -364,6 +445,7 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         model_name=args.model,
         agent_system_prompt=args.agent_prompt,
         flag_regex=flag_regex,
+        strict_flag_regex=args.strict_flag_regex,
         challenge_url=challenge_url,
         challenge_description=description,
         challenge_hints=args.hints,
@@ -376,6 +458,7 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         # treats 0 the same as None so it round-trips through merge_with_args
         # (which skips None overrides).
         history_window_size=args.history_window_size,
+        history_window_mode=args.history_window_mode,
         verbose=args.verbose if args.verbose else None,
         rag_mode=args.rag_mode if args.rag_mode else None,
         use_llm_for_lessons=True if args.llm_lessons else None,
@@ -389,6 +472,98 @@ def build_config_from_args(args: argparse.Namespace) -> SolverConfig:
         llm_provider=args.llm_provider,
         mlx_kv_bits=args.mlx_kv_bits,
         mlx_seed=args.mlx_seed,
+        # Perf-audit fixes #1 and #5. store_true gives False when absent
+        # (argparse default) — only forward when the flag was explicitly
+        # set so merge_with_args' None-skip semantics preserve defaults.
+        enable_thinking=(True if args.enable_thinking else None),
+        observation_max_chars=args.observation_max_chars,
+    )
+
+
+# Tools whose first output is treated as the recon HTTP body for the
+# classifier diagnostic.
+_RECON_TOOLS = ("http_fetch", "form_submit")
+# Cap the recon body fed to the classifier (latency guard). The tool_call_log
+# already truncates each output to 2000 chars, so this rarely bites — it's a
+# defensive upper bound documented by the plan (~8 KB).
+_CLASSIFIER_DIAGNOSTIC_MAX_CHARS = 8192
+
+
+def _first_recon_body(tool_call_log: List[Dict[str, Any]]) -> str:
+    """Return the first non-empty http_fetch / form_submit output, or ""."""
+    for entry in tool_call_log:
+        if entry.get("tool") in _RECON_TOOLS:
+            out = entry.get("output") or ""
+            if out.strip():
+                return out
+    return ""
+
+
+def run_classifier_http_diagnostic(
+    config: SolverConfig,
+    tracker: RunTracker,
+    log_callback: Optional[Any] = None,
+) -> None:
+    """Parity-sprint item #3 — DIAGNOSTIC ONLY, changes no agent behavior.
+
+    Re-fires the keyword classifier twice and records the verdicts on
+    ``tracker`` so a 12-batch re-run can histogram confidence deltas:
+
+    * ``build_time_*`` — description + hints only (what actually drove the
+      run; the overlay decision was made here at ``build_agent`` time).
+    * ``post_http_*`` — the same classifier with the first recon HTTP body in
+      hand, plus ``would_have_applied_overlay`` (whether the overlay would
+      render at all given ``MIN_OVERLAY_CONFIDENCE``).
+
+    The active overlay is NOT swapped — this never mutates the prompt or the
+    loop. Fully exception-safe: any failure leaves the tracker fields at their
+    defaults and the run proceeds untouched.
+    """
+    log_fn = log_callback or (lambda *_a, **_k: None)
+    try:
+        from ctf_solver.agent import classify_challenge
+        from ctf_solver.prompts.category_overlays import build_category_overlay
+    except Exception:  # pragma: no cover — import guard only
+        return
+
+    _silent = lambda *_a, **_k: None  # noqa: E731 — classifier's own log sink
+
+    # Build-time view (description + hints only).
+    try:
+        build_result = classify_challenge(config, log_callback=_silent)
+        tracker.build_time_category = build_result.primary_category.value
+        tracker.build_time_confidence = float(build_result.confidence)
+    except Exception:
+        return
+
+    body = _first_recon_body(tracker.tool_call_log)
+    if not body:
+        # No HTTP recon captured — nothing to compare; leave post_http_* unset.
+        log_fn(
+            "[Classifier-Diagnostic] no recon HTTP body captured; "
+            f"build={tracker.build_time_category}@"
+            f"{tracker.build_time_confidence:.2f}"
+        )
+        return
+
+    body = body[:_CLASSIFIER_DIAGNOSTIC_MAX_CHARS]
+    try:
+        post_result = classify_challenge(
+            config, response_content=body, log_callback=_silent
+        )
+        tracker.post_http_category = post_result.primary_category.value
+        tracker.post_http_confidence = float(post_result.confidence)
+        overlay = build_category_overlay(post_result)
+        tracker.would_have_applied_overlay = bool(overlay)
+        tracker.post_http_overlay_text = overlay
+    except Exception:
+        return
+
+    log_fn(
+        "[Classifier-Diagnostic] "
+        f"build={tracker.build_time_category}@{tracker.build_time_confidence:.2f} "
+        f"post_http={tracker.post_http_category}@{tracker.post_http_confidence:.2f} "
+        f"would_apply_overlay={tracker.would_have_applied_overlay}"
     )
 
 
@@ -480,14 +655,37 @@ async def run_agent(config: SolverConfig) -> str:
     finally:
         tracker.stop()
 
+    # Parity-sprint item #3 (DIAGNOSTIC ONLY — changes no agent behavior):
+    # re-classify with the first recon HTTP body in hand and log how the
+    # classifier WOULD have behaved. The active overlay (decided at
+    # build_agent time on the sparse description) is left untouched. A 12-batch
+    # re-run then histograms (build_time_confidence, post_http_confidence): if
+    # super_quick_logic_invitational + microdosing still read UNKNOWN with the
+    # page in hand, the never-fired-overlay theory is dead. Exception-safe.
+    run_classifier_http_diagnostic(config, tracker, log_callback=print)
+
     candidate_flags = extract_flags_from_run(
         response, tracker.tool_call_log, config.flag_regex, dedup=True
     )
-    for flag in candidate_flags:
+    # 2026-05-17: split candidates into strict (known CTF prefix) vs broad.
+    # See memory/window_mode_failure_analysis.md gap G7 — the broad regex
+    # alone catches JS / CSS literals like `try{...}` or
+    # `slate:{50:"#f8fafc"...}` that aren't real flags.  Strict matches get
+    # the headline [FLAG DETECTED] marker; non-strict are downgraded to
+    # [FLAG CANDIDATE] for audit only and don't count run_succeeded.
+    import re as _re
+
+    _strict_re = _re.compile(config.strict_flag_regex)
+    confirmed_flags = [f for f in candidate_flags if _strict_re.search(f)]
+    for flag in confirmed_flags:
         print(f"\n[FLAG DETECTED] {flag}")
+    for flag in candidate_flags:
+        if flag not in confirmed_flags:
+            print(f"\n[FLAG CANDIDATE] {flag}")
     tracker.candidate_flags_found = candidate_flags
-    tracker.run_succeeded = bool(candidate_flags)
-    tracker.outcome = determine_outcome(candidate_flags, tracker.tool_call_log)
+    tracker.confirmed_flags_found = confirmed_flags
+    tracker.run_succeeded = bool(confirmed_flags)
+    tracker.outcome = determine_outcome(confirmed_flags, tracker.tool_call_log)
 
     # Phase B2-B3: roll up token usage from per-call records (populated by
     # TokenTrackingAdapter) into the tracker's authoritative fields and
@@ -497,7 +695,7 @@ async def run_agent(config: SolverConfig) -> str:
         # Don't overwrite per_call_tokens — set_token_usage_from_adapter
         # replaces it; pass a copy so the original list survives.
         tracker.set_token_usage_from_adapter(
-            list(tracker.per_call_tokens), config.model_name
+            list(tracker.per_call_tokens), config.model_name, config.llm_provider
         )
 
     print("\n=== Agent Final Answer ===")
@@ -561,6 +759,10 @@ async def interactive_mode() -> None:
     await run_agent(config)
 
 
+# The eval-harness layer lives in ctf_solver/eval/ (_core + nyu_adapter +
+# cybench_adapter + ab_harness) with stats in ctf_solver/eval/stats.py and the
+# CLI at scripts/eval_stats.py. Wired here via --nyu-challenge / --cybench-task-dir
+# (see _run_eval_adapter). Rationale: memory/comparative_eval_harnesses.md.
 async def main() -> None:
     """Main entry point for CLI."""
     # Check if running with no arguments
@@ -570,6 +772,15 @@ async def main() -> None:
 
     # Parse arguments
     args = parse_args()
+
+    # Eval-harness adapters take precedence over the normal run path. The
+    # adapter chain is synchronous and calls asyncio.run() internally (via
+    # run_against_target_sync), so it must run OFF this already-running event
+    # loop — dispatch it on a worker thread to give that inner asyncio.run()
+    # a fresh loop. (Calling asyncio.run() inside a running loop raises.)
+    if getattr(args, "nyu_challenge", None) or getattr(args, "cybench_task_dir", None):
+        await asyncio.to_thread(_run_eval_adapter, args)
+        return
 
     # Build config
     config = build_config_from_args(args)
@@ -584,6 +795,49 @@ async def main() -> None:
 
     # Run the agent
     await run_agent(config)
+
+
+def _run_eval_adapter(args: argparse.Namespace) -> None:
+    """Dispatch a single benchmark run via the eval adapters and print a
+    one-line verdict. Adapter dependencies (nyuctf / Docker) are imported
+    lazily inside the adapters and surface as clear errors here."""
+    model = getattr(args, "model", None)
+    provider = getattr(args, "llm_provider", None)
+    max_steps = getattr(args, "max_steps", None)
+    try:
+        if args.nyu_challenge:
+            from ctf_solver.eval.nyu_adapter import run_nyu_challenge
+
+            result = run_nyu_challenge(
+                args.nyu_challenge,
+                split=getattr(args, "nyu_split", "test"),
+                model=model,
+                provider=provider,
+                max_steps=max_steps,
+                log_callback=print,
+            )
+        else:
+            from ctf_solver.eval.cybench_adapter import run_cybench_task
+
+            result = run_cybench_task(
+                args.cybench_task_dir,
+                model=model,
+                provider=provider,
+                max_steps=max_steps,
+                log_callback=print,
+            )
+    except (ImportError, RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"[ERROR] eval adapter failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    print("\n=== Eval result ===")
+    print(
+        f"challenge={result.challenge} solved={result.solved} "
+        f"flag_match={result.flag_match} outcome={result.outcome} "
+        f"steps={result.steps} cost_v2=${result.est_cost_usd_v2:.4f}"
+    )
+    if result.error:
+        print(f"error: {result.error}")
 
 
 def _warn_if_unsafe_libomp_env() -> None:

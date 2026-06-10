@@ -177,6 +177,18 @@ dmypy.json
 # pytype static type analyzer
 .pytype/
 
+# External benchmark/agent repos cloned for comparative study (~7 GB).
+# Reference material, NOT part of this project — never commit.
+agentic_systems_for_analysis/
+
+# macOS Finder metadata
+.DS_Store
+
+# Large run outputs / vector stores (vector stores already listed above)
+out/ctf_vector_store/
+out/ctf_vector_store_augmented/
+out/faiss_store/
+
 # Cython debug symbols
 cython_debug/
 

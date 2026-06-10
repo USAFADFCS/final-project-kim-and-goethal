@@ -274,7 +274,7 @@ class BatchPage(QWidget):
             self._update_summary()
 
     def _build_config(self, item: BatchItem) -> SolverConfig:
-        return SolverConfig.from_env(
+        return SolverConfig.from_env().merge_with_args(
             challenge_url=item.url,
             challenge_description=item.description,
             challenge_hints=item.hints,
@@ -296,7 +296,7 @@ class BatchPage(QWidget):
                 if f.strip()
             ],
             grammar_mode=self._sidebar.current_grammar_mode(),
-            agent_prompt=self._sidebar.agent_prompt.toPlainText(),
+            agent_system_prompt=self._sidebar.agent_prompt.toPlainText(),
         )
 
     # -------------------------------------------------------- summary view

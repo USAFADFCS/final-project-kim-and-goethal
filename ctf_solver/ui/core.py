@@ -60,12 +60,23 @@ MODEL_OPTIONS: list[str] = [
     # launching the host process from ~/mlx-env with outlines[mlxlm].
     "mlx-community/gemma-4-26b-a4b-it-4bit",
     # Local via Ollama — auto-routed by name:tag form. Order = recommended
-    # preference as the agent driver. gemma4 has tools + thinking + 262k ctx
-    # (best local on paper). llama3.1 produces valid ReAct output first-try.
+    # preference as the agent driver. nemotron-3-super:120b-a12b-q4_K_M is
+    # the heaviest local — Ollama's official stock Nemotron 3 Super 120B-A12B
+    # MoE (12.7B active, 1M ctx, LatentMoE). Loads reliably because Ollama
+    # itself built the GGUF against their bundled engine. Not abliterated;
+    # use a permissive system prompt for offensive payload generation.
+    # Requires 100+ GB unified memory. nemotron3-prism:30b-q6 is the
+    # daily-driver — PRISM-abliterated Nemotron 3 Nano 30B-A3B MoE
+    # (3.5B active, 1M ctx, BFCL 53.8%, SWE-bench 38.8%), refusal-stripped
+    # so it will generate offensive payloads without system-prompt nudging.
+    # gemma4:26b also has tools + thinking + 262k ctx (the prior local
+    # default). llama3.1 produces valid ReAct output first-try.
     # mistral-small and gpt-oss also have the "tools" capability.
-    # edgerunner-medium is listed last because it is refusal-resistant but NOT
-    # instruction-tuned for structured ReAct output — use it as a raw payload
-    # generator, not as the agent driver.
+    # edgerunner-medium is listed last because it is refusal-resistant but
+    # NOT instruction-tuned for structured ReAct output — use it as a raw
+    # payload generator, not as the agent driver.
+    "nemotron-3-super:120b-a12b-q4_K_M",
+    "nemotron3-prism:30b-q6",
     "gemma4:26b",
     "llama3.1:latest",
     "mistral-small:latest",

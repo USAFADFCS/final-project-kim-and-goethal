@@ -13,6 +13,7 @@ from ctf_solver.config import (
     validate_flag_regex,
     COMMON_FLAG_PATTERNS,
     DEFAULT_FLAG_REGEX,
+    DEFAULT_STRICT_FLAG_REGEX,
 )
 
 
@@ -41,6 +42,79 @@ class TestFlagRegex:
         for name, pattern in COMMON_FLAG_PATTERNS.items():
             is_valid, error = validate_flag_regex(pattern)
             assert is_valid is True, f"Pattern '{name}' is invalid: {error}"
+
+
+class TestStrictFlagRegex:
+    """Tests for the 2026-05-17 strict-flag-regex tier.
+
+    See memory/window_mode_failure_analysis.md gap G7.  The broad
+    DEFAULT_FLAG_REGEX matches any `\\w+\\{...\\}` and is too permissive:
+    it catches JS `try{...}` blocks and CSS object literals.  The strict
+    regex constrains to known CTF platform prefixes for the grader.
+    """
+
+    def test_strict_regex_is_valid(self):
+        is_valid, _ = validate_flag_regex(DEFAULT_STRICT_FLAG_REGEX)
+        assert is_valid is True
+
+    def test_strict_matches_metactf(self):
+        flags = extract_candidate_flags("MetaCTF{abc123}", DEFAULT_STRICT_FLAG_REGEX)
+        assert flags == ["MetaCTF{abc123}"]
+
+    def test_strict_matches_picoctf(self):
+        flags = extract_candidate_flags(
+            "picoCTF{hello_world}", DEFAULT_STRICT_FLAG_REGEX
+        )
+        assert flags == ["picoCTF{hello_world}"]
+
+    def test_strict_matches_htb(self):
+        flags = extract_candidate_flags("HTB{some_flag}", DEFAULT_STRICT_FLAG_REGEX)
+        assert flags == ["HTB{some_flag}"]
+
+    def test_strict_rejects_javascript_false_positive(self):
+        """Livestream baseline false positive — JS that broad regex caught."""
+        flags = extract_candidate_flags(
+            "try{u||null==r.return||r.return()}",
+            DEFAULT_STRICT_FLAG_REGEX,
+        )
+        assert flags == []
+
+    def test_strict_rejects_css_object_literal(self):
+        """Microdosing flag_match noise — Tailwind CSS object."""
+        flags = extract_candidate_flags(
+            'slate:{50:"#f8fafc",100:"#f1f5f9"}',
+            DEFAULT_STRICT_FLAG_REGEX,
+        )
+        assert flags == []
+
+    def test_strict_rejects_anonymous_brace_block(self):
+        """A `finally{...}` JS block must not be treated as a flag."""
+        flags = extract_candidate_flags(
+            "finally{if(h)throw s}", DEFAULT_STRICT_FLAG_REGEX
+        )
+        assert flags == []
+
+
+class TestStrictFlagRegexConfig:
+    """SolverConfig wiring for strict_flag_regex."""
+
+    def test_default_is_strict_pattern(self):
+        cfg = SolverConfig()
+        assert cfg.strict_flag_regex == DEFAULT_STRICT_FLAG_REGEX
+
+    def test_from_env_default(self, monkeypatch):
+        monkeypatch.delenv("CTF_STRICT_FLAG_REGEX", raising=False)
+        cfg = SolverConfig.from_env()
+        assert cfg.strict_flag_regex == DEFAULT_STRICT_FLAG_REGEX
+
+    def test_from_env_override(self, monkeypatch):
+        monkeypatch.setenv("CTF_STRICT_FLAG_REGEX", r"CUSTOM\{[^}]+\}")
+        cfg = SolverConfig.from_env()
+        assert cfg.strict_flag_regex == r"CUSTOM\{[^}]+\}"
+
+    def test_merge_with_args_carries_strict(self):
+        cfg = SolverConfig().merge_with_args(strict_flag_regex=r"OVERRIDE\{[^}]+\}")
+        assert cfg.strict_flag_regex == r"OVERRIDE\{[^}]+\}"
 
 
 class TestFlagExtraction:
